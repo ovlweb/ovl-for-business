@@ -187,6 +187,10 @@ export function Layout() {
     queryFn: () => api.support.desk('open'),
     enabled: can('support.answer'),
   });
+  const toPay = useQuery({
+    queryKey: ['invoices', 'incoming', 'open'],
+    queryFn: () => api.invoices.list({ direction: 'incoming', status: 'open' }),
+  });
   const unread = chats.data?.reduce((sum, c) => sum + c.unreadCount, 0) ?? 0;
 
   useEffect(() => {
@@ -217,6 +221,7 @@ export function Layout() {
       title: 'Finance',
       items: [
         { to: '/wallet', icon: 'wallet', label: 'Wallet', primary: true },
+        { to: '/invoices', icon: 'receipt', label: 'Invoices', count: toPay.data?.length },
         { to: '/companies', icon: 'building', label: 'Companies' },
         { to: '/exchange', icon: 'chart', label: 'Exchange', primary: true },
       ],

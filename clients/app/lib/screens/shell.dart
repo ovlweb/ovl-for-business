@@ -18,6 +18,7 @@ const navIcons = <String, IconData>{
   'chats': LucideIcons.messageCircle,
   'contacts': LucideIcons.users,
   'wallet': LucideIcons.wallet,
+  'invoices': LucideIcons.receipt,
   'companies': LucideIcons.building2,
   'exchange': LucideIcons.chartLine,
   'registry': LucideIcons.bookOpen,
@@ -60,48 +61,57 @@ class _AppShellState extends State<AppShell> {
       client: session.queries,
       queryKey: 'chats',
       fetch: session.api.chats,
-      builder: (context, chats) {
-        final counts = <String, int>{'/chats': chats.data?.fold<int>(0, (s, c) => s + c.unreadCount) ?? 0};
-        final shortcuts = <ShortcutActivator, VoidCallback>{
-          const SingleActivator(LogicalKeyboardKey.keyK, control: true): () => openPalette(context, visible, _go),
-          const SingleActivator(LogicalKeyboardKey.keyK, meta: true): () => openPalette(context, visible, _go),
-        };
-        if (width < 700) {
-          return CallbackShortcuts(
-            bindings: shortcuts,
-            child: Scaffold(
-              body: widget.shell,
-              // A conversation gets the whole screen, like in any messenger.
-              bottomNavigationBar: RegExp(r'^/(chats|support)/[^/]+$').hasMatch(widget.location)
-                  ? null
-                  : _BottomBar(visible: visible, current: current, counts: counts, onSelect: _go),
-            ),
-          );
-        }
-        final collapsed = _collapsed || width < 1100;
-        return CallbackShortcuts(
-          bindings: shortcuts,
-          child: Focus(
-            autofocus: true,
-            child: Scaffold(
-              body: Row(
-                children: [
-                  _Sidebar(
-                    visible: visible,
-                    current: current,
-                    counts: counts,
-                    collapsed: collapsed,
-                    onSelect: _go,
-                    onToggle: width < 1100 ? null : () => setState(() => _collapsed = !_collapsed),
-                    onSearch: () => openPalette(context, visible, _go),
-                  ),
-                  Expanded(child: widget.shell),
-                ],
+      builder: (context, chats) => Query<List<Invoice>>(
+        client: session.queries,
+        queryKey: 'invoices:incoming:true',
+        fetch: () => session.api.invoices(direction: 'incoming', status: 'open'),
+        builder: (context, toPay) => _layout(context, visible, current, width, {
+          '/chats': chats.data?.fold<int>(0, (s, c) => s + c.unreadCount) ?? 0,
+          '/invoices': toPay.data?.length ?? 0,
+        }),
+      ),
+    );
+  }
+
+  Widget _layout(BuildContext context, List<Section> visible, Section current, double width, Map<String, int> counts) {
+    final shortcuts = <ShortcutActivator, VoidCallback>{
+      const SingleActivator(LogicalKeyboardKey.keyK, control: true): () => openPalette(context, visible, _go),
+      const SingleActivator(LogicalKeyboardKey.keyK, meta: true): () => openPalette(context, visible, _go),
+    };
+    if (width < 700) {
+      return CallbackShortcuts(
+        bindings: shortcuts,
+        child: Scaffold(
+          body: widget.shell,
+          // A conversation gets the whole screen, like in any messenger.
+          bottomNavigationBar: RegExp(r'^/(chats|support)/[^/]+$').hasMatch(widget.location)
+              ? null
+              : _BottomBar(visible: visible, current: current, counts: counts, onSelect: _go),
+        ),
+      );
+    }
+    final collapsed = _collapsed || width < 1100;
+    return CallbackShortcuts(
+      bindings: shortcuts,
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          body: Row(
+            children: [
+              _Sidebar(
+                visible: visible,
+                current: current,
+                counts: counts,
+                collapsed: collapsed,
+                onSelect: _go,
+                onToggle: width < 1100 ? null : () => setState(() => _collapsed = !_collapsed),
+                onSearch: () => openPalette(context, visible, _go),
               ),
-            ),
+              Expanded(child: widget.shell),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }

@@ -1,0 +1,398 @@
+import {
+  cancelInvoiceSchema,
+  createInvoiceSchema,
+  formatAmount,
+  invoiceQuerySchema,
+  invoiceSchema,
+  ORG_FINANCE_ROLES,
+  parseAmount,
+  payInvoiceSchema,
+  type Invoice,
+} from '@ovl/shared';
+import { and, count, desc, eq, inArray, like, or, sql, type SQL } from 'drizzle-orm';
+import type { PgColumn } from 'drizzle-orm/pg-core';
+import type { FastifyInstance } from 'fastify';
+import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import { z } from 'zod';
+import type { Db } from '../db/client';
+import { invoices, organizationMembers, organizations, users, wallets } from '../db/schema';
+import { badRequest, conflict, forbidden, notFound } from '../lib/errors';
+import { iso, isoOrNull } from '../lib/mappers';
+import { currentUser } from '../plugins/auth';
+import { walletAudience } from './wallets/routes';
+import { assertWalletAccess, getOrCreateWallet, transfer, walletOwnerId } from './wallets/service';
+
+type InvoiceRow = typeof invoices.$inferSelect;
+type Party = { type: 'user' | 'organization'; id: string };
+
+/** Largest invoice total (fits the bigint money column with room to spare). */
+const MAX_TOTAL = 10n ** 17n;
+
+const issuerOf = (r: InvoiceRow): Party =>
+  r.issuerType === 'user'
+    ? { type: 'user', id: r.issuerUserId! }
+    : { type: 'organization', id: r.issuerOrgId! };
+const recipientOf = (r: InvoiceRow): Party =>
+  r.recipientType === 'user'
+    ? { type: 'user', id: r.recipientUserId! }
+    : { type: 'organization', id: r.recipientOrgId! };
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+/** Companies where the user may move money: owners, directors and accountants. */
+async function financeOrgIds(db: Db, userId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: organizationMembers.organizationId })
+    .from(organizationMembers)
+    .where(
+      and(eq(organizationMembers.userId, userId), inArray(organizationMembers.role, [...ORG_FINANCE_ROLES])),
+    );
+  return rows.map((r) => r.id);
+}
+
+const actsFor = (party: Party, userId: string, orgIds: string[]) =>
+  party.type === 'user' ? party.id === userId : orgIds.includes(party.id);
+
+/** Everyone who hears about an invoice on one side: the person, or the company's finance team. */
+async function partyAudience(db: Db, party: Party): Promise<string[]> {
+  if (party.type === 'user') return [party.id];
+  const rows = await db
+    .select({ userId: organizationMembers.userId })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.organizationId, party.id),
+        inArray(organizationMembers.role, [...ORG_FINANCE_ROLES]),
+      ),
+    );
+  return rows.map((r) => r.userId);
+}
+
+async function invoiceDtos(
+  db: Db,
+  rows: InvoiceRow[],
+  viewerId: string,
+  orgIds: string[],
+): Promise<Invoice[]> {
+  if (rows.length === 0) return [];
+  const userIds = new Set<string>();
+  const orgs = new Set<string>();
+  for (const r of rows) {
+    for (const p of [issuerOf(r), recipientOf(r)]) (p.type === 'user' ? userIds : orgs).add(p.id);
+    userIds.add(r.createdBy);
+    if (r.paidBy) userIds.add(r.paidBy);
+  }
+  const [people, companies] = await Promise.all([
+    db
+      .select({ id: users.id, username: users.username, displayName: users.displayName })
+      .from(users)
+      .where(inArray(users.id, [...userIds])),
+    orgs.size
+      ? db
+          .select({ id: organizations.id, name: organizations.name, slug: organizations.slug })
+          .from(organizations)
+          .where(inArray(organizations.id, [...orgs]))
+      : Promise.resolve([]),
+  ]);
+  const person = new Map(people.map((p) => [p.id, p]));
+  const company = new Map(companies.map((c) => [c.id, c]));
+  const party = (p: Party) =>
+    p.type === 'user'
+      ? { ...p, name: person.get(p.id)?.displayName ?? '', handle: `@${person.get(p.id)?.username ?? ''}` }
+      : { ...p, name: company.get(p.id)?.name ?? '', handle: company.get(p.id)?.slug ?? '' };
+  const ref = (id: string) => {
+    const p = person.get(id);
+    return { id, username: p?.username ?? '', displayName: p?.displayName ?? '' };
+  };
+  const now = today();
+  return rows.map((r) => ({
+    id: r.id,
+    number: r.number,
+    direction: actsFor(issuerOf(r), viewerId, orgIds) ? 'outgoing' : 'incoming',
+    issuer: party(issuerOf(r)),
+    recipient: party(recipientOf(r)),
+    currency: r.currency,
+    items: r.items.map((i) => ({
+      description: i.description,
+      quantity: i.quantity,
+      unitPrice: formatAmount(i.unitPrice, r.currency),
+      amount: formatAmount(BigInt(i.unitPrice) * BigInt(i.quantity), r.currency),
+    })),
+    total: formatAmount(r.total, r.currency),
+    note: r.note,
+    dueDate: r.dueDate,
+    status: r.status,
+    overdue: r.status === 'open' && r.dueDate < now,
+    createdBy: ref(r.createdBy),
+    createdAt: iso(r.createdAt),
+    paidAt: isoOrNull(r.paidAt),
+    paidBy: r.paidBy ? ref(r.paidBy) : null,
+    cancelledAt: isoOrNull(r.cancelledAt),
+    cancelReason: r.cancelReason,
+  }));
+}
+
+/** Invoices a person can see: their own and those of companies where they handle money. */
+function visibleTo(userId: string, orgIds: string[], direction?: 'incoming' | 'outgoing'): SQL {
+  const side = (userCol: PgColumn, orgCol: PgColumn) =>
+    or(eq(userCol, userId), orgIds.length ? inArray(orgCol, orgIds) : sql`false`)!;
+  const incoming = side(invoices.recipientUserId, invoices.recipientOrgId);
+  const outgoing = side(invoices.issuerUserId, invoices.issuerOrgId);
+  if (direction === 'incoming') return incoming;
+  if (direction === 'outgoing') return outgoing;
+  return or(incoming, outgoing)!;
+}
+
+export async function invoiceRoutes(fastify: FastifyInstance) {
+  const app = fastify.withTypeProvider<ZodTypeProvider>();
+  const tags = ['invoices'];
+  app.addHook('preHandler', app.authenticate);
+
+  const announce = async (row: InvoiceRow) => {
+    const audience = new Set([
+      ...(await partyAudience(app.db, issuerOf(row))),
+      ...(await partyAudience(app.db, recipientOf(row))),
+    ]);
+    app.hub.sendToUsers([...audience], { type: 'invoice.updated', invoiceId: row.id, status: row.status });
+  };
+
+  const load = async (id: string, userId: string) => {
+    const orgIds = await financeOrgIds(app.db, userId);
+    const [row] = await app.db
+      .select()
+      .from(invoices)
+      .where(and(eq(invoices.id, id), visibleTo(userId, orgIds)));
+    if (!row) throw notFound('Invoice');
+    return { row, orgIds };
+  };
+
+  const dto = async (id: string, userId: string) => {
+    const { row, orgIds } = await load(id, userId);
+    const [invoice] = await invoiceDtos(app.db, [row], userId, orgIds);
+    return invoice!;
+  };
+
+  app.get(
+    '/invoices',
+    {
+      schema: {
+        tags,
+        description: 'Invoices you sent or received, personally or for your companies. Newest first.',
+        querystring: invoiceQuerySchema,
+        response: { 200: z.array(invoiceSchema) },
+      },
+    },
+    async (req) => {
+      const me = currentUser(req);
+      const orgIds = await financeOrgIds(app.db, me.id);
+      const rows = await app.db
+        .select()
+        .from(invoices)
+        .where(
+          and(
+            visibleTo(me.id, orgIds, req.query.direction),
+            req.query.status ? eq(invoices.status, req.query.status) : undefined,
+          ),
+        )
+        .orderBy(desc(invoices.createdAt))
+        .limit(200);
+      return invoiceDtos(app.db, rows, me.id, orgIds);
+    },
+  );
+
+  app.get(
+    '/invoices/:id',
+    { schema: { tags, params: z.object({ id: z.uuid() }), response: { 200: invoiceSchema } } },
+    async (req) => dto(req.params.id, currentUser(req).id),
+  );
+
+  app.post(
+    '/invoices',
+    {
+      schema: {
+        tags,
+        description: 'Invoice a person or a company. The number is assigned per issuer and year.',
+        body: createInvoiceSchema,
+        response: { 201: invoiceSchema },
+      },
+    },
+    async (req, reply) => {
+      const me = currentUser(req);
+      const input = req.body;
+      const orgIds = await financeOrgIds(app.db, me.id);
+
+      let issuer: Party = { type: 'user', id: me.id };
+      if (input.from.type === 'organization') {
+        if (!orgIds.includes(input.from.organizationId))
+          throw forbidden('Only owners, directors and accountants can invoice for this company');
+        const [org] = await app.db
+          .select({ status: organizations.status })
+          .from(organizations)
+          .where(eq(organizations.id, input.from.organizationId));
+        if (org?.status !== 'active') throw badRequest('This company is not active');
+        issuer = { type: 'organization', id: input.from.organizationId };
+      }
+
+      let recipient: Party;
+      if (input.to.type === 'user') {
+        const [user] = await app.db
+          .select({ id: users.id, status: users.status })
+          .from(users)
+          .where(eq(users.username, input.to.username));
+        if (!user || user.status !== 'active') throw notFound('Recipient');
+        recipient = { type: 'user', id: user.id };
+      } else {
+        const [org] = await app.db
+          .select({ id: organizations.id, status: organizations.status })
+          .from(organizations)
+          .where(eq(organizations.slug, input.to.slug));
+        if (!org || org.status !== 'active') throw notFound('Recipient company');
+        recipient = { type: 'organization', id: org.id };
+      }
+      if (issuer.type === recipient.type && issuer.id === recipient.id)
+        throw badRequest('An invoice needs a different recipient');
+      if (input.dueDate < today()) throw badRequest('The due date is in the past');
+
+      const items = input.items.map((i) => ({
+        description: i.description,
+        quantity: i.quantity,
+        unitPrice: parseAmount(i.unitPrice, input.currency).toString(),
+      }));
+      const total = items.reduce((sum, i) => sum + BigInt(i.unitPrice) * BigInt(i.quantity), 0n);
+      if (total <= 0n) throw badRequest('The total must be more than zero');
+      if (total > MAX_TOTAL) throw badRequest('The total is too large');
+
+      const row = await app.db.transaction(async (tx) => {
+        // Numbers are sequential per issuer and year; serialise numbering for this issuer.
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${issuer.id}, 0))`);
+        const prefix = `INV-${new Date().getUTCFullYear()}-`;
+        const [issued] = await tx
+          .select({ n: count() })
+          .from(invoices)
+          .where(
+            and(
+              issuer.type === 'user'
+                ? eq(invoices.issuerUserId, issuer.id)
+                : eq(invoices.issuerOrgId, issuer.id),
+              like(invoices.number, `${prefix}%`),
+            ),
+          );
+        const [created] = await tx
+          .insert(invoices)
+          .values({
+            number: `${prefix}${String((issued?.n ?? 0) + 1).padStart(4, '0')}`,
+            issuerType: issuer.type,
+            issuerUserId: issuer.type === 'user' ? issuer.id : null,
+            issuerOrgId: issuer.type === 'organization' ? issuer.id : null,
+            recipientType: recipient.type,
+            recipientUserId: recipient.type === 'user' ? recipient.id : null,
+            recipientOrgId: recipient.type === 'organization' ? recipient.id : null,
+            currency: input.currency,
+            items,
+            total,
+            note: input.note ?? '',
+            dueDate: input.dueDate,
+            createdBy: me.id,
+          })
+          .returning();
+        return created!;
+      });
+      await announce(row);
+      return reply.status(201).send(await dto(row.id, me.id));
+    },
+  );
+
+  app.post(
+    '/invoices/:id/pay',
+    {
+      schema: {
+        tags,
+        description: "Pay the invoice in full from one of the recipient's balances in its currency.",
+        params: z.object({ id: z.uuid() }),
+        body: payInvoiceSchema,
+        response: { 200: invoiceSchema },
+      },
+    },
+    async (req) => {
+      const me = currentUser(req);
+      const { row } = await load(req.params.id, me.id);
+      const touched = await app.db.transaction(async (tx) => {
+        const [invoice] = await tx.select().from(invoices).where(eq(invoices.id, row.id)).for('update');
+        if (invoice!.status !== 'open') throw conflict(`This invoice is already ${invoice!.status}`);
+        const payer = recipientOf(invoice!);
+        const [wallet] = await tx.select().from(wallets).where(eq(wallets.id, req.body.walletId));
+        if (!wallet) throw notFound('Wallet');
+        if (wallet.ownerType !== payer.type || walletOwnerId(wallet) !== payer.id)
+          throw badRequest('Pay from a balance of the invoice recipient');
+        if (wallet.currency !== invoice!.currency)
+          throw badRequest(`Pay from a ${invoice!.currency} balance`);
+        await assertWalletAccess(tx, wallet, me, true);
+
+        const issuer = issuerOf(invoice!);
+        const [active] =
+          issuer.type === 'user'
+            ? await tx.select({ status: users.status }).from(users).where(eq(users.id, issuer.id))
+            : await tx
+                .select({ status: organizations.status })
+                .from(organizations)
+                .where(eq(organizations.id, issuer.id));
+        if (active?.status !== 'active')
+          throw conflict('The issuer is suspended; this invoice cannot be paid now');
+
+        const [dtoRow] = await invoiceDtos(tx, [invoice!], me.id, []);
+        const target = await getOrCreateWallet(tx, issuer, invoice!.currency);
+        await transfer(
+          tx,
+          wallet.id,
+          target.id,
+          invoice!.total,
+          { out: 'transfer_out', in: 'transfer_in' },
+          {
+            description: `Invoice ${invoice!.number} from ${dtoRow!.issuer.name}`,
+            actorId: me.id,
+            referenceType: 'invoice',
+            referenceId: invoice!.id,
+          },
+          `Invoice ${invoice!.number} paid by ${dtoRow!.recipient.name}`,
+        );
+        const [paid] = await tx
+          .update(invoices)
+          .set({ status: 'paid', paidAt: new Date(), paidBy: me.id, paidFromWalletId: wallet.id })
+          .where(eq(invoices.id, invoice!.id))
+          .returning();
+        return { paid: paid!, wallets: [wallet, target] };
+      });
+      await announce(touched.paid);
+      for (const w of touched.wallets) {
+        app.hub.sendToUsers(await walletAudience(app.db, w), { type: 'wallet.updated', walletId: w.id });
+      }
+      return dto(row.id, me.id);
+    },
+  );
+
+  app.post(
+    '/invoices/:id/cancel',
+    {
+      schema: {
+        tags,
+        description: 'Withdraw an unpaid invoice (issuer only).',
+        params: z.object({ id: z.uuid() }),
+        body: cancelInvoiceSchema,
+        response: { 200: invoiceSchema },
+      },
+    },
+    async (req) => {
+      const me = currentUser(req);
+      const { row, orgIds } = await load(req.params.id, me.id);
+      if (!actsFor(issuerOf(row), me.id, orgIds)) throw forbidden('Only the issuer can cancel an invoice');
+      const [cancelled] = await app.db
+        .update(invoices)
+        .set({ status: 'cancelled', cancelledAt: new Date(), cancelReason: req.body.reason || null })
+        .where(and(eq(invoices.id, row.id), eq(invoices.status, 'open')))
+        .returning();
+      if (!cancelled) throw conflict('This invoice is no longer open');
+      await announce(cancelled);
+      return dto(row.id, me.id);
+    },
+  );
+}

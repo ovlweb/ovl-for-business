@@ -212,6 +212,36 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(maria.getByText('Available: 70.00 USD')).toBeVisible();
   });
 
+  test('invoices: a person bills a company, which pays from its business balance', async () => {
+    await ivan.goto('./#/invoices');
+    await ivan.getByRole('button', { name: 'New invoice' }).click();
+    await ivan.getByLabel('Recipient', { exact: true }).fill('northwind-studio');
+    await ivan.getByLabel('Line 1 description').fill('Logo design');
+    await ivan.getByLabel('Line 1 unit price').fill('20');
+    await ivan.getByRole('button', { name: 'Add line' }).click();
+    await ivan.getByLabel('Line 2 description').fill('Business cards');
+    await ivan.getByLabel('Line 2 quantity').fill('2');
+    await ivan.getByLabel('Line 2 unit price').fill('2.50');
+    await expect(ivan.getByText('25.00 USD')).toBeVisible();
+    await ivan.getByRole('button', { name: 'Send invoice' }).click();
+    const invoice = ivan.locator('.invoice-doc');
+    await expect(invoice.getByText(/^INV-\d{4}-0001$/)).toBeVisible();
+    await expect(invoice.getByText('Northwind Studio')).toBeVisible();
+
+    // The company's owner sees it waiting in the sidebar and pays it.
+    await maria.goto('./#/invoices');
+    await expect(maria.getByRole('link', { name: /Invoices\s*1/ })).toBeVisible();
+    await maria.locator('tr', { hasText: 'Ivan Sokolov' }).click();
+    await expect(maria.getByLabel('Pay from')).toContainText('Northwind Studio USD');
+    await maria.getByRole('button', { name: 'Pay 25.00 USD' }).click();
+    await expect(maria.getByText('Paid 25.00 USD to Ivan Sokolov')).toBeVisible();
+
+    // Ivan's open invoice turns paid live.
+    await expect(invoice.getByText(/^Paid on .* by Maria Petrova\.$/)).toBeVisible();
+    await ivan.goto('./#/wallet');
+    await expect(ivan.getByText('Invoice INV-', { exact: false }).first()).toBeVisible();
+  });
+
   test('tech support: the owner answers with the owner badge', async () => {
     await ivan.goto('./#/support');
     await ivan.getByRole('button', { name: 'Ticket' }).click();

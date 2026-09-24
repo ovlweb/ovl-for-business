@@ -1715,3 +1715,112 @@ kbd {
   gap: 4px;
   white-space: nowrap;
 }
+
+/* ---------- invoices ---------- */
+
+.kpi .kpi-value.compact {
+  font-size: 20px;
+  line-height: 1.3;
+}
+.invoices-table tbody tr {
+  cursor: pointer;
+}
+.invoice-doc {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.invoice-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.invoice-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 3px;
+}
+.invoice-parties {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+}
+.invoice-lines th.right {
+  text-align: right;
+}
+.invoice-lines tfoot td {
+  border-top: 2px solid var(--border-strong);
+  border-bottom: 0;
+  padding-top: 12px;
+}
+.invoice-total {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.invoice-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  white-space: pre-wrap;
+}
+.invoice-pay {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.invoice-pay .field {
+  flex: 1;
+  min-width: 240px;
+}
+.invoice-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 130px 36px;
+  gap: 8px;
+  align-items: center;
+}
+.invoice-line.head {
+  margin-bottom: -2px;
+}
+
+/* Printing shows only the open invoice, always on white. */
+.print-root {
+  display: none;
+}
+@media print {
+  html,
+  body {
+    background: #fff !important;
+    transition: none !important;
+  }
+  body > *:not(.print-root) {
+    display: none !important;
+  }
+  .print-root {
+    display: block;
+    --surface: #fff;
+    --surface-2: #f4f6fa;
+    --border: #d9dee7;
+    --border-strong: #9aa4b5;
+    --text: #0f172a;
+    --text-2: #334155;
+    --text-3: #5b6577;
+    color: var(--text);
+    background: #fff;
+  }
+  .print-root .invoice-doc {
+    border: 0;
+    padding: 0;
+  }
+}

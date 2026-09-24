@@ -18,6 +18,7 @@ import 'screens/settings.dart';
 import 'screens/shell.dart';
 import 'screens/splash.dart';
 import 'screens/support.dart';
+import 'screens/invoices.dart';
 import 'screens/wallet.dart';
 import 'state/session.dart';
 import 'theme/theme_controller.dart';
@@ -132,6 +133,13 @@ final sections = <Section>[
     'Finance',
     GoRoute(path: '/wallet', builder: (_, _) => const WalletScreen()),
     primary: true,
+  ),
+  Section(
+    '/invoices',
+    'Invoices',
+    navIcons['invoices']!,
+    'Finance',
+    GoRoute(path: '/invoices', builder: (_, _) => const InvoicesScreen()),
   ),
   Section(
     '/companies',

@@ -36,6 +36,13 @@
       "when": 1790279249071,
       "tag": "0004_cash_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790281033425,
+      "tag": "0005_invoices",
+      "breakpoints": true
     }
   ]
 }

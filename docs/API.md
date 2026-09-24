@@ -94,6 +94,7 @@ Connect to `wss://…/api/v1/realtime?token=<accessToken>`. The server sends JSO
 | `story.created`        | `storyId`                               |
 | `wallet.updated`       | `walletId`                              |
 | `cash_request.updated` | `requestId`, `walletId`, `status`       |
+| `invoice.updated`      | `invoiceId`, `status`                   |
 
 Clients may send `{"type":"typing","chatId":"…"}` and `{"type":"ping"}`. A close code `4401`
 means the access token expired or the session was signed out: refresh and reconnect (the refresh
@@ -118,6 +119,20 @@ the file to the system browser call `POST /wallets/:id/statement-link` instead: 
 that works for five minutes without an `Authorization` header, for that wallet and range only, and
 stops working when the session is signed out.
 
+## Invoices
+
+A person, or a company's owner, director or accountant, bills another person or company with
+`POST /invoices`: `from` (`{type: 'user'}` or `{type: 'organization', organizationId}`), `to` (a
+username or a company slug), `currency`, `dueDate` and up to 50 `items` (`description`, whole
+`quantity`, `unitPrice`). Numbers run per issuer and year (`INV-2026-0001`).
+
+The recipient pays in full with `POST /invoices/:id/pay {walletId}` from one of their balances in
+the invoice currency (for a company, one of its business balances); the money moves as a transfer
+whose ledger entries reference the invoice. The issuer can `POST /invoices/:id/cancel` while it is
+open. `GET /invoices?direction=incoming|outgoing&status=open|paid|cancelled` lists both sides; each
+invoice says whether it is `incoming` or `outgoing` for the caller and whether it is `overdue`.
+Both sides receive `invoice.updated`.
+
 ## Main endpoints
 
 | Area         | Endpoints                                                                                                                                                                                                                                                                   |
@@ -125,6 +140,7 @@ stops working when the session is signed out.
 | Auth & me    | `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `GET/PATCH /me`, `POST /me/password`, `GET /me/sessions`, `DELETE /me/sessions/:id`, `POST /me/sessions/sign-out-others`, `GET /me/2fa`, `POST /me/2fa/{setup,enable,disable,recovery-codes}`        |
 | People       | `GET /users/search`, `GET /users/:username`, `GET/POST /contacts`, `DELETE /contacts/:userId`                                                                                                                                                                               |
 | Wallets      | `GET/POST /wallets`, `GET /wallets/:id`, `/entries`, `/locks`, `POST /wallets/transfer`, `GET/POST /wallets/:id/cash-requests`, `POST /cash-requests/:id/cancel`, `GET /wallets/:id/statement.csv`, `POST /wallets/:id/statement-link`                                      |
+| Invoices     | `GET/POST /invoices`, `GET /invoices/:id`, `POST /invoices/:id/pay`, `POST /invoices/:id/cancel`                                                                                                                                                                            |
 | Companies    | `GET /organizations/mine`, `GET /organizations/:slug`, `PATCH /organizations/:id`, members, wallets                                                                                                                                                                         |
 | Applications | `POST /applications`, `GET /applications/mine`, `/queue`, `/:id`, `POST /:id/review`, `/:id/withdraw`                                                                                                                                                                       |
 | Registry     | `GET /registry`, `GET /registry/:idOrNumber`                                                                                                                                                                                                                                |

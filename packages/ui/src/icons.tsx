@@ -296,6 +296,20 @@ const PATHS = {
     </>
   ),
   activity: <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />,
+  receipt: (
+    <>
+      <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" />
+      <path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8" />
+      <path d="M12 17.5v-11" />
+    </>
+  ),
+  printer: (
+    <>
+      <polyline points="6 9 6 2 18 2 18 9" />
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+      <rect x="6" y="14" width="12" height="8" />
+    </>
+  ),
   incoming: (
     <>
       <line x1="17" y1="7" x2="7" y2="17" />

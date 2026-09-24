@@ -246,6 +246,37 @@ class OvlApi {
     return Uri.parse('${baseUrl.replaceAll(RegExp(r'/+$'), '')}${r['path']}');
   }
 
+  // --- invoices ------------------------------------------------------------------------
+
+  Future<List<Invoice>> invoices({String? direction, String? status}) =>
+      _getList('/invoices', Invoice.fromJson, {'direction': direction, 'status': status});
+  Future<Invoice> invoice(String id) async => Invoice.fromJson(await _get('/invoices/$id'));
+
+  /// [from] is null for a personal invoice, or a company id; [to] is `{'type': 'user', 'username': …}`
+  /// or `{'type': 'organization', 'slug': …}`.
+  Future<Invoice> createInvoice({
+    String? from,
+    required Json to,
+    required String currency,
+    required String dueDate,
+    required List<Json> items,
+    String? note,
+  }) async => Invoice.fromJson(
+    await _post('/invoices', {
+      'from': from == null ? {'type': 'user'} : {'type': 'organization', 'organizationId': from},
+      'to': to,
+      'currency': currency,
+      'dueDate': dueDate,
+      'items': items,
+      if (note != null && note.isNotEmpty) 'note': note,
+    }) as Json,
+  );
+  Future<Invoice> payInvoice(String id, String walletId) async =>
+      Invoice.fromJson(await _post('/invoices/$id/pay', {'walletId': walletId}) as Json);
+  Future<Invoice> cancelInvoice(String id, {String? reason}) async => Invoice.fromJson(
+    await _post('/invoices/$id/cancel', {if (reason != null && reason.isNotEmpty) 'reason': reason}) as Json,
+  );
+
   // --- organizations ---------------------------------------------------------------------
 
   Future<List<Organization>> myOrganizations() => _getList('/organizations/mine', Organization.fromJson);

@@ -14,10 +14,13 @@ import type {
   ChatMember,
   Contact,
   CreateApplicationInput,
+  CreateInvoiceInput,
   CreateStoryInput,
   FundLock,
   Holding,
   Investment,
+  Invoice,
+  InvoiceStatus,
   LedgerEntry,
   LoginInput,
   Me,
@@ -307,6 +310,16 @@ export class OvlClient {
     /** A 5-minute link to the CSV that works without a token (to open in a browser). */
     statementLink: (id: string, range: StatementRange = {}) =>
       this.post<StatementLink>(`/wallets/${id}/statement-link`, range),
+  };
+
+  invoices = {
+    list: (query?: { direction?: 'incoming' | 'outgoing'; status?: InvoiceStatus }) =>
+      this.get<Invoice[]>('/invoices', query),
+    get: (id: string) => this.get<Invoice>(`/invoices/${id}`),
+    create: (input: CreateInvoiceInput) => this.post<Invoice>('/invoices', input),
+    /** Pay in full from one of the recipient's balances in the invoice currency. */
+    pay: (id: string, walletId: string) => this.post<Invoice>(`/invoices/${id}/pay`, { walletId }),
+    cancel: (id: string, reason?: string) => this.post<Invoice>(`/invoices/${id}/cancel`, { reason }),
   };
 
   organizations = {

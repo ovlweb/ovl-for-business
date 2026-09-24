@@ -10,6 +10,7 @@ import { CompaniesPage, CompanyPage } from './pages/Companies';
 import { ContactsPage } from './pages/Contacts';
 import { ExchangePage, ListingPage, PortfolioPage } from './pages/Exchange';
 import { HomePage } from './pages/Home';
+import { InvoicesPage } from './pages/Invoices';
 import { OnboardingPage } from './pages/Onboarding';
 import { RegistryPage } from './pages/Registry';
 import { ReviewPage } from './pages/Review';
@@ -55,6 +56,8 @@ export function App() {
             <Route path="/chats/:chatId" element={<ChatsPage />} />
             <Route path="/contacts" element={<ContactsPage />} />
             <Route path="/wallet" element={<WalletPage />} />
+            <Route path="/invoices" element={<InvoicesPage />} />
+            <Route path="/invoices/:id" element={<InvoicesPage />} />
             <Route path="/companies" element={<CompaniesPage />} />
             <Route path="/companies/:slug" element={<CompanyPage />} />
             <Route path="/exchange" element={<ExchangePage />} />

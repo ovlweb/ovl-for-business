@@ -30,7 +30,8 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
 
 - ✅ Deposit and payout requests that finance managers fulfil or decline, with statuses; a payout
   holds its amount until handled (0.2).
-- Invoices and payment requests between companies; recurring payments / payroll.
+- ✅ Invoices between people and companies, paid from a balance in one step, printable (0.2).
+  Next: partial payments, recurring invoices and payroll.
 - Currency exchange between balances with managed rates and fees.
 - Multi-signature company payments (e.g. director + accountant above a limit).
 - ✅ Statement export as CSV on web and in the apps (0.2). Next: PDF and monthly statements.

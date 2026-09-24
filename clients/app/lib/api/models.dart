@@ -257,6 +257,81 @@ class CashRequest {
   bool get isPending => status == 'pending';
 }
 
+/// A person or a company on an invoice.
+class InvoiceParty {
+  InvoiceParty.fromJson(Json j)
+    : type = j['type'] as String,
+      id = j['id'] as String,
+      name = j['name'] as String,
+      handle = j['handle'] as String;
+
+  final String type;
+  final String id;
+  final String name;
+  final String handle;
+
+  bool get isCompany => type == 'organization';
+}
+
+class InvoiceItem {
+  InvoiceItem.fromJson(Json j)
+    : description = j['description'] as String,
+      quantity = j['quantity'] as int,
+      unitPrice = j['unitPrice'] as String,
+      amount = j['amount'] as String;
+
+  final String description;
+  final int quantity;
+  final String unitPrice;
+  final String amount;
+}
+
+class Invoice {
+  Invoice.fromJson(Json j)
+    : id = j['id'] as String,
+      number = j['number'] as String,
+      direction = j['direction'] as String,
+      issuer = InvoiceParty.fromJson(j['issuer'] as Json),
+      recipient = InvoiceParty.fromJson(j['recipient'] as Json),
+      currency = j['currency'] as String,
+      items = [for (final i in j['items'] as List) InvoiceItem.fromJson(i as Json)],
+      total = j['total'] as String,
+      note = j['note'] as String? ?? '',
+      dueDate = DateTime.parse(j['dueDate'] as String),
+      status = j['status'] as String,
+      overdue = j['overdue'] as bool,
+      createdAt = _date(j['createdAt']),
+      paidAt = _dateOrNull(j['paidAt']),
+      paidBy = (j['paidBy'] as Json?)?['displayName'] as String?,
+      cancelReason = j['cancelReason'] as String?;
+
+  final String id;
+  final String number;
+  final String direction;
+  final InvoiceParty issuer;
+  final InvoiceParty recipient;
+  final String currency;
+  final List<InvoiceItem> items;
+  final String total;
+  final String note;
+  final DateTime dueDate;
+  final String status;
+  final bool overdue;
+  final DateTime createdAt;
+  final DateTime? paidAt;
+  final String? paidBy;
+  final String? cancelReason;
+
+  bool get incoming => direction == 'incoming';
+  bool get isOpen => status == 'open';
+
+  /// The other side, seen from the viewer.
+  InvoiceParty get counterparty => incoming ? issuer : recipient;
+
+  /// For badges: open invoices past their due date read "overdue".
+  String get displayStatus => overdue ? 'overdue' : status;
+}
+
 class LedgerEntry {
   LedgerEntry.fromJson(Json j)
     : id = j['id'] as int,

@@ -3,6 +3,7 @@ import {
   APPLICATION_TYPES,
   CASH_METHODS,
   CASH_REQUEST_STATUSES,
+  INVOICE_STATUSES,
   CHAT_TYPES,
   LEDGER_KINDS,
   LISTING_STATUSES,
@@ -18,6 +19,7 @@ import {
   boolean,
   char,
   check,
+  date,
   index,
   integer,
   jsonb,
@@ -270,6 +272,54 @@ export const cashRequests = pgTable(
   (t) => [
     index('cash_requests_status_idx').on(t.status, t.createdAt),
     index('cash_requests_wallet_idx').on(t.walletId),
+  ],
+);
+
+export const invoiceStatusEnum = pgEnum('invoice_status', INVOICE_STATUSES);
+
+/** One line of an invoice; the unit price is in minor units (as a string, since jsonb has no bigint). */
+export interface InvoiceItemRow {
+  description: string;
+  quantity: number;
+  unitPrice: string;
+}
+
+/** An invoice from a person or company to another; paid from one of the recipient's balances. */
+export const invoices = pgTable(
+  'invoices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    number: varchar('number', { length: 32 }).notNull(),
+    issuerType: walletOwnerEnum('issuer_type').notNull(),
+    issuerUserId: uuid('issuer_user_id').references(() => users.id),
+    issuerOrgId: uuid('issuer_org_id').references(() => organizations.id),
+    recipientType: walletOwnerEnum('recipient_type').notNull(),
+    recipientUserId: uuid('recipient_user_id').references(() => users.id),
+    recipientOrgId: uuid('recipient_org_id').references(() => organizations.id),
+    currency: char('currency', { length: 3 }).notNull(),
+    items: jsonb('items').$type<InvoiceItemRow[]>().notNull(),
+    total: money('total').notNull(),
+    note: text('note').notNull().default(''),
+    dueDate: date('due_date').notNull(),
+    status: invoiceStatusEnum('status').notNull().default('open'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+    paidAt: timestamp('paid_at', { withTimezone: true }),
+    paidBy: uuid('paid_by').references(() => users.id),
+    paidFromWalletId: uuid('paid_from_wallet_id').references(() => wallets.id),
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+    cancelReason: text('cancel_reason'),
+  },
+  (t) => [
+    uniqueIndex('invoices_issuer_user_number_uq').on(t.issuerUserId, t.number),
+    uniqueIndex('invoices_issuer_org_number_uq').on(t.issuerOrgId, t.number),
+    index('invoices_recipient_user_idx').on(t.recipientUserId, t.createdAt),
+    index('invoices_recipient_org_idx').on(t.recipientOrgId, t.createdAt),
+    check('invoices_single_issuer', sql`(${t.issuerUserId} is null) <> (${t.issuerOrgId} is null)`),
+    check('invoices_single_recipient', sql`(${t.recipientUserId} is null) <> (${t.recipientOrgId} is null)`),
+    check('invoices_total_positive', sql`${t.total} > 0`),
   ],
 );
 

@@ -329,6 +329,83 @@ export const statementLinkSchema = z.object({
 export type StatementLink = z.infer<typeof statementLinkSchema>;
 
 // ---------------------------------------------------------------------------
+// Invoices
+// ---------------------------------------------------------------------------
+
+export const INVOICE_STATUSES = ['open', 'paid', 'cancelled'] as const;
+export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
+
+/** A person or a company on an invoice. */
+export const invoicePartySchema = z.object({
+  type: walletOwnerTypeSchema,
+  id: uuid,
+  name: z.string(),
+  handle: z.string().describe('@username or company slug'),
+});
+export type InvoiceParty = z.infer<typeof invoicePartySchema>;
+
+export const invoiceItemInputSchema = z.object({
+  description: z.string().trim().min(1).max(200),
+  quantity: z.number().int().min(1).max(1_000_000),
+  unitPrice: decimalAmountSchema,
+});
+
+export const createInvoiceSchema = z.object({
+  from: z
+    .discriminatedUnion('type', [
+      z.object({ type: z.literal('user') }),
+      z.object({ type: z.literal('organization'), organizationId: uuid }),
+    ])
+    .describe('Yourself, or a company where you are an owner, director or accountant'),
+  to: transferSchema.shape.to,
+  currency: currencyCodeSchema,
+  dueDate: z.iso.date(),
+  items: z.array(invoiceItemInputSchema).min(1).max(50),
+  note: z.string().trim().max(1000).optional(),
+});
+export type CreateInvoiceInput = z.input<typeof createInvoiceSchema>;
+
+export const invoiceSchema = z.object({
+  id: uuid,
+  number: z.string().describe('Per issuer and year, e.g. INV-2026-0007'),
+  direction: z
+    .enum(['incoming', 'outgoing'])
+    .describe('Seen from the caller: outgoing when they can act for the issuer'),
+  issuer: invoicePartySchema,
+  recipient: invoicePartySchema,
+  currency: z.string(),
+  items: z.array(
+    z.object({
+      description: z.string(),
+      quantity: z.number().int(),
+      unitPrice: z.string(),
+      amount: z.string(),
+    }),
+  ),
+  total: z.string(),
+  note: z.string(),
+  dueDate: z.iso.date(),
+  status: z.enum(INVOICE_STATUSES),
+  overdue: z.boolean(),
+  createdBy: userSummarySchema.pick({ id: true, username: true, displayName: true }),
+  createdAt: isoDate,
+  paidAt: isoDate.nullable(),
+  paidBy: userSummarySchema.pick({ id: true, username: true, displayName: true }).nullable(),
+  cancelledAt: isoDate.nullable(),
+  cancelReason: z.string().nullable(),
+});
+export type Invoice = z.infer<typeof invoiceSchema>;
+
+export const invoiceQuerySchema = z.object({
+  direction: z.enum(['incoming', 'outgoing']).optional(),
+  status: z.enum(INVOICE_STATUSES).optional(),
+});
+export const payInvoiceSchema = z.object({
+  walletId: uuid.describe("One of the recipient's balances in the invoice currency"),
+});
+export const cancelInvoiceSchema = z.object({ reason: z.string().trim().max(500).optional() });
+
+// ---------------------------------------------------------------------------
 // Organizations
 // ---------------------------------------------------------------------------
 
@@ -716,7 +793,8 @@ export type RealtimeEvent =
   | { type: 'application.updated'; applicationId: string; status: string; stageIndex: number }
   | { type: 'story.created'; storyId: string }
   | { type: 'wallet.updated'; walletId: string }
-  | { type: 'cash_request.updated'; requestId: string; walletId: string; status: string };
+  | { type: 'cash_request.updated'; requestId: string; walletId: string; status: string }
+  | { type: 'invoice.updated'; invoiceId: string; status: string };
 
 /** Messages a client may send over the realtime socket. */
 export type RealtimeClientMessage = { type: 'typing'; chatId: string } | { type: 'ping' };
