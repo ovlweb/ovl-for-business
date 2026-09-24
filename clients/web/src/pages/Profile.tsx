@@ -5,6 +5,12 @@ import { useState } from 'react';
 import { api } from '../api';
 import { useAuth, useMe } from '../auth';
 import { apiUrl } from '../config';
+import {
+  disableNotifications,
+  enableNotifications,
+  notificationsEnabled,
+  notificationsSupported,
+} from '../notifications';
 import { Icon } from '../components/Icon';
 
 function ProfileForm() {
@@ -189,6 +195,40 @@ function ApiKeys() {
   );
 }
 
+function NotificationSettings() {
+  const [enabled, setEnabled] = useState(notificationsEnabled);
+  const [denied, setDenied] = useState(notificationsSupported() && Notification.permission === 'denied');
+  if (!notificationsSupported()) {
+    return <p className="small muted">This device does not support notifications from the app yet.</p>;
+  }
+  return (
+    <div className="stack-sm">
+      <label className="checkbox">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={async (e) => {
+            if (e.target.checked) {
+              const granted = await enableNotifications();
+              setEnabled(granted);
+              setDenied(!granted && Notification.permission === 'denied');
+            } else {
+              disableNotifications();
+              setEnabled(false);
+            }
+          }}
+        />
+        Show a notification for new messages while the app is in the background
+      </label>
+      {denied && (
+        <div className="alert warning small">
+          Notifications are blocked for this site. Allow them in your browser settings, then try again.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ThemePicker() {
   const [theme, setTheme] = useState(() => document.documentElement.dataset.theme ?? 'system');
   const choose = (value: string) => {
@@ -244,6 +284,13 @@ export function ProfilePage() {
       <div className="card stack-sm">
         <h3>Appearance</h3>
         <ThemePicker />
+      </div>
+      <div className="card stack-sm">
+        <div className="row">
+          <Icon name="bell" />
+          <h3>Notifications</h3>
+        </div>
+        <NotificationSettings />
       </div>
       <div className="grid-2">
         <ProfileForm />

@@ -1,11 +1,12 @@
 import type { Chat, Message } from '@ovl/shared';
 import { Avatar, Badge, Badges, ErrorAlert, shortTime, Spinner, StatusBadge } from '@ovl/ui';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth, useMe } from '../auth';
 import { useRealtime } from '../realtime';
+import { ChatInfoModal } from './ChatInfo';
 import { Icon } from './Icon';
 
 const PAGE = 50;
@@ -27,14 +28,34 @@ export function chatSubtitle(chat: Chat): string {
   }
 }
 
+interface MessageActions {
+  onReply: (m: Message) => void;
+  onEdit: (m: Message) => void;
+  onDelete: (m: Message) => void;
+}
+
+function snippet(text: string, length = 80): string {
+  return text.length > length ? `${text.slice(0, length)}…` : text;
+}
+
 function MessageItem({
   message,
   mine,
   showAuthor,
+  replyTo,
+  active,
+  canModerate,
+  onToggle,
+  actions,
 }: {
   message: Message;
   mine: boolean;
   showAuthor: boolean;
+  replyTo: Message | undefined;
+  active: boolean;
+  canModerate: boolean;
+  onToggle: () => void;
+  actions: MessageActions;
 }) {
   if (message.kind === 'system') {
     const applicationId = message.meta.applicationId as string | undefined;
@@ -53,26 +74,80 @@ function MessageItem({
   }
   const staffBadge = message.meta.staffBadge as 'owner' | 'admin' | 'support' | undefined;
   const sender = message.sender;
+  const canAct = !message.deleted;
   return (
-    <div className={`bubble-row${mine ? ' mine' : ''}`}>
+    <div id={`msg-${message.id}`} className={`bubble-row${mine ? ' mine' : ''}`}>
       {!mine &&
         (showAuthor ? (
           <Avatar name={sender?.displayName ?? '?'} url={sender?.avatarUrl} size={28} />
         ) : (
-          <span style={{ width: 28 }} />
+          <span style={{ width: 28, flex: 'none' }} />
         ))}
-      <div className={`bubble${staffBadge === 'owner' ? ' staff-owner' : ''}`}>
-        {(showAuthor || staffBadge) && !mine && sender && (
-          <div className="bubble-author">
-            <Link to={`/u/${sender.username}`}>{sender.displayName}</Link>
-            {staffBadge ? <Badge kind={staffBadge} /> : <Badges badges={sender.badges} />}
+      <div className="bubble-stack">
+        <div
+          className={`bubble${staffBadge === 'owner' ? ' staff-owner' : ''}${canAct ? ' actionable' : ''}`}
+          onClick={canAct ? onToggle : undefined}
+          role={canAct ? 'button' : undefined}
+          tabIndex={canAct ? 0 : undefined}
+          aria-expanded={canAct ? active : undefined}
+          onKeyDown={(e) =>
+            canAct && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onToggle())
+          }
+        >
+          {(showAuthor || staffBadge) && !mine && sender && (
+            <div className="bubble-author">
+              <Link to={`/u/${sender.username}`} onClick={(e) => e.stopPropagation()}>
+                {sender.displayName}
+              </Link>
+              {staffBadge ? <Badge kind={staffBadge} /> : <Badges badges={sender.badges} />}
+            </div>
+          )}
+          {message.replyToId && (
+            <button
+              type="button"
+              className="reply-quote"
+              onClick={(e) => {
+                e.stopPropagation();
+                document
+                  .getElementById(`msg-${message.replyToId}`)
+                  ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }}
+            >
+              <b>{replyTo?.sender?.displayName ?? 'Message'}</b>
+              <span>
+                {replyTo ? (replyTo.deleted ? 'Message deleted' : snippet(replyTo.body)) : 'Earlier message'}
+              </span>
+            </button>
+          )}
+          {message.deleted ? <i className="muted">Message deleted</i> : message.body}
+          <div className="bubble-meta">
+            {message.editedAt && !message.deleted && 'edited · '}
+            {shortTime(message.createdAt)}
+          </div>
+        </div>
+        {active && canAct && (
+          <div className="msg-actions" role="toolbar" aria-label="Message actions">
+            <button className="btn sm ghost" onClick={() => actions.onReply(message)}>
+              <Icon name="reply" size={14} /> Reply
+            </button>
+            <button
+              className="btn sm ghost"
+              onClick={() => void navigator.clipboard?.writeText(message.body)}
+            >
+              <Icon name="copy" size={14} /> Copy
+            </button>
+            {mine && (
+              <button className="btn sm ghost" onClick={() => actions.onEdit(message)}>
+                <Icon name="edit" size={14} /> Edit
+              </button>
+            )}
+            {(mine || canModerate) && (
+              <button className="btn sm ghost danger-text" onClick={() => actions.onDelete(message)}>
+                <Icon name="trash" size={14} /> Delete
+              </button>
+            )}
           </div>
         )}
-        {message.deleted ? <i className="muted">Message deleted</i> : message.body}
-        <div className="bubble-meta">
-          {message.editedAt && 'edited · '}
-          {shortTime(message.createdAt)}
-        </div>
       </div>
     </div>
   );
@@ -83,10 +158,15 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
   const { can } = useAuth();
   const queryClient = useQueryClient();
   const { subscribe, typing } = useRealtime();
+  const navigate = useNavigate();
   const scroller = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState('');
   const [typers, setTypers] = useState<Record<string, number>>({});
+  const [activeId, setActiveId] = useState<number | null>(null);
+  const [context, setContext] = useState<{ mode: 'reply' | 'edit'; message: Message } | null>(null);
+  const [showInfo, setShowInfo] = useState(false);
   const lastTyping = useRef(0);
+  const composer = useRef<HTMLTextAreaElement>(null);
 
   const chat = useQuery({ queryKey: ['chat', chatId], queryFn: () => api.chats.get(chatId) });
   const messages = useInfiniteQuery({
@@ -95,7 +175,8 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
     initialPageParam: undefined as number | undefined,
     getNextPageParam: (last) => (last.length === PAGE ? last[last.length - 1]!.id : undefined),
   });
-  const ordered = (messages.data?.pages.flat() ?? []).slice().reverse();
+  const ordered = useMemo(() => (messages.data?.pages.flat() ?? []).slice().reverse(), [messages.data]);
+  const byId = useMemo(() => new Map(ordered.map((m) => [m.id, m])), [ordered]);
   const newest = ordered[ordered.length - 1];
 
   // Mark as read and keep scrolled to the bottom when new messages arrive.
@@ -114,11 +195,25 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
   useEffect(
     () =>
       subscribe((event) => {
+        // Removed from the chat (or left it from another device): go back to the list.
+        if (event.type === 'chat.removed' && event.chatId === chatId) {
+          navigate(backTo, { replace: true });
+          return;
+        }
         if (event.type === 'typing' && event.chatId === chatId) {
           setTypers((t) => ({ ...t, [event.userId]: Date.now() }));
         }
+        // A message from someone ends their "typing…" indicator.
+        if (event.type === 'message.created' && event.chatId === chatId && event.message.sender) {
+          const senderId = event.message.sender.id;
+          setTypers((t) => {
+            if (!(senderId in t)) return t;
+            const { [senderId]: _gone, ...rest } = t;
+            return rest;
+          });
+        }
       }),
-    [chatId, subscribe],
+    [chatId, subscribe, navigate, backTo],
   );
   useEffect(() => {
     const t = setInterval(() => {
@@ -130,10 +225,39 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
     return () => clearInterval(t);
   }, []);
 
+  const resetComposer = () => {
+    setDraft('');
+    setContext(null);
+    // Sending a message clears our "typing…" for others, so announce the next burst right away.
+    lastTyping.current = 0;
+  };
   const send = useMutation({
-    mutationFn: (body: string) => api.chats.send(chatId, body),
-    onSuccess: () => setDraft(''),
+    mutationFn: (body: string) =>
+      context?.mode === 'edit'
+        ? api.chats.edit(chatId, context.message.id, body)
+        : api.chats.send(chatId, body, context?.mode === 'reply' ? context.message.id : undefined),
+    onSuccess: resetComposer,
   });
+  const remove = useMutation({
+    mutationFn: (messageId: number) => api.chats.deleteMessage(chatId, messageId),
+  });
+  const actions: MessageActions = {
+    onReply: (message) => {
+      setContext({ mode: 'reply', message });
+      setActiveId(null);
+      composer.current?.focus();
+    },
+    onEdit: (message) => {
+      setContext({ mode: 'edit', message });
+      setDraft(message.body);
+      setActiveId(null);
+      composer.current?.focus();
+    },
+    onDelete: (message) => {
+      setActiveId(null);
+      if (confirm('Delete this message for everyone?')) remove.mutate(message.id);
+    },
+  };
   const join = useMutation({
     mutationFn: () => api.chats.join(chatId),
     onSuccess: () => {
@@ -164,6 +288,11 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
         : c.myRole !== null;
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape' && context) {
+      e.preventDefault();
+      resetComposer();
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (draft.trim()) send.mutate(draft.trim());
@@ -177,6 +306,7 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
     }
   };
   const typingNames = Object.keys(typers).filter((id) => id !== me.id);
+  const canModerate = c.myRole === 'owner' || c.myRole === 'admin' || can('users.manage');
 
   return (
     <div className="conversation">
@@ -208,6 +338,11 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
             {c.support?.status === 'closed' ? 'Reopen' : 'Close ticket'}
           </button>
         )}
+        {c.type !== 'support' && (
+          <button className="btn ghost icon" onClick={() => setShowInfo(true)} aria-label="Chat details">
+            <Icon name="info" />
+          </button>
+        )}
       </div>
 
       <div className="messages" ref={scroller}>
@@ -221,7 +356,19 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
           const prev = ordered[i - 1];
           const showAuthor =
             c.type !== 'direct' && (!prev || prev.sender?.id !== m.sender?.id || prev.kind === 'system');
-          return <MessageItem key={m.id} message={m} mine={m.sender?.id === me.id} showAuthor={showAuthor} />;
+          return (
+            <MessageItem
+              key={m.id}
+              message={m}
+              mine={m.sender?.id === me.id}
+              showAuthor={showAuthor}
+              replyTo={m.replyToId ? byId.get(m.replyToId) : undefined}
+              active={activeId === m.id}
+              canModerate={canModerate}
+              onToggle={() => setActiveId(activeId === m.id ? null : m.id)}
+              actions={actions}
+            />
+          );
         })}
         {!messages.isLoading && ordered.length === 0 && <div className="system-message">No messages yet</div>}
       </div>
@@ -231,9 +378,25 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
           (c.type === 'direct' && c.peer ? `${c.peer.displayName} is typing…` : 'Someone is typing…')}
       </div>
 
-      {send.error && (
+      {(send.error || remove.error) && (
         <div style={{ padding: '0 12px 8px' }}>
-          <ErrorAlert error={send.error} />
+          <ErrorAlert error={send.error ?? remove.error} />
+        </div>
+      )}
+      {context && canPost && (
+        <div className="composer-context">
+          <Icon name={context.mode === 'reply' ? 'reply' : 'edit'} size={16} />
+          <div className="grow">
+            <div className="small bold">
+              {context.mode === 'reply'
+                ? `Reply to ${context.message.sender?.displayName ?? 'message'}`
+                : 'Edit message'}
+            </div>
+            <div className="small muted ellipsis">{snippet(context.message.body, 120)}</div>
+          </div>
+          <button className="btn ghost icon sm" onClick={resetComposer} aria-label="Cancel">
+            <Icon name="x" size={16} />
+          </button>
         </div>
       )}
       {canPost ? (
@@ -245,6 +408,7 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
           }}
         >
           <textarea
+            ref={composer}
             className="textarea"
             placeholder={
               c.type === 'support' && can('support.answer') && !c.myRole
@@ -256,8 +420,12 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
             onKeyDown={onKeyDown}
             maxLength={4000}
           />
-          <button className="btn primary icon" disabled={!draft.trim() || send.isPending} aria-label="Send">
-            <Icon name="send" size={18} />
+          <button
+            className="btn primary icon"
+            disabled={!draft.trim() || send.isPending}
+            aria-label={context?.mode === 'edit' ? 'Save' : 'Send'}
+          >
+            <Icon name={context?.mode === 'edit' ? 'review' : 'send'} size={18} />
           </button>
         </form>
       ) : isChannel && !c.myRole ? (
@@ -271,6 +439,7 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
           {isChannel ? 'Only channel admins can post here.' : 'You cannot write in this chat.'}
         </div>
       )}
+      {showInfo && <ChatInfoModal chat={c} onClose={() => setShowInfo(false)} />}
     </div>
   );
 }

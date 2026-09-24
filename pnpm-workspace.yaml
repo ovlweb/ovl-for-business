@@ -3,6 +3,7 @@ packages:
   - server
   - clients/*
   - admin
+  - e2e
 
 onlyBuiltDependencies:
   - esbuild

@@ -19,7 +19,8 @@
     "build": "pnpm -r build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "dev:desktop": "pnpm --filter @ovl/desktop dev"
+    "dev:desktop": "pnpm --filter @ovl/desktop dev",
+    "test:e2e": "pnpm --filter @ovl/e2e test"
   },
   "devDependencies": {
     "prettier": "^3.6.2",

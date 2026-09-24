@@ -6,3 +6,5 @@ clients/desktop/src-tauri/target
 clients/desktop/src-tauri/gen
 clients/mobile/android
 clients/mobile/ios
+e2e/playwright-report
+e2e/test-results

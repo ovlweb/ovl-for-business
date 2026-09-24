@@ -1,10 +1,13 @@
 import { ORG_ROLES, type OrgRole } from '@ovl/shared';
+import type { Organization } from '@ovl/shared';
 import {
   Avatar,
   Empty,
   ErrorAlert,
+  Field,
   formatDate,
   humanize,
+  Modal,
   PageHeader,
   Spinner,
   StatusBadge,
@@ -180,9 +183,57 @@ function Balances({ orgId }: { orgId: string }) {
   );
 }
 
+function EditCompanyModal({ org, onClose }: { org: Organization; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({ description: org.description, website: org.website ?? '' });
+  const save = useMutation({
+    mutationFn: () => api.organizations.update(org.id, form),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orgs'] });
+      onClose();
+    },
+  });
+  return (
+    <Modal title={`Edit ${org.name}`} onClose={onClose}>
+      <form
+        className="stack"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save.mutate();
+        }}
+      >
+        <Field label="Description" hint="Shown on the public company profile and the stock exchange.">
+          <textarea
+            className="textarea"
+            style={{ minHeight: 140 }}
+            value={form.description}
+            minLength={10}
+            maxLength={5000}
+            required
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+          />
+        </Field>
+        <Field label="Website">
+          <input
+            className="input"
+            type="url"
+            value={form.website}
+            onChange={(e) => setForm({ ...form, website: e.target.value })}
+          />
+        </Field>
+        <ErrorAlert error={save.error} />
+        <button className="btn primary" disabled={save.isPending}>
+          Save
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
 export function CompanyPage() {
   const { slug = '' } = useParams();
   const org = useQuery({ queryKey: ['orgs', slug], queryFn: () => api.organizations.get(slug) });
+  const [editing, setEditing] = useState(false);
   if (org.isLoading) return <Spinner center />;
   if (!org.data)
     return (
@@ -214,6 +265,11 @@ export function CompanyPage() {
               {formatDate(o.createdAt, false)}
             </div>
           </div>
+          {canManage && (
+            <button className="btn sm" onClick={() => setEditing(true)}>
+              Edit profile
+            </button>
+          )}
         </div>
         <p style={{ whiteSpace: 'pre-wrap' }}>{o.description}</p>
         <dl className="dl">
@@ -243,6 +299,7 @@ export function CompanyPage() {
       </div>
       {finance && <Balances orgId={o.id} />}
       {o.myRole && <Members orgId={o.id} canManage={canManage} />}
+      {editing && <EditCompanyModal org={o} onClose={() => setEditing(false)} />}
     </div>
   );
 }

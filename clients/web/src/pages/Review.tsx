@@ -159,7 +159,11 @@ export function ReviewPage() {
   const navigate = useNavigate();
   const { can } = useAuth();
   const [tab, setTab] = useState<'queue' | 'pending' | 'done'>('queue');
-  const queue = useQuery({ queryKey: ['applications', 'queue'], queryFn: api.applications.queue });
+  const queue = useQuery({
+    queryKey: ['applications', 'queue'],
+    queryFn: api.applications.queue,
+    refetchOnMount: 'always',
+  });
   const all = useQuery({
     queryKey: ['applications', 'list', tab],
     queryFn: () => api.applications.list({ status: tab === 'pending' ? 'pending' : undefined, limit: 50 }),

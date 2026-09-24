@@ -357,9 +357,27 @@ export async function chatRoutes(fastify: FastifyInstance) {
       if (req.params.userId !== me.id) await requireChatAdmin(chat, me);
       if (req.params.userId === chat.ownerId)
         throw badRequest('The owner cannot leave; delete or transfer it instead');
-      await app.db
+      const [removed] = await app.db
         .delete(chatMembers)
-        .where(and(eq(chatMembers.chatId, chat.id), eq(chatMembers.userId, req.params.userId)));
+        .where(and(eq(chatMembers.chatId, chat.id), eq(chatMembers.userId, req.params.userId)))
+        .returning();
+      if (removed && chat.type === 'group') {
+        const [user] = await app.db
+          .select({ displayName: users.displayName })
+          .from(users)
+          .where(eq(users.id, req.params.userId));
+        const body =
+          req.params.userId === me.id
+            ? `${me.displayName} left the group`
+            : `${me.displayName} removed ${user?.displayName ?? 'a member'}`;
+        const message = await insertMessage(app.db, {
+          chatId: chat.id,
+          senderId: null,
+          kind: 'system',
+          body,
+        });
+        await publishMessage(app, chat, message);
+      }
       app.hub.sendToUsers([req.params.userId], { type: 'chat.removed', chatId: chat.id });
       await notifyChat(chat);
       return reply.status(204).send(null);

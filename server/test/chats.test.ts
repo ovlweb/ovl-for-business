@@ -67,6 +67,48 @@ describe('direct chats and groups', () => {
   });
 });
 
+describe('message actions and membership', () => {
+  it('supports replies, editing your own messages and deleting (sender or group admin)', async () => {
+    await api.post('/contacts', alice, { username: 'carol' });
+    const group = await api.post('/chats/groups', alice, { title: 'Ops', memberIds: [bob.id, carol.id] });
+    const id = group.body.id;
+    const first = await api.post(`/chats/${id}/messages`, bob, { body: 'Budget is ready' });
+    const reply = await api.post(`/chats/${id}/messages`, carol, {
+      body: 'Great, thanks',
+      replyToId: first.body.id,
+    });
+    expect(reply.body.replyToId).toBe(first.body.id);
+
+    expect(
+      (await api.patch(`/chats/${id}/messages/${first.body.id}`, carol, { body: 'hacked' })).status,
+    ).toBe(404);
+    const edited = await api.patch(`/chats/${id}/messages/${first.body.id}`, bob, {
+      body: 'Budget v2 is ready',
+    });
+    expect(edited.body).toMatchObject({ body: 'Budget v2 is ready' });
+    expect(edited.body.editedAt).not.toBeNull();
+
+    expect((await api.del(`/chats/${id}/messages/${first.body.id}`, carol)).status).toBe(403);
+    expect((await api.del(`/chats/${id}/messages/${reply.body.id}`, alice)).status).toBe(204);
+    const history = await api.get(`/chats/${id}/messages`, bob);
+    const deleted = history.body.find((m: { id: number }) => m.id === reply.body.id);
+    expect(deleted).toMatchObject({ deleted: true, body: '' });
+  });
+
+  it('announces leaving and removals in groups', async () => {
+    const group = await api.post('/chats/groups', alice, { title: 'Temp', memberIds: [bob.id, carol.id] });
+    const id = group.body.id;
+    expect((await api.del(`/chats/${id}/members/${carol.id}`, bob)).status).toBe(403);
+    expect((await api.del(`/chats/${id}/members/${bob.id}`, bob)).status).toBe(204);
+    expect((await api.del(`/chats/${id}/members/${carol.id}`, alice)).status).toBe(204);
+    const history = await api.get(`/chats/${id}/messages`, alice);
+    const bodies = history.body.map((m: { body: string }) => m.body);
+    expect(bodies).toContain('Bob left the group');
+    expect(bodies).toContain('Alice removed Carol');
+    expect((await api.get(`/chats/${id}/messages`, bob)).status).toBe(403);
+  });
+});
+
 describe('news channels', () => {
   it('can only be created by moderation and only admins can post', async () => {
     const payload = { title: 'Official News', handle: 'official', description: 'Platform news' };

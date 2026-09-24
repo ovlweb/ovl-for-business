@@ -83,8 +83,12 @@ Checks:
 pnpm typecheck
 pnpm --filter @ovl/shared test
 pnpm --filter @ovl/server test             # needs PostgreSQL; uses TEST_DATABASE_URL or postgres://ovl:ovl@localhost:5432/ovl_test
+pnpm test:e2e                              # starts server + web client + admin panel and drives them in Chromium
 pnpm build
 ```
+
+The end-to-end suite (`e2e/`) needs the database from `pnpm db:up` and a Chromium for Playwright
+(`pnpm --filter @ovl/e2e exec playwright install chromium`). It recreates its own `ovl_e2e` database.
 
 After changing `server/src/db/schema.ts`, create a migration with `pnpm db:generate`.
 

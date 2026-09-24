@@ -44,6 +44,40 @@ jobs:
       - run: pnpm --filter @ovl/web build
       - run: pnpm --filter @ovl/admin build
 
+  e2e:
+    name: End-to-end (browser)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ovl
+          POSTGRES_PASSWORD: ovl
+          POSTGRES_DB: ovl
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ovl"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      E2E_DATABASE_URL: postgres://ovl:ovl@localhost:5432/ovl_e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @ovl/e2e exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: e2e/playwright-report/
+
   docker:
     name: Docker images
     runs-on: ubuntu-latest

@@ -1,0 +1,17 @@
+{
+  "name": "@ovl/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "End-to-end tests: real server + web client + admin panel in a browser",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "report": "playwright show-report",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.19.0",
+    "postgres": "^3.4.9"
+  }
+}

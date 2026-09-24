@@ -7,6 +7,7 @@ import { HashRouter } from 'react-router-dom';
 import { App } from './App';
 import { AuthProvider } from './auth';
 import { isNativeShell } from './config';
+import { setupNativeShell } from './native';
 import { RealtimeProvider } from './realtime';
 
 const queryClient = new QueryClient({
@@ -19,6 +20,8 @@ try {
 } catch {
   /* ignore */
 }
+
+setupNativeShell();
 
 // Hash routing works identically on the web, in Capacitor (Android/iOS) and in Tauri (desktop).
 createRoot(document.getElementById('root')!).render(

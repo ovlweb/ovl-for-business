@@ -1,9 +1,10 @@
 import type { RealtimeConnection, RealtimeStatus } from '@ovl/sdk';
-import type { Message, RealtimeEvent } from '@ovl/shared';
+import type { Chat, Message, RealtimeEvent } from '@ovl/shared';
 import { useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from './api';
 import { useAuth } from './auth';
+import { showNotification } from './notifications';
 
 interface RealtimeState {
   status: RealtimeStatus;
@@ -47,13 +48,30 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
           });
           queryClient.invalidateQueries({ queryKey: ['chats'] });
           queryClient.invalidateQueries({ queryKey: ['support'] });
+          // Application cards posted into the council / moderation chats: refresh the review queue.
+          if (event.message.meta.applicationId) queryClient.invalidateQueries({ queryKey: ['applications'] });
+          const sender = event.message.sender;
+          if (event.type === 'message.created' && sender && sender.id !== me.id) {
+            const chat = queryClient.getQueryData<Chat[]>(['chats'])?.find((c) => c.id === event.chatId);
+            const route = chat ? `#/chats/${event.chatId}` : `#/support/${event.chatId}`;
+            const title =
+              chat && chat.type !== 'direct' ? `${sender.displayName} · ${chat.title}` : sender.displayName;
+            showNotification(title, event.message.body, event.chatId, () => {
+              location.hash = route;
+            });
+          }
           break;
         }
         case 'chat.updated':
-        case 'chat.removed':
           queryClient.invalidateQueries({ queryKey: ['chats'] });
           queryClient.invalidateQueries({ queryKey: ['chat', event.chatId] });
           queryClient.invalidateQueries({ queryKey: ['support'] });
+          break;
+        case 'chat.removed':
+          // We are no longer a member: drop the cached chat instead of refetching it (it would be 403).
+          queryClient.removeQueries({ queryKey: ['chat', event.chatId], type: 'inactive' });
+          queryClient.removeQueries({ queryKey: ['messages', event.chatId], type: 'inactive' });
+          queryClient.invalidateQueries({ queryKey: ['chats'] });
           break;
         case 'application.updated':
           queryClient.invalidateQueries({ queryKey: ['applications'] });
