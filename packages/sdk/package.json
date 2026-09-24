@@ -1,0 +1,16 @@
+{
+  "name": "@ovl/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Typed client for the OVL For Business API (REST + realtime), used by every client app",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@ovl/shared": "workspace:*"
+  }
+}

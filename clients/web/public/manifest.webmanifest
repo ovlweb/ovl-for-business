@@ -1,0 +1,13 @@
+{
+  "name": "OVL For Business",
+  "short_name": "OVL Business",
+  "description": "Corporate accounts, licenses, registry, stock exchange and messaging",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0f131a",
+  "theme_color": "#2d6cdf",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
