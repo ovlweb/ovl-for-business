@@ -1,4 +1,4 @@
-# OVL For Business (before QSN For Business)
+# OVL For Business
 
 A platform for personal and corporate accounts: business balances in any world currency,
 licenses, a public registry, a stock exchange, messaging with tech support, service stories and a
@@ -164,5 +164,3 @@ Server environment variables (see `server/src/config.ts`):
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — components, data model, money, workflows, security
 - [docs/API.md](docs/API.md) — authentication, public registry / stock API, realtime events
 - [docs/ROADMAP.md](docs/ROADMAP.md) — next steps and suggestions
-
-Status: **in development** — foundation release 0.1.
