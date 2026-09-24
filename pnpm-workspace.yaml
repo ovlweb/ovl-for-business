@@ -1,0 +1,8 @@
+packages:
+  - packages/*
+  - server
+  - clients/*
+  - admin
+
+onlyBuiltDependencies:
+  - esbuild
