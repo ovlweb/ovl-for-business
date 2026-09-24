@@ -2,6 +2,7 @@ import {
   APPLICATION_STATUSES,
   APPLICATION_TYPES,
   CASH_METHODS,
+  CASH_REQUEST_STATUSES,
   CHAT_TYPES,
   LEDGER_KINDS,
   LISTING_STATUSES,
@@ -239,6 +240,37 @@ export const cashOperations = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('cash_operations_created_idx').on(t.createdAt)],
+);
+
+export const cashRequestStatusEnum = pgEnum('cash_request_status', CASH_REQUEST_STATUSES);
+
+/** A person's request for a deposit or a payout, fulfilled by a finance manager. */
+export const cashRequests = pgTable(
+  'cash_requests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    walletId: uuid('wallet_id')
+      .notNull()
+      .references(() => wallets.id),
+    type: cashTypeEnum('type').notNull(),
+    method: cashMethodEnum('method').notNull(),
+    amount: money('amount').notNull(),
+    currency: char('currency', { length: 3 }).notNull(),
+    note: text('note').notNull().default(''),
+    status: cashRequestStatusEnum('status').notNull().default('pending'),
+    requestedBy: uuid('requested_by')
+      .notNull()
+      .references(() => users.id),
+    handledBy: uuid('handled_by').references(() => users.id),
+    cashOperationId: uuid('cash_operation_id').references(() => cashOperations.id),
+    declineReason: text('decline_reason'),
+    createdAt: createdAt(),
+    handledAt: timestamp('handled_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('cash_requests_status_idx').on(t.status, t.createdAt),
+    index('cash_requests_wallet_idx').on(t.walletId),
+  ],
 );
 
 export const fundLocks = pgTable(

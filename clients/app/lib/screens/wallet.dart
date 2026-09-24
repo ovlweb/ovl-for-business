@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api/currencies.g.dart';
 import '../api/models.dart';
@@ -56,6 +56,7 @@ class _WalletScreenState extends State<WalletScreen> {
               onRefresh: () async {
                 session.queries.invalidate('wallets');
                 session.queries.invalidate('entries');
+                session.queries.invalidate('cashRequests');
               },
               children: [
                 PageTitle(
@@ -63,6 +64,16 @@ class _WalletScreenState extends State<WalletScreen> {
                   title: 'Wallet',
                   subtitle: 'Your personal balances in any world currency.',
                   actions: [
+                    OutlinedButton.icon(
+                      onPressed: selected == null ? null : () => showCashRequestSheet(context, selected, 'deposit'),
+                      icon: const Icon(LucideIcons.arrowDownLeft, size: 17),
+                      label: const Text('Deposit'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: selected == null ? null : () => showCashRequestSheet(context, selected, 'withdrawal'),
+                      icon: const Icon(LucideIcons.arrowUpRight, size: 17),
+                      label: const Text('Withdraw'),
+                    ),
                     FilledButton.icon(
                       onPressed: wallets.isEmpty ? null : () => showTransferSheet(context, from: selected),
                       icon: const Icon(LucideIcons.send, size: 17),
@@ -89,7 +100,11 @@ class _WalletScreenState extends State<WalletScreen> {
                   ),
                 const SizedBox(height: 16),
                 const _OpenBalance(),
-                if (selected != null) ...[const SizedBox(height: 16), Statement(wallet: selected)],
+                if (selected != null) ...[
+                  CashRequests(wallet: selected),
+                  const SizedBox(height: 16),
+                  Statement(wallet: selected),
+                ],
               ],
             );
           },
@@ -117,26 +132,20 @@ class DepositInfo extends StatelessWidget {
             child: Text.rich(
               TextSpan(
                 style: TextStyle(color: c.accent2, fontSize: 13.5, height: 1.4),
-                children: [
-                  const TextSpan(
-                    text: 'Deposits and withdrawals are handled by finance managers — by bank transfer or physically at the cash desk. ',
+                children: const [
+                  TextSpan(
+                    text: 'Deposits and payouts are handled by finance managers, by bank transfer or at the cash desk. Ask for one with ',
                   ),
-                  WidgetSpan(
-                    alignment: PlaceholderAlignment.baseline,
-                    baseline: TextBaseline.alphabetic,
-                    child: GestureDetector(
-                      onTap: () => context.go('/support'),
-                      child: Text(
-                        'Contact support',
-                        style: TextStyle(
-                          color: c.accent,
-                          fontWeight: FontWeight.w700,
-                          decoration: TextDecoration.underline,
-                        ),
-                      ),
-                    ),
+                  TextSpan(
+                    text: 'Deposit',
+                    style: TextStyle(fontWeight: FontWeight.w700),
                   ),
-                  const TextSpan(text: ' to top up.'),
+                  TextSpan(text: ' or '),
+                  TextSpan(
+                    text: 'Withdraw',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  TextSpan(text: '; a payout holds the amount until it is paid out.'),
                 ],
               ),
             ),
@@ -367,6 +376,12 @@ class _StatementState extends State<Statement> {
                   children: [
                     Expanded(child: Text(widget.title ?? 'Statement · ${w.currency}', style: context.text.titleLarge)),
                     if (page != null) Text(plural(page.total, 'operation'), style: context.text.bodySmall),
+                    if (page != null && page.total > 0)
+                      IconButton(
+                        tooltip: 'Export CSV',
+                        onPressed: () => showExportSheet(context, w),
+                        icon: const Icon(LucideIcons.download, size: 19),
+                      ),
                   ],
                 ),
               ),
@@ -595,6 +610,301 @@ void showTransferSheet(BuildContext context, {Wallet? from}) {
               ],
             );
           },
+        ),
+      ),
+    ),
+  );
+}
+
+const _methodLabel = {'manager_transfer': 'Bank transfer', 'physical_cash': 'Cash desk'};
+
+/// Deposit and payout requests for one balance, newest first. Hidden until there is one.
+class CashRequests extends StatelessWidget {
+  const CashRequests({super.key, required this.wallet});
+
+  final Wallet wallet;
+
+  @override
+  Widget build(BuildContext context) {
+    final session = context.watch<Session>();
+    final c = context.c;
+    return Query<List<CashRequest>>(
+      client: session.queries,
+      queryKey: 'cashRequests:${wallet.id}',
+      fetch: () => session.api.cashRequests(wallet.id),
+      builder: (context, s) {
+        final requests = s.data ?? const <CashRequest>[];
+        if (requests.isEmpty) return const SizedBox.shrink();
+        final pending = requests.where((r) => r.isPending).length;
+        return Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: OvlCard(
+            padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text('Deposit and payout requests', style: context.text.titleLarge)),
+                      Text(plural(pending, 'pending request'), style: context.text.bodySmall),
+                    ],
+                  ),
+                ),
+                for (final (i, r) in requests.indexed)
+                  FadeSlideIn(
+                    delay: stagger(i, 30),
+                    child: ListTile(
+                      leading: IconTile(
+                        r.isDeposit ? LucideIcons.arrowDownLeft : LucideIcons.arrowUpRight,
+                        size: 38,
+                        color: r.isDeposit ? c.success : c.warning,
+                      ),
+                      title: Text(
+                        '${r.isDeposit ? 'Deposit' : 'Payout'} · ${_methodLabel[r.method] ?? humanize(r.method)}',
+                        style: context.text.titleSmall,
+                      ),
+                      subtitle: Text(
+                        [_detail(r), if (r.note.isNotEmpty) '“${r.note}”'].join('\n'),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      isThreeLine: r.note.isNotEmpty,
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '${r.isDeposit ? '+' : '−'}${money(r.amount, r.currency)}',
+                                style: font(body, 14, FontWeight.w700, color: r.isDeposit ? c.success : c.text),
+                              ),
+                              const SizedBox(height: 4),
+                              StatusPill(r.status),
+                            ],
+                          ),
+                          if (r.isPending)
+                            IconButton(
+                              tooltip: 'Cancel request',
+                              onPressed: () => _confirmCancel(context, r),
+                              icon: Icon(LucideIcons.x, size: 18, color: c.text3),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String _detail(CashRequest r) => switch (r.status) {
+    'completed' => 'Done by ${r.handledBy ?? 'finance'} · ref. ${r.reference}',
+    'declined' => 'Declined: ${r.declineReason}',
+    'cancelled' => 'Cancelled · ${date(r.createdAt)}',
+    _ => '${r.isDeposit ? 'Waiting for a finance manager' : 'Waiting · amount held'} · ${date(r.createdAt)}',
+  };
+
+  Future<void> _confirmCancel(BuildContext context, CashRequest r) async {
+    final session = context.read<Session>();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: Text('Cancel this ${r.isDeposit ? 'deposit' : 'payout'}?'),
+        content: Text(
+          r.isDeposit
+              ? 'The finance team will no longer expect ${money(r.amount, r.currency)}.'
+              : 'The ${money(r.amount, r.currency)} held for it becomes available again.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('Keep')),
+          FilledButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('Cancel request')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await session.api.cancelCashRequest(r.id);
+      session.queries.invalidate('cashRequests');
+      session.queries.invalidate('wallets');
+      session.queries.invalidate('orgs');
+      if (context.mounted) toast(context, 'Request cancelled');
+    } catch (e) {
+      if (context.mounted) toast(context, errorText(e), error: true);
+    }
+  }
+}
+
+/// Ask a finance manager for a deposit or a payout.
+void showCashRequestSheet(BuildContext context, Wallet wallet, String type) {
+  final session = context.read<Session>();
+  final amount = TextEditingController();
+  final note = TextEditingController();
+  final deposit = type == 'deposit';
+  var method = 'manager_transfer';
+  var busy = false;
+  Object? error;
+  showModalBottomSheet<void>(
+    context: context,
+    useRootNavigator: true,
+    isScrollControlled: true,
+    builder: (sheet) => StatefulBuilder(
+      builder: (sheet, set) => Padding(
+        padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(sheet).bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              deposit ? 'Deposit ${wallet.currency}' : 'Withdraw ${wallet.currency}',
+              style: sheet.text.headlineSmall,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              deposit
+                  ? 'A finance manager confirms the deposit once the money arrives by bank transfer or is handed in at the cash desk.'
+                  : 'A finance manager pays the money out. The amount is held on your balance until then; you can cancel while it is pending.',
+              style: sheet.text.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            if (error != null) ...[ErrorBox(error), const SizedBox(height: 12)],
+            if (!deposit) ...[
+              Text('Available: ${money(wallet.available, wallet.currency)}', style: sheet.text.titleSmall),
+              const SizedBox(height: 12),
+            ],
+            Segmented<String>(
+              value: method,
+              options: const [('manager_transfer', 'Bank transfer'), ('physical_cash', 'Cash desk')],
+              onChanged: (m) => set(() => method = m),
+            ),
+            const SizedBox(height: 14),
+            LabeledField(
+              label: 'Amount (${wallet.currency})',
+              controller: amount,
+              icon: LucideIcons.banknote,
+              keyboard: const TextInputType.numberWithOptions(decimal: true),
+              autofocus: true,
+            ),
+            const SizedBox(height: 12),
+            LabeledField(
+              label: 'Note for the finance manager (optional)',
+              controller: note,
+              icon: LucideIcons.stickyNote,
+              maxLines: 2,
+              helper: !deposit && method == 'manager_transfer' ? 'For example, the bank account to pay into.' : null,
+            ),
+            const SizedBox(height: 18),
+            GradientButton(
+              label: deposit ? 'Request deposit' : 'Request payout',
+              icon: deposit ? LucideIcons.arrowDownLeft : LucideIcons.arrowUpRight,
+              busy: busy,
+              onPressed: () async {
+                set(() {
+                  busy = true;
+                  error = null;
+                });
+                try {
+                  await session.api.requestCash(
+                    wallet.id,
+                    type: type,
+                    method: method,
+                    amount: amount.text.trim().replaceAll(',', '.'),
+                    note: note.text.trim(),
+                  );
+                  session.queries.invalidate('cashRequests');
+                  session.queries.invalidate('wallets');
+                  session.queries.invalidate('orgs');
+                  if (sheet.mounted) Navigator.pop(sheet);
+                  if (context.mounted) {
+                    toast(context, deposit ? 'Deposit requested' : 'Payout requested — the amount is held meanwhile');
+                  }
+                } catch (e) {
+                  set(() {
+                    busy = false;
+                    error = e;
+                  });
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+String _day(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+/// Export the statement as CSV: the server makes a 5-minute link that the system browser downloads.
+void showExportSheet(BuildContext context, Wallet wallet) {
+  final session = context.read<Session>();
+  var period = 'month';
+  var busy = false;
+  Object? error;
+  showModalBottomSheet<void>(
+    context: context,
+    useRootNavigator: true,
+    builder: (sheet) => StatefulBuilder(
+      builder: (sheet, set) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Export ${wallet.currency} statement', style: sheet.text.headlineSmall),
+            const SizedBox(height: 4),
+            Text(
+              'A CSV file for spreadsheets and accounting software. It opens in your browser, which saves it.',
+              style: sheet.text.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            if (error != null) ...[ErrorBox(error), const SizedBox(height: 12)],
+            Segmented<String>(
+              value: period,
+              options: const [
+                ('month', 'This month'),
+                ('last_month', 'Last month'),
+                ('year', 'This year'),
+                ('all', 'All'),
+              ],
+              onChanged: (p) => set(() => period = p),
+            ),
+            const SizedBox(height: 18),
+            GradientButton(
+              label: 'Download CSV',
+              icon: LucideIcons.download,
+              busy: busy,
+              onPressed: () async {
+                final now = DateTime.now();
+                final (from, to) = switch (period) {
+                  'month' => (_day(DateTime(now.year, now.month)), null),
+                  'last_month' => (_day(DateTime(now.year, now.month - 1)), _day(DateTime(now.year, now.month, 0))),
+                  'year' => (_day(DateTime(now.year)), null),
+                  _ => (null, null),
+                };
+                set(() {
+                  busy = true;
+                  error = null;
+                });
+                try {
+                  final url = await session.api.statementLink(wallet.id, from: from, to: to);
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+                  if (sheet.mounted) Navigator.pop(sheet);
+                } catch (e) {
+                  set(() {
+                    busy = false;
+                    error = e;
+                  });
+                }
+              },
+            ),
+          ],
         ),
       ),
     ),

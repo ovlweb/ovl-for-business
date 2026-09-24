@@ -220,6 +220,43 @@ class Wallet {
   bool get hasFrozen => (double.tryParse(frozen) ?? 0) > 0;
 }
 
+/// A deposit or payout someone asked a finance manager for.
+class CashRequest {
+  CashRequest.fromJson(Json j)
+    : id = j['id'] as String,
+      walletId = j['walletId'] as String,
+      type = j['type'] as String,
+      method = j['method'] as String,
+      amount = j['amount'] as String,
+      currency = j['currency'] as String,
+      note = j['note'] as String? ?? '',
+      status = j['status'] as String,
+      requestedBy = (j['requestedBy'] as Json)['username'] as String,
+      handledBy = (j['handledBy'] as Json?)?['displayName'] as String?,
+      reference = j['reference'] as String?,
+      declineReason = j['declineReason'] as String?,
+      createdAt = _date(j['createdAt']),
+      handledAt = _dateOrNull(j['handledAt']);
+
+  final String id;
+  final String walletId;
+  final String type;
+  final String method;
+  final String amount;
+  final String currency;
+  final String note;
+  final String status;
+  final String requestedBy;
+  final String? handledBy;
+  final String? reference;
+  final String? declineReason;
+  final DateTime createdAt;
+  final DateTime? handledAt;
+
+  bool get isDeposit => type == 'deposit';
+  bool get isPending => status == 'pending';
+}
+
 class LedgerEntry {
   LedgerEntry.fromJson(Json j)
     : id = j['id'] as int,

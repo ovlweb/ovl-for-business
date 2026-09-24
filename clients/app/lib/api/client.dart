@@ -220,6 +220,32 @@ class OvlApi {
     if (note != null && note.isNotEmpty) 'note': note,
   });
 
+  Future<List<CashRequest>> cashRequests(String walletId) =>
+      _getList('/wallets/$walletId/cash-requests', CashRequest.fromJson);
+
+  /// Ask a finance manager for a deposit or a payout (a payout holds the amount meanwhile).
+  Future<CashRequest> requestCash(
+    String walletId, {
+    required String type,
+    required String method,
+    required String amount,
+    String? note,
+  }) async => CashRequest.fromJson(
+    await _post('/wallets/$walletId/cash-requests', {
+      'type': type,
+      'method': method,
+      'amount': amount,
+      if (note != null && note.isNotEmpty) 'note': note,
+    }) as Json,
+  );
+  Future<void> cancelCashRequest(String id) => _post('/cash-requests/$id/cancel');
+
+  /// A 5-minute link to the CSV statement that needs no token, for the system browser.
+  Future<Uri> statementLink(String walletId, {String? from, String? to}) async {
+    final r = await _post('/wallets/$walletId/statement-link', {'from': ?from, 'to': ?to}) as Json;
+    return Uri.parse('${baseUrl.replaceAll(RegExp(r'/+$'), '')}${r['path']}');
+  }
+
   // --- organizations ---------------------------------------------------------------------
 
   Future<List<Organization>> myOrganizations() => _getList('/organizations/mine', Organization.fromJson);

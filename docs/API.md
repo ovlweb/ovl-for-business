@@ -82,35 +82,55 @@ Server-to-server: `new OvlClient({ baseUrl, apiKey: 'ovl_…' })` and use `regis
 
 Connect to `wss://…/api/v1/realtime?token=<accessToken>`. The server sends JSON events:
 
-| Event                 | Payload                                 |
-| --------------------- | --------------------------------------- |
-| `ready`               | `userId`                                |
-| `message.created`     | `chatId`, `message`                     |
-| `message.updated`     | `chatId`, `message` (edits, deletions)  |
-| `chat.updated`        | `chatId`                                |
-| `chat.removed`        | `chatId`                                |
-| `typing`              | `chatId`, `userId`                      |
-| `application.updated` | `applicationId`, `status`, `stageIndex` |
-| `story.created`       | `storyId`                               |
-| `wallet.updated`      | `walletId`                              |
+| Event                  | Payload                                 |
+| ---------------------- | --------------------------------------- |
+| `ready`                | `userId`                                |
+| `message.created`      | `chatId`, `message`                     |
+| `message.updated`      | `chatId`, `message` (edits, deletions)  |
+| `chat.updated`         | `chatId`                                |
+| `chat.removed`         | `chatId`                                |
+| `typing`               | `chatId`, `userId`                      |
+| `application.updated`  | `applicationId`, `status`, `stageIndex` |
+| `story.created`        | `storyId`                               |
+| `wallet.updated`       | `walletId`                              |
+| `cash_request.updated` | `requestId`, `walletId`, `status`       |
 
 Clients may send `{"type":"typing","chatId":"…"}` and `{"type":"ping"}`. A close code `4401`
 means the access token expired or the session was signed out: refresh and reconnect (the refresh
 fails for a signed-out session).
 
+## Deposits, payouts and statements
+
+People and company finance roles ask for money to come in or go out; a finance manager handles it
+in the admin panel's cash desk:
+
+1. `POST /wallets/:id/cash-requests` with `{type: 'deposit' | 'withdrawal', method: 'manager_transfer' | 'physical_cash', amount, note?}`.
+   A withdrawal holds the amount at once (it shows as frozen, with the lock reason
+   `withdrawal_request`), so it cannot be spent twice.
+2. The manager calls `POST /admin/cash-requests/:id/complete` with a `reference` (records the cash
+   operation and moves the money) or `/decline` with a `reason`. The requester can
+   `POST /cash-requests/:id/cancel` while it is pending. Managers cannot handle their own requests.
+3. Everyone who can see the wallet receives `cash_request.updated` and `wallet.updated`.
+
+`GET /wallets/:id/statement.csv?from=YYYY-MM-DD&to=YYYY-MM-DD` returns the ledger as CSV (UTF-8 with
+BOM, CRLF, for spreadsheets). The SDK's `wallets.statementCsv()` returns a `Blob`. Apps that hand
+the file to the system browser call `POST /wallets/:id/statement-link` instead: it returns a path
+that works for five minutes without an `Authorization` header, for that wallet and range only, and
+stops working when the session is signed out.
+
 ## Main endpoints
 
-| Area         | Endpoints                                                                                                                                                                                                                                                            |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Auth & me    | `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `GET/PATCH /me`, `POST /me/password`, `GET /me/sessions`, `DELETE /me/sessions/:id`, `POST /me/sessions/sign-out-others`, `GET /me/2fa`, `POST /me/2fa/{setup,enable,disable,recovery-codes}` |
-| People       | `GET /users/search`, `GET /users/:username`, `GET/POST /contacts`, `DELETE /contacts/:userId`                                                                                                                                                                        |
-| Wallets      | `GET/POST /wallets`, `GET /wallets/:id`, `/entries`, `/locks`, `POST /wallets/transfer`                                                                                                                                                                              |
-| Companies    | `GET /organizations/mine`, `GET /organizations/:slug`, `PATCH /organizations/:id`, members, wallets                                                                                                                                                                  |
-| Applications | `POST /applications`, `GET /applications/mine`, `/queue`, `/:id`, `POST /:id/review`, `/:id/withdraw`                                                                                                                                                                |
-| Registry     | `GET /registry`, `GET /registry/:idOrNumber`                                                                                                                                                                                                                         |
-| Stock        | `GET /stock/listings`, `/stock/listings/:ticker`, `POST …/invest`, `GET /stock/portfolio`                                                                                                                                                                            |
-| Chats        | `GET /chats`, `POST /chats/direct`, `/chats/groups`, `/chats/channels`, `GET /channels`, messages, members, read, pin                                                                                                                                                |
-| Support      | `POST/GET /support/tickets`, `GET /support/desk`, `POST /support/tickets/:id/status`                                                                                                                                                                                 |
-| Stories      | `GET/POST /stories`, `POST /stories/:id/view`, `DELETE /stories/:id`                                                                                                                                                                                                 |
-| Developer    | `GET/POST /api-keys`, `DELETE /api-keys/:id`                                                                                                                                                                                                                         |
-| Admin        | `/admin/stats`, `/admin/users`, `/admin/organizations`, `/admin/owners`, `/admin/wallets`, `/admin/cash-operations`, `/admin/registry/:id`, `/admin/stock/listings/:id`, `/admin/audit-logs`, `/admin/api-keys`                                                      |
+| Area         | Endpoints                                                                                                                                                                                                                                                                   |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Auth & me    | `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `GET/PATCH /me`, `POST /me/password`, `GET /me/sessions`, `DELETE /me/sessions/:id`, `POST /me/sessions/sign-out-others`, `GET /me/2fa`, `POST /me/2fa/{setup,enable,disable,recovery-codes}`        |
+| People       | `GET /users/search`, `GET /users/:username`, `GET/POST /contacts`, `DELETE /contacts/:userId`                                                                                                                                                                               |
+| Wallets      | `GET/POST /wallets`, `GET /wallets/:id`, `/entries`, `/locks`, `POST /wallets/transfer`, `GET/POST /wallets/:id/cash-requests`, `POST /cash-requests/:id/cancel`, `GET /wallets/:id/statement.csv`, `POST /wallets/:id/statement-link`                                      |
+| Companies    | `GET /organizations/mine`, `GET /organizations/:slug`, `PATCH /organizations/:id`, members, wallets                                                                                                                                                                         |
+| Applications | `POST /applications`, `GET /applications/mine`, `/queue`, `/:id`, `POST /:id/review`, `/:id/withdraw`                                                                                                                                                                       |
+| Registry     | `GET /registry`, `GET /registry/:idOrNumber`                                                                                                                                                                                                                                |
+| Stock        | `GET /stock/listings`, `/stock/listings/:ticker`, `POST …/invest`, `GET /stock/portfolio`                                                                                                                                                                                   |
+| Chats        | `GET /chats`, `POST /chats/direct`, `/chats/groups`, `/chats/channels`, `GET /channels`, messages, members, read, pin                                                                                                                                                       |
+| Support      | `POST/GET /support/tickets`, `GET /support/desk`, `POST /support/tickets/:id/status`                                                                                                                                                                                        |
+| Stories      | `GET/POST /stories`, `POST /stories/:id/view`, `DELETE /stories/:id`                                                                                                                                                                                                        |
+| Developer    | `GET/POST /api-keys`, `DELETE /api-keys/:id`                                                                                                                                                                                                                                |
+| Admin        | `/admin/stats`, `/admin/users`, `/admin/organizations`, `/admin/owners`, `/admin/wallets`, `/admin/cash-operations`, `/admin/cash-requests` (+ `/:id/complete`, `/:id/decline`), `/admin/registry/:id`, `/admin/stock/listings/:id`, `/admin/audit-logs`, `/admin/api-keys` |

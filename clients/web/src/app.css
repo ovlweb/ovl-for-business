@@ -1681,3 +1681,37 @@ kbd {
   letter-spacing: 0.06em;
   text-align: center;
 }
+
+/* ---------- deposit and payout requests ---------- */
+
+.list-item.cash-request {
+  cursor: default;
+  padding: 12px 0;
+}
+.list-item.cash-request:hover {
+  background: transparent;
+}
+.cr-icon {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.cr-icon.deposit {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.cr-icon.withdrawal {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.cr-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  white-space: nowrap;
+}

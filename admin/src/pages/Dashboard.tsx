@@ -104,6 +104,7 @@ const AUDIT_ICONS: [prefix: string, icon: IconName][] = [
 const AUDIT_TEXT: Record<string, string> = {
   'wallet.deposit': 'recorded a deposit',
   'wallet.withdrawal': 'recorded a withdrawal',
+  'cash_request.decline': 'declined a deposit or payout request',
   'application.submit': 'submitted an application',
   'application.approve': 'approved an application',
   'application.reject': 'rejected an application',
@@ -191,13 +192,19 @@ export function DashboardPage() {
         </motion.div>
       )}
 
-      {s && s.pendingApplications + s.openTickets > 0 && (
+      {s && s.pendingApplications + s.openTickets + s.pendingCashRequests > 0 && (
         <motion.div className="admin-attention" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
           <Icon name="bell" size={18} />
           <span className="grow">
-            Waiting for staff: <b>{plural(s.pendingApplications, 'application')}</b> and{' '}
-            <b>{plural(s.openTickets, 'open ticket')}</b>.
+            Waiting for staff: <b>{plural(s.pendingApplications, 'application')}</b>,{' '}
+            <b>{plural(s.openTickets, 'open ticket')}</b> and{' '}
+            <b>{plural(s.pendingCashRequests, 'deposit or payout request', 'deposit or payout requests')}</b>.
           </span>
+          {can('wallet.cash') && s.pendingCashRequests > 0 && (
+            <Link className="btn sm" to="/cash">
+              Handle
+            </Link>
+          )}
           {can('applications.view_all') && s.pendingApplications > 0 && (
             <Link className="btn sm" to="/applications">
               Review

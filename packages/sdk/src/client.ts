@@ -7,6 +7,9 @@ import type {
   AuthResult,
   CashOperation,
   CashOperationInput,
+  CashRequest,
+  CashRequestInput,
+  CashRequestStatus,
   Chat,
   ChatMember,
   Contact,
@@ -27,6 +30,8 @@ import type {
   RegistryEntry,
   RegistrySearchQuery,
   Session,
+  StatementLink,
+  StatementRange,
   TwoFactorSetup,
   TwoFactorStatus,
   ReviewInput,
@@ -127,8 +132,14 @@ export class OvlClient {
   // Transport
   // ---------------------------------------------------------------------------
 
-  async request<T>(method: string, path: string, body?: unknown, retry = true): Promise<T> {
-    const headers: Record<string, string> = { accept: 'application/json' };
+  private async send(
+    method: string,
+    path: string,
+    body?: unknown,
+    retry = true,
+    accept = 'application/json',
+  ): Promise<Response> {
+    const headers: Record<string, string> = { accept };
     const tokens = this.tokens.get();
     if (tokens) headers.authorization = `Bearer ${tokens.accessToken}`;
     if (this.apiKey) headers['x-api-key'] = this.apiKey;
@@ -141,20 +152,36 @@ export class OvlClient {
     });
 
     if (res.status === 401 && retry && tokens && !path.startsWith('/auth/')) {
-      if (await this.refresh()) return this.request<T>(method, path, body, false);
+      if (await this.refresh()) return this.send(method, path, body, false, accept);
     }
+    return res;
+  }
+
+  private static async fail(res: Response, text?: string): Promise<never> {
+    const body = text ?? (await res.text());
+    let data: { error?: string; message?: string; details?: unknown } | undefined;
+    try {
+      data = body ? JSON.parse(body) : undefined;
+    } catch {
+      data = undefined;
+    }
+    throw new OvlApiError(res.status, data?.error ?? 'error', data?.message ?? res.statusText, data?.details);
+  }
+
+  async request<T>(method: string, path: string, body?: unknown, retry = true): Promise<T> {
+    const res = await this.send(method, path, body, retry);
     if (res.status === 204) return undefined as T;
     const text = await res.text();
-    const data = text ? JSON.parse(text) : undefined;
-    if (!res.ok) {
-      throw new OvlApiError(
-        res.status,
-        data?.error ?? 'error',
-        data?.message ?? res.statusText,
-        data?.details,
-      );
-    }
-    return data as T;
+    if (!res.ok) return OvlClient.fail(res, text);
+    return (text ? JSON.parse(text) : undefined) as T;
+  }
+
+  /** Fetch a file (such as a CSV statement) with the same authentication as every other call. */
+  async download(path: string, query?: Query): Promise<{ blob: Blob; filename: string | null }> {
+    const res = await this.send('GET', path + qs(query), undefined, true, '*/*');
+    if (!res.ok) return OvlClient.fail(res);
+    const disposition = res.headers.get('content-disposition') ?? '';
+    return { blob: await res.blob(), filename: /filename="([^"]+)"/.exec(disposition)?.[1] ?? null };
   }
 
   private get<T>(path: string, query?: Query) {
@@ -269,6 +296,17 @@ export class OvlClient {
       this.get<Page<LedgerEntry>>(`/wallets/${id}/entries`, query),
     locks: (id: string) => this.get<FundLock[]>(`/wallets/${id}/locks`),
     transfer: (input: TransferInput) => this.post<Wallet>('/wallets/transfer', input),
+    cashRequests: (id: string) => this.get<CashRequest[]>(`/wallets/${id}/cash-requests`),
+    /** Ask a finance manager for a deposit or a payout (a payout holds the amount meanwhile). */
+    requestCash: (id: string, input: CashRequestInput) =>
+      this.post<CashRequest>(`/wallets/${id}/cash-requests`, input),
+    cancelCashRequest: (requestId: string) => this.post<CashRequest>(`/cash-requests/${requestId}/cancel`),
+    /** The statement as a CSV file, optionally limited to ISO dates. */
+    statementCsv: (id: string, range?: { from?: string; to?: string }) =>
+      this.download(`/wallets/${id}/statement.csv`, range),
+    /** A 5-minute link to the CSV that works without a token (to open in a browser). */
+    statementLink: (id: string, range: StatementRange = {}) =>
+      this.post<StatementLink>(`/wallets/${id}/statement-link`, range),
   };
 
   organizations = {
@@ -378,6 +416,11 @@ export class OvlClient {
     cashOperations: (query?: { limit?: number; offset?: number }) =>
       this.get<Page<CashOperation>>('/admin/cash-operations', query),
     cashOperation: (input: CashOperationInput) => this.post<CashOperation>('/admin/cash-operations', input),
+    cashRequests: (status?: CashRequestStatus) => this.get<CashRequest[]>('/admin/cash-requests', { status }),
+    completeCashRequest: (id: string, input: { reference: string; note?: string }) =>
+      this.post<CashRequest>(`/admin/cash-requests/${id}/complete`, input),
+    declineCashRequest: (id: string, reason: string) =>
+      this.post<CashRequest>(`/admin/cash-requests/${id}/decline`, { reason }),
     setRegistryStatus: (id: string, status: 'active' | 'suspended' | 'revoked', reason?: string) =>
       this.patch<RegistryEntry>(`/admin/registry/${id}`, { status, reason }),
     updateListing: (

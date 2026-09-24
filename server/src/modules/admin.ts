@@ -31,6 +31,7 @@ import {
   applications,
   auditLogs,
   cashOperations,
+  cashRequests,
   chats,
   messages,
   organizations,
@@ -49,11 +50,12 @@ import { currentUser } from '../plugins/auth';
 import { toApiKeyDto } from './api-keys';
 import { organizationDtos } from './organizations';
 import { getRegistryEntry } from './registry';
+import { recordCashOperation } from './cash';
 import { changeRole } from './roles';
 import { revokeSessions } from './sessions';
 import { listingDtos } from './stock/service';
 import { walletAudience } from './wallets/routes';
-import { credit, debit, getOrCreateWallet, listOwnerWallets } from './wallets/service';
+import { getOrCreateWallet, listOwnerWallets } from './wallets/service';
 
 const like = (q: string) => `%${q.replace(/[%_\\]/g, '\\$&')}%`;
 
@@ -139,7 +141,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       schema: { tags, response: { 200: adminStatsSchema } },
     },
     async () => {
-      const [byRole, [orgs], [pending], [tickets], [listings], [registry], balances, daily] =
+      const [byRole, [orgs], [pending], [tickets], [listings], [registry], [cash], balances, daily] =
         await Promise.all([
           app.db.select({ role: users.role, n: count() }).from(users).groupBy(users.role),
           app.db.select({ n: count() }).from(organizations),
@@ -150,6 +152,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
             .where(and(eq(chats.type, 'support'), eq(chats.supportStatus, 'open'))),
           app.db.select({ n: count() }).from(stockListings).where(eq(stockListings.status, 'active')),
           app.db.select({ n: count() }).from(registryEntries),
+          app.db.select({ n: count() }).from(cashRequests).where(eq(cashRequests.status, 'pending')),
           app.db
             .select({ currency: wallets.currency, total: sql<string>`sum(${wallets.balance})`, n: count() })
             .from(wallets)
@@ -164,6 +167,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         openTickets: tickets?.n ?? 0,
         activeListings: listings?.n ?? 0,
         registryEntries: registry?.n ?? 0,
+        pendingCashRequests: cash?.n ?? 0,
         balances: balances.map((b) => ({
           currency: b.currency,
           total: formatAmount(BigInt(b.total), b.currency),
@@ -473,42 +477,17 @@ export async function adminRoutes(fastify: FastifyInstance) {
           { type: input.ownerType, id: input.ownerId },
           input.currency,
         );
-        const [op] = await tx
-          .insert(cashOperations)
-          .values({
-            walletId: wallet.id,
-            type: input.type,
-            method: input.method,
-            amount,
-            currency: input.currency,
-            reference: input.reference,
-            note: input.note ?? '',
-            processedBy: me.id,
-          })
-          .returning();
-        const method = input.method === 'physical_cash' ? 'cash desk' : 'manager transfer';
-        const options = {
-          description: `${input.type === 'deposit' ? 'Deposit' : 'Withdrawal'} via ${method} (ref. ${input.reference})`,
-          referenceType: 'cash_operation',
-          referenceId: op!.id,
+        const opId = await recordCashOperation(tx, {
+          wallet,
+          type: input.type,
+          method: input.method,
+          amount,
+          reference: input.reference,
+          note: input.note,
           actorId: me.id,
-        };
-        if (input.type === 'deposit') await credit(tx, wallet.id, amount, 'deposit', options);
-        else await debit(tx, wallet.id, amount, 'withdrawal', options);
-        await audit(tx, {
-          actorId: me.id,
-          action: `wallet.${input.type}`,
-          targetType: 'wallet',
-          targetId: wallet.id,
-          data: {
-            amount: input.amount,
-            currency: input.currency,
-            method: input.method,
-            reference: input.reference,
-          },
           ip: req.ip,
         });
-        return { opId: op!.id, wallet };
+        return { opId, wallet };
       });
       app.hub.sendToUsers(await walletAudience(app.db, wallet), {
         type: 'wallet.updated',

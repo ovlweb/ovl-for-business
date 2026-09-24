@@ -28,11 +28,12 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
 
 ### Money
 
-- Withdrawal and deposit _requests_ from users that managers fulfil, with statuses.
+- ✅ Deposit and payout requests that finance managers fulfil or decline, with statuses; a payout
+  holds its amount until handled (0.2).
 - Invoices and payment requests between companies; recurring payments / payroll.
 - Currency exchange between balances with managed rates and fees.
 - Multi-signature company payments (e.g. director + accountant above a limit).
-- Statement exports (CSV / PDF) and monthly statements.
+- ✅ Statement export as CSV on web and in the apps (0.2). Next: PDF and monthly statements.
 
 ### Stock exchange
 

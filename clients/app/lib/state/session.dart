@@ -226,6 +226,8 @@ class Session extends ChangeNotifier with WidgetsBindingObserver {
         queries.invalidate('wallets');
         queries.invalidate('entries');
         queries.invalidate('orgs');
+      case 'cash_request.updated':
+        queries.invalidate('cashRequests');
     }
   }
 

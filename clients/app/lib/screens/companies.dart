@@ -247,6 +247,24 @@ class _CompanyWalletsState extends State<_CompanyWallets> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         WalletCards(wallets: widget.wallets, selected: selected.id, onSelect: (w) => setState(() => _selected = w.id)),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: () => showCashRequestSheet(context, selected, 'deposit'),
+              icon: const Icon(LucideIcons.arrowDownLeft, size: 17),
+              label: const Text('Deposit'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => showCashRequestSheet(context, selected, 'withdrawal'),
+              icon: const Icon(LucideIcons.arrowUpRight, size: 17),
+              label: const Text('Withdraw'),
+            ),
+          ],
+        ),
+        CashRequests(wallet: selected),
         const SizedBox(height: 16),
         Statement(wallet: selected),
       ],

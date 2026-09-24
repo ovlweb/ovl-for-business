@@ -296,6 +296,18 @@ const PATHS = {
     </>
   ),
   activity: <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />,
+  incoming: (
+    <>
+      <line x1="17" y1="7" x2="7" y2="17" />
+      <polyline points="17 17 7 17 7 7" />
+    </>
+  ),
+  outgoing: (
+    <>
+      <line x1="7" y1="17" x2="17" y2="7" />
+      <polyline points="7 7 17 7 17 17" />
+    </>
+  ),
   download: (
     <>
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />

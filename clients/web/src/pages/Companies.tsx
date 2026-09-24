@@ -7,6 +7,7 @@ import {
   Field,
   formatDate,
   humanize,
+  Icon,
   Modal,
   PageHeader,
   Spinner,
@@ -17,7 +18,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
-import { OpenWalletForm, Statement, TransferModal, WalletCards } from '../components/WalletPanel';
+import {
+  CashRequestModal,
+  CashRequests,
+  OpenWalletForm,
+  Statement,
+  TransferModal,
+  WalletCards,
+} from '../components/WalletPanel';
 
 export function CompaniesPage() {
   const orgs = useQuery({ queryKey: ['orgs', 'mine'], queryFn: api.organizations.mine });
@@ -153,6 +161,7 @@ function Balances({ orgId }: { orgId: string }) {
   });
   const [selectedId, setSelectedId] = useState<string>();
   const [sending, setSending] = useState(false);
+  const [cash, setCash] = useState<'deposit' | 'withdrawal' | null>(null);
   const selected = wallets.data?.find((w) => w.id === selectedId) ?? wallets.data?.[0];
 
   return (
@@ -160,9 +169,17 @@ function Balances({ orgId }: { orgId: string }) {
       <div className="spread">
         <h2>Business balance</h2>
         {selected && (
-          <button className="btn primary" onClick={() => setSending(true)}>
-            Send money
-          </button>
+          <div className="row-wrap">
+            <button className="btn" onClick={() => setCash('deposit')}>
+              <Icon name="incoming" size={16} /> Deposit
+            </button>
+            <button className="btn" onClick={() => setCash('withdrawal')}>
+              <Icon name="outgoing" size={16} /> Withdraw
+            </button>
+            <button className="btn primary" onClick={() => setSending(true)}>
+              <Icon name="send" size={16} /> Send money
+            </button>
+          </div>
         )}
       </div>
       {wallets.data && (
@@ -178,8 +195,10 @@ function Balances({ orgId }: { orgId: string }) {
           }}
         />
       </div>
+      {selected && <CashRequests wallet={selected} />}
       {selected && <Statement wallet={selected} />}
       {sending && selected && <TransferModal wallet={selected} onClose={() => setSending(false)} />}
+      {cash && selected && <CashRequestModal wallet={selected} type={cash} onClose={() => setCash(null)} />}
     </div>
   );
 }

@@ -133,6 +133,40 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(ivan.getByText('Transfer from @maria — Share of the registration fee')).toBeVisible();
   });
 
+  test('a payout request holds the money until the cash desk pays it out; statement export', async () => {
+    await ivan.getByRole('button', { name: 'Withdraw' }).click();
+    await ivan.getByLabel('Amount (USD)').fill('20');
+    await ivan.getByLabel('Note for the finance manager (optional)').fill('IBAN DE02 1203 0000 0000 2020 51');
+    await ivan.getByRole('button', { name: 'Request payout' }).click();
+    await expect(ivan.getByText('20.00 frozen')).toBeVisible();
+    await expect(ivan.getByText('Available: 100.00 USD')).toBeVisible();
+    await expect(ivan.getByText('Waiting for a finance manager · amount held')).toBeVisible();
+
+    await admin.reload();
+    const request = admin.locator('tr', { hasText: 'Ivan Sokolov' });
+    await request.getByRole('button', { name: 'Pay out' }).click();
+    await admin.getByLabel('Reference').fill('SEPA-0077');
+    await admin.getByRole('button', { name: 'Confirm payout' }).click();
+    await expect(admin.getByText('Nothing is waiting')).toBeVisible();
+
+    // The person sees the outcome live.
+    await expect(ivan.getByText('Done by Owner · ref. SEPA-0077')).toBeVisible();
+    await expect(ivan.getByText('20.00 frozen')).toBeHidden();
+    await expect(ivan.locator('.bank-card').getByText('Available: 100.00 USD')).toBeVisible();
+
+    await ivan.getByRole('button', { name: 'Export CSV' }).click();
+    await ivan.getByRole('tab', { name: 'All time' }).click();
+    const [download] = await Promise.all([
+      ivan.waitForEvent('download'),
+      ivan.getByRole('button', { name: 'Download CSV' }).click(),
+    ]);
+    expect(download.suggestedFilename()).toMatch(/^ovl-statement-usd-\d{4}-\d{2}-\d{2}\.csv$/);
+    const csv = await (await download.createReadStream()).toArray();
+    const text = Buffer.concat(csv).toString('utf8');
+    expect(text).toContain('Date,Operation,Description,Amount,Balance after,Currency,Entry');
+    expect(text).toContain('Withdrawal via manager transfer (ref. SEPA-0077),-20.00,100.00,USD');
+  });
+
   test('company application: moderation checklist, approval, registry and exchange', async () => {
     await maria.goto('./#/applications?new=company');
     await maria.getByLabel('Company name').fill('Northwind Studio');

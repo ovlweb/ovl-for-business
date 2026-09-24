@@ -21,7 +21,7 @@ import { SupportPage } from './pages/Support';
 import { UsersPage } from './pages/Users';
 import { useAdminTheme } from './theme';
 
-type CountKey = 'pendingApplications' | 'openTickets';
+type CountKey = 'pendingApplications' | 'openTickets' | 'pendingCashRequests';
 
 interface Section {
   path: string;
@@ -57,6 +57,7 @@ export const SECTIONS: Section[] = [
     group: 'People & money',
     permission: 'wallet.view_all',
     element: <CashDeskPage />,
+    count: 'pendingCashRequests',
   },
   {
     path: 'applications',

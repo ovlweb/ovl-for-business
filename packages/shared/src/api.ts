@@ -273,6 +273,61 @@ export const cashOperationSchema = z.object({
 });
 export type CashOperation = z.infer<typeof cashOperationSchema>;
 
+/** Someone asks a finance manager to deposit to or pay out from one of their balances. */
+export const CASH_REQUEST_STATUSES = ['pending', 'completed', 'declined', 'cancelled'] as const;
+
+export const cashRequestInputSchema = z.object({
+  type: z.enum(['deposit', 'withdrawal']),
+  method: z.enum(CASH_METHODS),
+  amount: decimalAmountSchema,
+  note: z
+    .string()
+    .trim()
+    .max(1000)
+    .optional()
+    .describe('Where the money comes from or goes to, e.g. bank details or a preferred cash desk time'),
+});
+export type CashRequestInput = z.input<typeof cashRequestInputSchema>;
+
+export const cashRequestSchema = z.object({
+  id: uuid,
+  walletId: uuid,
+  ownerType: walletOwnerTypeSchema,
+  ownerId: uuid,
+  ownerName: z.string(),
+  type: z.enum(['deposit', 'withdrawal']),
+  method: z.enum(CASH_METHODS),
+  amount: z.string(),
+  currency: z.string(),
+  note: z.string(),
+  status: z.enum(CASH_REQUEST_STATUSES),
+  requestedBy: userSummarySchema.pick({ id: true, username: true, displayName: true }),
+  handledBy: userSummarySchema.pick({ id: true, username: true, displayName: true }).nullable(),
+  reference: z.string().nullable().describe('Reference of the cash operation that fulfilled the request'),
+  declineReason: z.string().nullable(),
+  createdAt: isoDate,
+  handledAt: isoDate.nullable(),
+});
+export type CashRequest = z.infer<typeof cashRequestSchema>;
+export type CashRequestStatus = (typeof CASH_REQUEST_STATUSES)[number];
+
+export const completeCashRequestSchema = z.object({
+  reference: z.string().trim().min(1).max(128).describe('Bank reference, receipt number, cash desk slip…'),
+  note: z.string().trim().max(1000).optional(),
+});
+export const declineCashRequestSchema = z.object({ reason: z.string().trim().min(3).max(500) });
+
+export const statementRangeSchema = z.object({
+  from: z.iso.date().optional().describe('First day to include (YYYY-MM-DD)'),
+  to: z.iso.date().optional().describe('Last day to include (YYYY-MM-DD)'),
+});
+export type StatementRange = z.infer<typeof statementRangeSchema>;
+export const statementLinkSchema = z.object({
+  path: z.string().describe('Append to the server address; works without an Authorization header'),
+  expiresAt: isoDate,
+});
+export type StatementLink = z.infer<typeof statementLinkSchema>;
+
 // ---------------------------------------------------------------------------
 // Organizations
 // ---------------------------------------------------------------------------
@@ -638,6 +693,7 @@ export const adminStatsSchema = z.object({
   openTickets: z.number(),
   activeListings: z.number(),
   registryEntries: z.number(),
+  pendingCashRequests: z.number(),
   balances: z.array(z.object({ currency: z.string(), total: z.string(), wallets: z.number() })),
   /** The last 14 days, oldest first (UTC dates). */
   activity: z.array(
@@ -659,7 +715,8 @@ export type RealtimeEvent =
   | { type: 'typing'; chatId: string; userId: string }
   | { type: 'application.updated'; applicationId: string; status: string; stageIndex: number }
   | { type: 'story.created'; storyId: string }
-  | { type: 'wallet.updated'; walletId: string };
+  | { type: 'wallet.updated'; walletId: string }
+  | { type: 'cash_request.updated'; requestId: string; walletId: string; status: string };
 
 /** Messages a client may send over the realtime socket. */
 export type RealtimeClientMessage = { type: 'typing'; chatId: string } | { type: 'ping' };

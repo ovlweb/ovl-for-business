@@ -406,11 +406,13 @@ export function UserName({ user, showHandle }: { user: UserSummary; showHandle?:
 const STATUS_TONES: Record<string, string> = {
   active: 'ok',
   approved: 'ok',
+  completed: 'ok',
   open: 'info',
   pending: 'warn',
   halted: 'warn',
   suspended: 'bad',
   rejected: 'bad',
+  declined: 'bad',
   revoked: 'bad',
   delisted: 'bad',
 };

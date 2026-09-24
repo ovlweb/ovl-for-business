@@ -1,15 +1,22 @@
 import { Empty, ErrorAlert, Icon, PageHeader, Spinner } from '@ovl/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { api } from '../api';
-import { OpenWalletForm, Statement, TransferModal, WalletCards } from '../components/WalletPanel';
+import {
+  CashRequestModal,
+  CashRequests,
+  OpenWalletForm,
+  Statement,
+  TransferModal,
+  WalletCards,
+} from '../components/WalletPanel';
 
 export function WalletPage() {
   const queryClient = useQueryClient();
   const wallets = useQuery({ queryKey: ['wallets'], queryFn: api.wallets.list });
   const [selectedId, setSelectedId] = useState<string>();
   const [sending, setSending] = useState(false);
+  const [cash, setCash] = useState<'deposit' | 'withdrawal' | null>(null);
   const selected = wallets.data?.find((w) => w.id === selectedId) ?? wallets.data?.[0];
 
   return (
@@ -20,17 +27,25 @@ export function WalletPage() {
         subtitle="Your personal balances in any world currency."
         actions={
           selected && (
-            <button className="btn primary" onClick={() => setSending(true)}>
-              Send money
-            </button>
+            <>
+              <button className="btn" onClick={() => setCash('deposit')}>
+                <Icon name="incoming" size={16} /> Deposit
+              </button>
+              <button className="btn" onClick={() => setCash('withdrawal')}>
+                <Icon name="outgoing" size={16} /> Withdraw
+              </button>
+              <button className="btn primary" onClick={() => setSending(true)}>
+                <Icon name="send" size={16} /> Send money
+              </button>
+            </>
           )
         }
       />
       <div className="alert info small">
         <Icon name="info" size={17} />
         <span>
-          Deposits and withdrawals are handled by finance managers — by bank transfer or physically at the
-          cash desk. <Link to="/support">Contact support</Link> to top up.
+          Deposits and payouts are handled by finance managers, by bank transfer or at the cash desk. Ask for
+          one with <b>Deposit</b> or <b>Withdraw</b>; a payout holds the amount until it is paid out.
         </span>
       </div>
       {wallets.isLoading && <Spinner center />}
@@ -53,8 +68,10 @@ export function WalletPage() {
           }}
         />
       </div>
+      {selected && <CashRequests wallet={selected} />}
       {selected && <Statement wallet={selected} />}
       {sending && selected && <TransferModal wallet={selected} onClose={() => setSending(false)} />}
+      {cash && selected && <CashRequestModal wallet={selected} type={cash} onClose={() => setCash(null)} />}
     </div>
   );
 }

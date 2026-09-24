@@ -1,0 +1,502 @@
+import {
+  cashRequestInputSchema,
+  cashRequestSchema,
+  CASH_REQUEST_STATUSES,
+  completeCashRequestSchema,
+  declineCashRequestSchema,
+  statementLinkSchema,
+  statementRangeSchema,
+  type StatementRange,
+  formatAmount,
+  parseAmount,
+  type CashRequest,
+} from '@ovl/shared';
+import { and, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
+import type { FastifyInstance } from 'fastify';
+import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import { z } from 'zod';
+import type { Db } from '../db/client';
+import {
+  cashOperations,
+  cashRequests,
+  fundLocks,
+  ledgerEntries,
+  organizations,
+  sessions,
+  users,
+  wallets,
+} from '../db/schema';
+import { audit } from '../lib/audit';
+import { badRequest, conflict, forbidden, insufficientFunds, notFound, unauthorized } from '../lib/errors';
+import { iso, isoOrNull } from '../lib/mappers';
+import { openLink, signLink } from '../lib/signed-links';
+import { currentUser } from '../plugins/auth';
+import { walletAudience } from './wallets/routes';
+import {
+  assertWalletAccess,
+  credit,
+  debit,
+  frozenAmounts,
+  lockWallet,
+  type WalletRow,
+} from './wallets/service';
+
+/** Pending payouts hold the money until a manager pays it out or declines. */
+const WITHDRAWAL_HOLD = 'withdrawal_request';
+const HOLD_UNTIL = new Date('2100-01-01T00:00:00Z');
+
+export interface CashOperationArgs {
+  wallet: WalletRow;
+  type: 'deposit' | 'withdrawal';
+  method: 'manager_transfer' | 'physical_cash';
+  amount: bigint;
+  reference: string;
+  note?: string;
+  actorId: string;
+  ip?: string;
+}
+
+/** Record a cash-desk operation and move the money; call inside a transaction. */
+export async function recordCashOperation(tx: Db, args: CashOperationArgs): Promise<string> {
+  const [op] = await tx
+    .insert(cashOperations)
+    .values({
+      walletId: args.wallet.id,
+      type: args.type,
+      method: args.method,
+      amount: args.amount,
+      currency: args.wallet.currency,
+      reference: args.reference,
+      note: args.note ?? '',
+      processedBy: args.actorId,
+    })
+    .returning({ id: cashOperations.id });
+  const method = args.method === 'physical_cash' ? 'cash desk' : 'manager transfer';
+  const options = {
+    description: `${args.type === 'deposit' ? 'Deposit' : 'Withdrawal'} via ${method} (ref. ${args.reference})`,
+    referenceType: 'cash_operation',
+    referenceId: op!.id,
+    actorId: args.actorId,
+  };
+  if (args.type === 'deposit') await credit(tx, args.wallet.id, args.amount, 'deposit', options);
+  else await debit(tx, args.wallet.id, args.amount, 'withdrawal', options);
+  await audit(tx, {
+    actorId: args.actorId,
+    action: `wallet.${args.type}`,
+    targetType: 'wallet',
+    targetId: args.wallet.id,
+    data: {
+      amount: formatAmount(args.amount, args.wallet.currency),
+      currency: args.wallet.currency,
+      method: args.method,
+      reference: args.reference,
+    },
+    ip: args.ip,
+  });
+  return op!.id;
+}
+
+const requester = alias(users, 'requester');
+const handler = alias(users, 'handler');
+const ownerUser = alias(users, 'owner_user');
+
+export async function cashRequestDtos(db: Db, where?: SQL, limit = 100): Promise<CashRequest[]> {
+  const rows = await db
+    .select({
+      r: cashRequests,
+      wallet: wallets,
+      requester: { id: requester.id, username: requester.username, displayName: requester.displayName },
+      handler: { id: handler.id, username: handler.username, displayName: handler.displayName },
+      ownerUserName: ownerUser.displayName,
+      orgName: organizations.name,
+      reference: cashOperations.reference,
+    })
+    .from(cashRequests)
+    .innerJoin(wallets, eq(wallets.id, cashRequests.walletId))
+    .innerJoin(requester, eq(requester.id, cashRequests.requestedBy))
+    .leftJoin(handler, eq(handler.id, cashRequests.handledBy))
+    .leftJoin(ownerUser, eq(ownerUser.id, wallets.userId))
+    .leftJoin(organizations, eq(organizations.id, wallets.organizationId))
+    .leftJoin(cashOperations, eq(cashOperations.id, cashRequests.cashOperationId))
+    .where(where)
+    .orderBy(desc(cashRequests.createdAt))
+    .limit(limit);
+  return rows.map(({ r, wallet, requester, handler, ownerUserName, orgName, reference }) => ({
+    id: r.id,
+    walletId: r.walletId,
+    ownerType: wallet.ownerType,
+    ownerId: (wallet.userId ?? wallet.organizationId)!,
+    ownerName: ownerUserName ?? orgName ?? '',
+    type: r.type,
+    method: r.method,
+    amount: formatAmount(r.amount, r.currency),
+    currency: r.currency,
+    note: r.note,
+    status: r.status,
+    requestedBy: requester,
+    handledBy: handler?.id ? handler : null,
+    reference: reference ?? null,
+    declineReason: r.declineReason,
+    createdAt: iso(r.createdAt),
+    handledAt: isoOrNull(r.handledAt),
+  }));
+}
+
+async function releaseHold(tx: Db, requestId: string) {
+  await tx
+    .delete(fundLocks)
+    .where(and(eq(fundLocks.referenceId, requestId), eq(fundLocks.reason, WITHDRAWAL_HOLD)));
+}
+
+/** Lock a pending request for the rest of the transaction. */
+async function lockPending(tx: Db, id: string) {
+  const [request] = await tx.select().from(cashRequests).where(eq(cashRequests.id, id)).for('update');
+  if (!request) throw notFound('Request');
+  if (request.status !== 'pending') throw conflict(`This request is already ${request.status}`);
+  return request;
+}
+
+const LINK_TTL_MS = 5 * 60_000;
+
+interface StatementLinkPayload extends Record<string, unknown> {
+  u: string;
+  s: string | null;
+  w: string;
+  from?: string;
+  to?: string;
+}
+
+function csvCell(value: string): string {
+  return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+/** Free text: spreadsheets must not run it as a formula. */
+function csvText(value: string): string {
+  return csvCell(/^[=+\-@\t\r]/.test(value) ? `'${value}` : value);
+}
+
+export async function cashRoutes(fastify: FastifyInstance) {
+  const app = fastify.withTypeProvider<ZodTypeProvider>();
+  const tags = ['wallets'];
+  const adminTags = ['admin'];
+
+  const loadWallet = async (id: string) => {
+    const [wallet] = await app.db.select().from(wallets).where(eq(wallets.id, id));
+    if (!wallet) throw notFound('Wallet');
+    return wallet;
+  };
+
+  const announce = async (walletId: string, requestId: string, status: string) => {
+    const wallet = await loadWallet(walletId);
+    const audience = await walletAudience(app.db, wallet);
+    app.hub.sendToUsers(audience, { type: 'cash_request.updated', requestId, walletId, status });
+    app.hub.sendToUsers(audience, { type: 'wallet.updated', walletId });
+  };
+
+  // ----- People ----------------------------------------------------------------------------
+
+  app.post(
+    '/wallets/:id/cash-requests',
+    {
+      preHandler: app.authenticate,
+      schema: {
+        tags,
+        description:
+          'Ask a finance manager for a deposit or a payout. A payout holds the amount until it is paid out or declined.',
+        params: z.object({ id: z.uuid() }),
+        body: cashRequestInputSchema,
+        response: { 201: cashRequestSchema },
+      },
+    },
+    async (req, reply) => {
+      const me = currentUser(req);
+      const wallet = await loadWallet(req.params.id);
+      await assertWalletAccess(app.db, wallet, me, true);
+      const amount = parseAmount(req.body.amount, wallet.currency);
+      if (amount <= 0n) throw badRequest('Amount must be positive');
+      const id = await app.db.transaction(async (tx) => {
+        const locked = await lockWallet(tx, wallet.id);
+        if (req.body.type === 'withdrawal') {
+          const frozen = (await frozenAmounts(tx, [wallet.id])).get(wallet.id) ?? 0n;
+          if (locked.balance - frozen < amount) {
+            throw insufficientFunds(
+              `Only ${formatAmount(locked.balance - frozen, wallet.currency)} ${wallet.currency} is available to pay out`,
+            );
+          }
+        }
+        const [request] = await tx
+          .insert(cashRequests)
+          .values({
+            walletId: wallet.id,
+            type: req.body.type,
+            method: req.body.method,
+            amount,
+            currency: wallet.currency,
+            note: req.body.note ?? '',
+            requestedBy: me.id,
+          })
+          .returning({ id: cashRequests.id });
+        if (req.body.type === 'withdrawal') {
+          await tx.insert(fundLocks).values({
+            walletId: wallet.id,
+            amount,
+            reason: WITHDRAWAL_HOLD,
+            referenceId: request!.id,
+            unlocksAt: HOLD_UNTIL,
+          });
+        }
+        return request!.id;
+      });
+      await announce(wallet.id, id, 'pending');
+      const [dto] = await cashRequestDtos(app.db, eq(cashRequests.id, id), 1);
+      return reply.status(201).send(dto!);
+    },
+  );
+
+  app.get(
+    '/wallets/:id/cash-requests',
+    {
+      preHandler: app.authenticate,
+      schema: { tags, params: z.object({ id: z.uuid() }), response: { 200: z.array(cashRequestSchema) } },
+    },
+    async (req) => {
+      const wallet = await loadWallet(req.params.id);
+      await assertWalletAccess(app.db, wallet, currentUser(req));
+      return cashRequestDtos(app.db, eq(cashRequests.walletId, wallet.id), 50);
+    },
+  );
+
+  app.post(
+    '/cash-requests/:id/cancel',
+    {
+      preHandler: app.authenticate,
+      schema: { tags, params: z.object({ id: z.uuid() }), response: { 200: cashRequestSchema } },
+    },
+    async (req) => {
+      const me = currentUser(req);
+      const walletId = await app.db.transaction(async (tx) => {
+        const request = await lockPending(tx, req.params.id);
+        const [wallet] = await tx.select().from(wallets).where(eq(wallets.id, request.walletId));
+        await assertWalletAccess(tx, wallet!, me, true);
+        await releaseHold(tx, request.id);
+        await tx
+          .update(cashRequests)
+          .set({ status: 'cancelled', handledAt: new Date() })
+          .where(eq(cashRequests.id, request.id));
+        return request.walletId;
+      });
+      await announce(walletId, req.params.id, 'cancelled');
+      const [dto] = await cashRequestDtos(app.db, eq(cashRequests.id, req.params.id), 1);
+      return dto!;
+    },
+  );
+
+  /** The person a download link was made for, if the account and its session are still live. */
+  const linkUser = async (payload: StatementLinkPayload) => {
+    const [user] = await app.db
+      .select({ id: users.id, role: users.role, status: users.status, session: sessions.id })
+      .from(users)
+      .leftJoin(
+        sessions,
+        payload.s
+          ? and(eq(sessions.id, payload.s), eq(sessions.userId, users.id), isNull(sessions.revokedAt))
+          : sql`false`,
+      )
+      .where(eq(users.id, payload.u));
+    if (!user || user.status !== 'active' || (payload.s && !user.session))
+      throw unauthorized('This download link is no longer valid');
+    return user;
+  };
+
+  app.post(
+    '/wallets/:id/statement-link',
+    {
+      preHandler: app.authenticate,
+      schema: {
+        tags,
+        description:
+          'A download link for the CSV statement that works for 5 minutes without an Authorization header ' +
+          '(for apps that open the file in the system browser).',
+        params: z.object({ id: z.uuid() }),
+        body: statementRangeSchema,
+        response: { 200: statementLinkSchema },
+      },
+    },
+    async (req) => {
+      const me = currentUser(req);
+      const wallet = await loadWallet(req.params.id);
+      await assertWalletAccess(app.db, wallet, me);
+      const payload: StatementLinkPayload = { u: me.id, s: me.sessionId, w: wallet.id, ...req.body };
+      const link = signLink(payload, app.config.JWT_SECRET, LINK_TTL_MS);
+      return {
+        path: `/api/v1/wallets/${wallet.id}/statement.csv?link=${link}`,
+        expiresAt: new Date(Date.now() + LINK_TTL_MS).toISOString(),
+      };
+    },
+  );
+
+  app.get(
+    '/wallets/:id/statement.csv',
+    {
+      // Either a normal access token or a link from POST /wallets/:id/statement-link.
+      preHandler: async (req, reply) => {
+        if (!(req.query as { link?: string }).link) await app.authenticate(req, reply);
+      },
+      schema: {
+        tags,
+        description: 'Download the statement as CSV (spreadsheets, accounting). Optional ISO date range.',
+        params: z.object({ id: z.uuid() }),
+        querystring: statementRangeSchema.extend({ link: z.string().max(2048).optional() }),
+      },
+    },
+    async (req, reply) => {
+      const wallet = await loadWallet(req.params.id);
+      let range: StatementRange = { from: req.query.from, to: req.query.to };
+      if (req.query.link) {
+        const payload = openLink<StatementLinkPayload>(req.query.link, app.config.JWT_SECRET);
+        if (!payload || payload.w !== wallet.id) throw unauthorized('This download link is no longer valid');
+        await assertWalletAccess(app.db, wallet, await linkUser(payload));
+        range = { from: payload.from, to: payload.to };
+      } else {
+        await assertWalletAccess(app.db, wallet, currentUser(req));
+      }
+      const { from, to } = range;
+      const rows = await app.db
+        .select()
+        .from(ledgerEntries)
+        .where(
+          and(
+            eq(ledgerEntries.walletId, wallet.id),
+            from ? sql`${ledgerEntries.createdAt} >= ${from}::date` : undefined,
+            to ? sql`${ledgerEntries.createdAt} < ${to}::date + 1` : undefined,
+          ),
+        )
+        .orderBy(ledgerEntries.id)
+        .limit(50_000);
+      const lines = [
+        ['Date', 'Operation', 'Description', 'Amount', 'Balance after', 'Currency', 'Entry'].join(','),
+        ...rows.map((e) =>
+          [
+            csvCell(iso(e.createdAt)),
+            csvCell(e.kind),
+            csvText(e.description),
+            csvCell(formatAmount(e.amount, wallet.currency)),
+            csvCell(formatAmount(e.balanceAfter, wallet.currency)),
+            csvCell(wallet.currency),
+            String(e.id),
+          ].join(','),
+        ),
+      ];
+      const name = `ovl-statement-${wallet.currency.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`;
+      return reply
+        .header('content-type', 'text/csv; charset=utf-8')
+        .header('content-disposition', `attachment; filename="${name}"`)
+        .header('cache-control', 'private, no-store')
+        .send(`\uFEFF${lines.join('\r\n')}\r\n`);
+    },
+  );
+
+  // ----- Finance managers ------------------------------------------------------------------
+
+  app.get(
+    '/admin/cash-requests',
+    {
+      preHandler: app.requirePermission('wallet.view_all'),
+      schema: {
+        tags: adminTags,
+        querystring: z.object({ status: z.enum(CASH_REQUEST_STATUSES).optional() }),
+        response: { 200: z.array(cashRequestSchema) },
+      },
+    },
+    async (req) =>
+      cashRequestDtos(app.db, req.query.status ? eq(cashRequests.status, req.query.status) : undefined),
+  );
+
+  app.post(
+    '/admin/cash-requests/:id/complete',
+    {
+      preHandler: app.requirePermission('wallet.cash'),
+      schema: {
+        tags: adminTags,
+        description: 'Fulfil a request: records the cash operation and moves the money.',
+        params: z.object({ id: z.uuid() }),
+        body: completeCashRequestSchema,
+        response: { 200: cashRequestSchema },
+      },
+    },
+    async (req) => {
+      const me = currentUser(req);
+      const walletId = await app.db.transaction(async (tx) => {
+        const request = await lockPending(tx, req.params.id);
+        if (request.requestedBy === me.id)
+          throw forbidden('Another finance manager must handle your own request');
+        const wallet = await lockWallet(tx, request.walletId);
+        if (request.type === 'withdrawal') await releaseHold(tx, request.id);
+        const opId = await recordCashOperation(tx, {
+          wallet,
+          type: request.type,
+          method: request.method,
+          amount: request.amount,
+          reference: req.body.reference,
+          note: req.body.note,
+          actorId: me.id,
+          ip: req.ip,
+        });
+        await tx
+          .update(cashRequests)
+          .set({ status: 'completed', handledBy: me.id, handledAt: new Date(), cashOperationId: opId })
+          .where(eq(cashRequests.id, request.id));
+        return request.walletId;
+      });
+      await announce(walletId, req.params.id, 'completed');
+      const [dto] = await cashRequestDtos(app.db, eq(cashRequests.id, req.params.id), 1);
+      return dto!;
+    },
+  );
+
+  app.post(
+    '/admin/cash-requests/:id/decline',
+    {
+      preHandler: app.requirePermission('wallet.cash'),
+      schema: {
+        tags: adminTags,
+        params: z.object({ id: z.uuid() }),
+        body: declineCashRequestSchema,
+        response: { 200: cashRequestSchema },
+      },
+    },
+    async (req) => {
+      const me = currentUser(req);
+      const walletId = await app.db.transaction(async (tx) => {
+        const request = await lockPending(tx, req.params.id);
+        await releaseHold(tx, request.id);
+        await tx
+          .update(cashRequests)
+          .set({
+            status: 'declined',
+            handledBy: me.id,
+            handledAt: new Date(),
+            declineReason: req.body.reason,
+          })
+          .where(eq(cashRequests.id, request.id));
+        await audit(tx, {
+          actorId: me.id,
+          action: 'cash_request.decline',
+          targetType: 'wallet',
+          targetId: request.walletId,
+          data: {
+            amount: formatAmount(request.amount, request.currency),
+            currency: request.currency,
+            reason: req.body.reason,
+          },
+          ip: req.ip,
+        });
+        return request.walletId;
+      });
+      await announce(walletId, req.params.id, 'declined');
+      const [dto] = await cashRequestDtos(app.db, eq(cashRequests.id, req.params.id), 1);
+      return dto!;
+    },
+  );
+}

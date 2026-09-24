@@ -18,12 +18,13 @@ separate admin panel. One Docker-based server with an open API, and clients for 
 
 **Web client**: animated sign-in, first-run tour, dashboard, chats and the stock exchange.
 
-|                                                            |                                                                               |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| ![Animated sign-in](docs/screenshots/web/login.png)        | ![First-run tour: pick a theme](docs/screenshots/web/onboarding.png)          |
-| ![Home dashboard](docs/screenshots/web/home.png)           | ![Chats](docs/screenshots/web/chats.png)                                      |
-| ![Wallet with bank cards](docs/screenshots/web/wallet.png) | ![Listing with an interactive price chart](docs/screenshots/web/exchange.png) |
-| ![Themes (Aurora)](docs/screenshots/web/themes.png)        | ![Ctrl/⌘ + K search](docs/screenshots/web/palette.png)                        |
+|                                                                          |                                                                               |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| ![Animated sign-in](docs/screenshots/web/login.png)                      | ![First-run tour: pick a theme](docs/screenshots/web/onboarding.png)          |
+| ![Home dashboard](docs/screenshots/web/home.png)                         | ![Chats](docs/screenshots/web/chats.png)                                      |
+| ![Wallet with bank cards](docs/screenshots/web/wallet.png)               | ![Listing with an interactive price chart](docs/screenshots/web/exchange.png) |
+| ![Themes (Aurora)](docs/screenshots/web/themes.png)                      | ![Ctrl/⌘ + K search](docs/screenshots/web/palette.png)                        |
+| ![Deposit and payout requests](docs/screenshots/web/wallet-requests.png) | ![Public registry](docs/screenshots/web/registry.png)                         |
 
 ![Web client on a phone (Obsidian theme)](docs/screenshots/web/phones.png)
 
@@ -52,7 +53,9 @@ Android, iOS, macOS and Windows.
 - **Business balance in any currency** — 155 ISO 4217 currencies, exact money in minor units,
   immutable ledger per wallet. Money is **deposited only by finance managers** in the admin panel,
   either as a manager-handled transfer or as **physical cash at the desk**, each with a reference and
-  a journal entry. Transfers between people and companies, per-currency balances, statements.
+  a journal entry. People and companies ask for deposits and payouts from their wallet; a payout
+  holds the amount until a manager pays it out or declines it. Transfers between people and
+  companies, per-currency balances, statements with CSV export.
 - **Tech support** — tickets are support chats. Moderators, admins and the owner answer from the same
   client in a separate _Support desk_ section; replies carry a staff badge and the owner's replies a
   special owner badge. The council cannot answer tickets.
