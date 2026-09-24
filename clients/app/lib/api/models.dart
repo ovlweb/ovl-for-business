@@ -1,0 +1,669 @@
+// Data models of the OVL For Business API (v1). Field names mirror
+// packages/shared/src/api.ts; money is always a decimal string.
+
+typedef Json = Map<String, dynamic>;
+
+DateTime _date(Object? v) => DateTime.parse(v as String).toLocal();
+DateTime? _dateOrNull(Object? v) => v == null ? null : _date(v);
+List<T> _list<T>(Object? v, T Function(Json) f) => (v as List? ?? const []).map((e) => f(e as Json)).toList();
+
+const roleLabels = {
+  'user': 'User',
+  'moderator': 'Moderator',
+  'manager': 'Finance manager',
+  'council': 'Council member',
+  'admin': 'Administrator',
+  'owner': 'Owner',
+};
+
+const badgeLabels = {
+  'owner': 'Owner',
+  'admin': 'Admin',
+  'council': 'Council',
+  'moderator': 'Moderator',
+  'manager': 'Finance',
+  'support': 'Support',
+};
+
+const licenseTypeLabels = {
+  'project': 'Project',
+  'fan_project': 'Fan-project',
+  'tv_channel': 'TV channel',
+  'radio_channel': 'Radio channel',
+  'verified_website': 'Verified website',
+  'virtual_country': 'Virtual country',
+  'media': 'Media / publication',
+  'software': 'Software / service',
+  'game': 'Game / game server',
+  'community': 'Community',
+  'business': 'Business license',
+  'other': 'Other (virtual)',
+};
+
+class UserSummary {
+  UserSummary({
+    required this.id,
+    required this.username,
+    required this.displayName,
+    required this.avatarUrl,
+    required this.role,
+    required this.badges,
+  });
+
+  factory UserSummary.fromJson(Json j) => UserSummary(
+    id: j['id'] as String,
+    username: j['username'] as String,
+    displayName: j['displayName'] as String,
+    avatarUrl: j['avatarUrl'] as String?,
+    role: j['role'] as String,
+    badges: List<String>.from(j['badges'] as List? ?? const []),
+  );
+
+  final String id;
+  final String username;
+  final String displayName;
+  final String? avatarUrl;
+  final String role;
+  final List<String> badges;
+
+  Json toJson() => {
+    'id': id,
+    'username': username,
+    'displayName': displayName,
+    'avatarUrl': avatarUrl,
+    'role': role,
+    'badges': badges,
+  };
+}
+
+class UserProfile extends UserSummary {
+  UserProfile.fromJson(Json j)
+    : bio = j['bio'] as String? ?? '',
+      createdAt = _date(j['createdAt']),
+      isContact = j['isContact'] as bool? ?? false,
+      super(
+        id: j['id'] as String,
+        username: j['username'] as String,
+        displayName: j['displayName'] as String,
+        avatarUrl: j['avatarUrl'] as String?,
+        role: j['role'] as String,
+        badges: List<String>.from(j['badges'] as List? ?? const []),
+      );
+
+  final String bio;
+  final DateTime createdAt;
+  final bool isContact;
+}
+
+class Preferences {
+  const Preferences({this.theme, this.onboardingCompleted = false, this.goals = const []});
+
+  factory Preferences.fromJson(Json? j) => Preferences(
+    theme: j?['theme'] as String?,
+    onboardingCompleted: j?['onboardingCompleted'] as bool? ?? false,
+    goals: List<String>.from(j?['goals'] as List? ?? const []),
+  );
+
+  final String? theme;
+  final bool onboardingCompleted;
+  final List<String> goals;
+}
+
+class Me extends UserSummary {
+  Me.fromJson(Json j)
+    : email = j['email'] as String,
+      bio = j['bio'] as String? ?? '',
+      status = j['status'] as String,
+      permissions = List<String>.from(j['permissions'] as List? ?? const []),
+      preferences = Preferences.fromJson(j['preferences'] as Json?),
+      createdAt = _date(j['createdAt']),
+      super(
+        id: j['id'] as String,
+        username: j['username'] as String,
+        displayName: j['displayName'] as String,
+        avatarUrl: j['avatarUrl'] as String?,
+        role: j['role'] as String,
+        badges: List<String>.from(j['badges'] as List? ?? const []),
+      );
+
+  final String email;
+  final String bio;
+  final String status;
+  final List<String> permissions;
+  final Preferences preferences;
+  final DateTime createdAt;
+
+  bool can(String permission) => permissions.contains(permission);
+  bool get isStaff => const ['moderator', 'council', 'admin', 'owner'].contains(role);
+  String get firstName => displayName.split(' ').first;
+}
+
+class AuthResult {
+  AuthResult.fromJson(Json j)
+    : accessToken = j['accessToken'] as String,
+      refreshToken = j['refreshToken'] as String,
+      user = Me.fromJson(j['user'] as Json);
+
+  final String accessToken;
+  final String refreshToken;
+  final Me user;
+}
+
+class Contact extends UserSummary {
+  Contact.fromJson(Json j)
+    : addedAt = _date(j['addedAt']),
+      super(
+        id: j['id'] as String,
+        username: j['username'] as String,
+        displayName: j['displayName'] as String,
+        avatarUrl: j['avatarUrl'] as String?,
+        role: j['role'] as String,
+        badges: List<String>.from(j['badges'] as List? ?? const []),
+      );
+
+  final DateTime addedAt;
+}
+
+class Wallet {
+  Wallet.fromJson(Json j)
+    : id = j['id'] as String,
+      ownerType = j['ownerType'] as String,
+      ownerId = j['ownerId'] as String,
+      currency = j['currency'] as String,
+      balance = j['balance'] as String,
+      frozen = j['frozen'] as String,
+      available = j['available'] as String,
+      createdAt = _date(j['createdAt']);
+
+  final String id;
+  final String ownerType;
+  final String ownerId;
+  final String currency;
+  final String balance;
+  final String frozen;
+  final String available;
+  final DateTime createdAt;
+
+  bool get hasFrozen => (double.tryParse(frozen) ?? 0) > 0;
+}
+
+class LedgerEntry {
+  LedgerEntry.fromJson(Json j)
+    : id = j['id'] as int,
+      amount = j['amount'] as String,
+      balanceAfter = j['balanceAfter'] as String,
+      currency = j['currency'] as String,
+      kind = j['kind'] as String,
+      description = j['description'] as String,
+      createdAt = _date(j['createdAt']);
+
+  final int id;
+  final String amount;
+  final String balanceAfter;
+  final String currency;
+  final String kind;
+  final String description;
+  final DateTime createdAt;
+
+  bool get incoming => !amount.startsWith('-');
+}
+
+class Paged<T> {
+  Paged({required this.items, required this.total});
+
+  factory Paged.fromJson(Json j, T Function(Json) f) => Paged(items: _list(j['items'], f), total: j['total'] as int);
+
+  final List<T> items;
+  final int total;
+}
+
+class Organization {
+  Organization.fromJson(Json j)
+    : id = j['id'] as String,
+      name = j['name'] as String,
+      slug = j['slug'] as String,
+      description = j['description'] as String? ?? '',
+      website = j['website'] as String?,
+      country = j['country'] as String?,
+      baseCurrency = j['baseCurrency'] as String,
+      status = j['status'] as String,
+      registryNumber = j['registryNumber'] as String?,
+      ticker = j['ticker'] as String?,
+      owner = UserSummary.fromJson(j['owner'] as Json),
+      memberCount = j['memberCount'] as int,
+      myRole = j['myRole'] as String?,
+      createdAt = _date(j['createdAt']);
+
+  final String id;
+  final String name;
+  final String slug;
+  final String description;
+  final String? website;
+  final String? country;
+  final String baseCurrency;
+  final String status;
+  final String? registryNumber;
+  final String? ticker;
+  final UserSummary owner;
+  final int memberCount;
+  final String? myRole;
+  final DateTime createdAt;
+
+  bool get canSeeMoney => const ['owner', 'director', 'accountant'].contains(myRole);
+}
+
+class ApplicationReview {
+  ApplicationReview.fromJson(Json j)
+    : stageKey = j['stageKey'] as String,
+      reviewer = UserSummary.fromJson(j['reviewer'] as Json),
+      decision = j['decision'] as String,
+      comment = j['comment'] as String? ?? '',
+      createdAt = _date(j['createdAt']);
+
+  final String stageKey;
+  final UserSummary reviewer;
+  final String decision;
+  final String comment;
+  final DateTime createdAt;
+}
+
+class Application {
+  Application.fromJson(Json j)
+    : id = j['id'] as String,
+      type = j['type'] as String,
+      status = j['status'] as String,
+      stageIndex = j['stageIndex'] as int,
+      currentStage = j['currentStage'] as String?,
+      applicant = UserSummary.fromJson(j['applicant'] as Json),
+      payload = (j['payload'] as Json?) ?? {},
+      result = j['result'] as Json?,
+      rejectionReason = j['rejectionReason'] as String?,
+      reviews = _list(j['reviews'], ApplicationReview.fromJson),
+      createdAt = _date(j['createdAt']),
+      decidedAt = _dateOrNull(j['decidedAt']);
+
+  final String id;
+  final String type;
+  final String status;
+  final int stageIndex;
+  final String? currentStage;
+  final UserSummary applicant;
+  final Json payload;
+  final Json? result;
+  final String? rejectionReason;
+  final List<ApplicationReview> reviews;
+  final DateTime createdAt;
+  final DateTime? decidedAt;
+
+  /// A human title: company name, license title, channel title or the staff role.
+  String get title {
+    final name = payload['name'] ?? payload['title'];
+    if (name is String && name.isNotEmpty) return name;
+    return switch (type) {
+      'moderator' => 'Join the moderation team',
+      'council' => 'Join the council',
+      _ => workflows[type]?.label ?? type,
+    };
+  }
+}
+
+class RegistryHolder {
+  RegistryHolder.fromJson(Json j)
+    : type = j['type'] as String,
+      name = j['name'] as String,
+      handle = j['handle'] as String;
+
+  final String type;
+  final String name;
+  final String handle;
+}
+
+class RegistryEntry {
+  RegistryEntry.fromJson(Json j)
+    : id = j['id'] as String,
+      number = j['number'] as String,
+      kind = j['kind'] as String,
+      licenseType = j['licenseType'] as String?,
+      title = j['title'] as String,
+      description = j['description'] as String? ?? '',
+      website = j['website'] as String?,
+      status = j['status'] as String,
+      holder = RegistryHolder.fromJson(j['holder'] as Json),
+      issuedAt = _date(j['issuedAt']);
+
+  final String id;
+  final String number;
+  final String kind;
+  final String? licenseType;
+  final String title;
+  final String description;
+  final String? website;
+  final String status;
+  final RegistryHolder holder;
+  final DateTime issuedAt;
+
+  String get kindLabel => kind == 'license'
+      ? (licenseTypeLabels[licenseType] ?? 'License')
+      : kind == 'virtual_country'
+      ? 'Virtual country'
+      : 'Organization';
+}
+
+class StockListing {
+  StockListing.fromJson(Json j)
+    : id = j['id'] as String,
+      ticker = j['ticker'] as String,
+      organizationName = (j['organization'] as Json)['name'] as String,
+      organizationSlug = (j['organization'] as Json)['slug'] as String,
+      registryNumber = (j['organization'] as Json)['registryNumber'] as String?,
+      currency = j['currency'] as String,
+      sharePrice = j['sharePrice'] as String,
+      totalShares = j['totalShares'] as String,
+      sharesSold = j['sharesSold'] as String,
+      sharesAvailable = j['sharesAvailable'] as String,
+      marketCap = j['marketCap'] as String,
+      raised = j['raised'] as String,
+      investorsCount = j['investorsCount'] as int,
+      freezePercent = (j['freezePercent'] as num).toDouble(),
+      lockDays = j['lockDays'] as int,
+      status = j['status'] as String,
+      listedAt = _date(j['listedAt']),
+      description = j['description'] as String? ?? '',
+      priceHistory = _list(j['priceHistory'], PricePoint.fromJson);
+
+  final String id;
+  final String ticker;
+  final String organizationName;
+  final String organizationSlug;
+  final String? registryNumber;
+  final String currency;
+  final String sharePrice;
+  final String totalShares;
+  final String sharesSold;
+  final String sharesAvailable;
+  final String marketCap;
+  final String raised;
+  final int investorsCount;
+  final double freezePercent;
+  final int lockDays;
+  final String status;
+  final DateTime listedAt;
+  final String description;
+  final List<PricePoint> priceHistory;
+
+  /// Change since the first recorded price, in percent (null without history).
+  double? get change {
+    if (priceHistory.length < 2) return null;
+    final first = priceHistory.first.value;
+    return first == 0 ? null : (priceHistory.last.value - first) / first * 100;
+  }
+}
+
+class PricePoint {
+  PricePoint.fromJson(Json j) : price = j['price'] as String, at = _date(j['at']);
+
+  final String price;
+  final DateTime at;
+
+  double get value => double.tryParse(price) ?? 0;
+}
+
+class Holding {
+  Holding.fromJson(Json j)
+    : ticker = j['ticker'] as String,
+      organizationName = j['organizationName'] as String,
+      currency = j['currency'] as String,
+      shares = j['shares'] as String,
+      invested = j['invested'] as String,
+      currentValue = j['currentValue'] as String;
+
+  final String ticker;
+  final String organizationName;
+  final String currency;
+  final String shares;
+  final String invested;
+  final String currentValue;
+}
+
+class Investment {
+  Investment.fromJson(Json j)
+    : id = j['id'] as String,
+      ticker = j['ticker'] as String,
+      organizationName = j['organizationName'] as String,
+      shares = j['shares'] as String,
+      amount = j['amount'] as String,
+      currency = j['currency'] as String,
+      frozenAmount = j['frozenAmount'] as String,
+      unlocksAt = _date(j['unlocksAt']),
+      createdAt = _date(j['createdAt']);
+
+  final String id;
+  final String ticker;
+  final String organizationName;
+  final String shares;
+  final String amount;
+  final String currency;
+  final String frozenAmount;
+  final DateTime unlocksAt;
+  final DateTime createdAt;
+}
+
+class Portfolio {
+  Portfolio.fromJson(Json j)
+    : holdings = _list(j['holdings'], Holding.fromJson),
+      investments = _list(j['investments'], Investment.fromJson);
+
+  final List<Holding> holdings;
+  final List<Investment> investments;
+}
+
+class Message {
+  Message.fromJson(Json j)
+    : id = j['id'] as int,
+      chatId = j['chatId'] as String,
+      sender = j['sender'] == null ? null : UserSummary.fromJson(j['sender'] as Json),
+      kind = j['kind'] as String,
+      body = j['body'] as String,
+      meta = (j['meta'] as Json?) ?? {},
+      replyToId = j['replyToId'] as int?,
+      editedAt = _dateOrNull(j['editedAt']),
+      deleted = j['deleted'] as bool? ?? false,
+      createdAt = _date(j['createdAt']);
+
+  final int id;
+  final String chatId;
+  final UserSummary? sender;
+  final String kind;
+  final String body;
+  final Json meta;
+  final int? replyToId;
+  final DateTime? editedAt;
+  final bool deleted;
+  final DateTime createdAt;
+
+  bool get isSystem => kind == 'system';
+}
+
+class SupportInfo {
+  SupportInfo.fromJson(Json j)
+    : status = j['status'] as String,
+      requester = UserSummary.fromJson(j['requester'] as Json);
+
+  final String status;
+  final UserSummary requester;
+}
+
+class Chat {
+  Chat.fromJson(Json j)
+    : id = j['id'] as String,
+      type = j['type'] as String,
+      title = j['title'] as String,
+      description = j['description'] as String? ?? '',
+      handle = j['handle'] as String?,
+      memberCount = j['memberCount'] as int,
+      myRole = j['myRole'] as String?,
+      pinned = j['pinned'] as bool? ?? false,
+      unreadCount = j['unreadCount'] as int? ?? 0,
+      lastMessage = j['lastMessage'] == null ? null : Message.fromJson(j['lastMessage'] as Json),
+      peer = j['peer'] == null ? null : UserSummary.fromJson(j['peer'] as Json),
+      support = j['support'] == null ? null : SupportInfo.fromJson(j['support'] as Json),
+      createdAt = _date(j['createdAt']);
+
+  final String id;
+  final String type;
+  final String title;
+  final String description;
+  final String? handle;
+  final int memberCount;
+  final String? myRole;
+  final bool pinned;
+  final int unreadCount;
+  final Message? lastMessage;
+  final UserSummary? peer;
+  final SupportInfo? support;
+  final DateTime createdAt;
+
+  DateTime get activityAt => lastMessage?.createdAt ?? createdAt;
+
+  /// Channels are read-only for subscribers; everything else accepts messages from members.
+  bool get canPost => type != 'channel' || myRole == 'owner' || myRole == 'admin';
+}
+
+class ChatMember {
+  ChatMember.fromJson(Json j) : user = UserSummary.fromJson(j['user'] as Json), role = j['role'] as String;
+
+  final UserSummary user;
+  final String role;
+}
+
+class Story {
+  Story.fromJson(Json j)
+    : id = j['id'] as String,
+      author = UserSummary.fromJson(j['author'] as Json),
+      text = j['text'] as String,
+      linkUrl = j['linkUrl'] as String?,
+      background = j['background'] as String,
+      viewed = j['viewed'] as bool? ?? false,
+      viewsCount = j['viewsCount'] as int? ?? 0,
+      createdAt = _date(j['createdAt']);
+
+  final String id;
+  final UserSummary author;
+  final String text;
+  final String? linkUrl;
+  final String background;
+  final bool viewed;
+  final int viewsCount;
+  final DateTime createdAt;
+}
+
+// ---------------------------------------------------------------------------
+// Approval workflows (mirrors packages/shared/src/workflows.ts)
+// ---------------------------------------------------------------------------
+
+class ChecklistItem {
+  const ChecklistItem(this.key, this.label);
+  final String key;
+  final String label;
+}
+
+class WorkflowStage {
+  const WorkflowStage(this.key, this.label, this.description, {this.checklist = const []});
+  final String key;
+  final String label;
+  final String description;
+  final List<ChecklistItem> checklist;
+}
+
+class Workflow {
+  const Workflow(this.label, this.description, this.stages);
+  final String label;
+  final String description;
+  final List<WorkflowStage> stages;
+}
+
+const workflows = <String, Workflow>{
+  'company': Workflow(
+    'Company / business account',
+    'Registers a company with its business license in the public registry and (optionally) lists it on the stock exchange.',
+    [
+      WorkflowStage(
+        'moderation',
+        'Moderation review',
+        'A moderator must confirm they reviewed every part of the company file.',
+        checklist: [
+          ChecklistItem('identity', 'Applicant identity and contact details'),
+          ChecklistItem('company', 'Company name, description and website'),
+          ChecklistItem('business_plan', 'Business plan and activity'),
+          ChecklistItem('license', 'Requested business license'),
+          ChecklistItem('listing', 'Stock listing parameters (ticker, share price, share count)'),
+        ],
+      ),
+      WorkflowStage(
+        'approval',
+        'Council or administration approval',
+        'Approved by the council quorum, or by an admin / the owner.',
+      ),
+    ],
+  ),
+  'license': Workflow(
+    'License',
+    'Virtual licenses (projects, fan-projects, TV / radio channels, websites, virtual countries…). Published to the public registry after all confirmations.',
+    [
+      WorkflowStage(
+        'moderation',
+        'Moderation',
+        'A moderator checks the request and confirms it is virtual-only.',
+        checklist: [
+          ChecklistItem('holder', 'License holder'),
+          ChecklistItem('content', 'Title, description and supporting links'),
+          ChecklistItem('virtual_only', 'The license covers virtual things only (nothing physical)'),
+        ],
+      ),
+      WorkflowStage('council', 'Council vote', 'Council members vote until the quorum is reached.'),
+      WorkflowStage(
+        'owner',
+        'Owner confirmation',
+        'Final confirmation by the owner, then rollout to the public registry.',
+      ),
+    ],
+  ),
+  'moderator': Workflow(
+    'Join the moderation team',
+    'Become a moderator: review applications, answer tech support and manage channels.',
+    [
+      WorkflowStage('council', 'Council vote', 'Council members vote on the candidate.'),
+      WorkflowStage('administration', 'Administration confirmation', 'An admin or the owner grants the role.'),
+    ],
+  ),
+  'council': Workflow(
+    'Join the council',
+    'Become a council member with a vote on companies, licenses and new members.',
+    [
+      WorkflowStage('council', 'Council vote', 'Current council members vote on the candidate.'),
+      WorkflowStage('owner', 'Owner confirmation', 'The owner confirms the new council member.'),
+    ],
+  ),
+  'news_channel': Workflow('News channel', 'News channels can only be created through moderation.', [
+    WorkflowStage('moderation', 'Moderation', 'A moderator approves the channel.'),
+  ]),
+};
+
+// ---------------------------------------------------------------------------
+// Realtime events
+// ---------------------------------------------------------------------------
+
+class RealtimeEvent {
+  RealtimeEvent.fromJson(Json j)
+    : type = j['type'] as String,
+      chatId = j['chatId'] as String?,
+      message = j['message'] == null ? null : Message.fromJson(j['message'] as Json),
+      userId = j['userId'] as String?,
+      status = j['status'] as String?;
+
+  final String type;
+  final String? chatId;
+  final Message? message;
+  final String? userId;
+  final String? status;
+}

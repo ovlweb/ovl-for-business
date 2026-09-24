@@ -1,7 +1,7 @@
 /**
  * Curated colour themes shared by every client (web, admin panel, native apps).
  * Web turns them into CSS variables; the native apps generate their palettes from this file
- * (`pnpm themes:dart`), so a theme looks the same everywhere.
+ * (`pnpm gen:dart`), so a theme looks the same everywhere.
  */
 
 export interface ThemeColors {

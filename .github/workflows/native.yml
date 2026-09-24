@@ -1,84 +1,109 @@
-# Builds the desktop (macOS / Windows / Linux) and mobile (Android / iOS) apps on demand.
-# Set the repository variable OVL_API_URL to the public API origin the apps should use.
+# Native apps (Flutter): Android, iOS, macOS, Windows and Linux from clients/app.
+# Set the repository variable OVL_API_URL to the public API origin the release builds should use.
 name: Native apps
 
 on:
+  push:
+    branches: [main]
+    paths:
+      [
+        'clients/app/**',
+        'packages/shared/src/themes.ts',
+        'packages/shared/src/currencies.ts',
+        'scripts/gen-dart.ts',
+        '.github/workflows/native.yml',
+      ]
+  pull_request:
+    paths:
+      [
+        'clients/app/**',
+        'packages/shared/src/themes.ts',
+        'packages/shared/src/currencies.ts',
+        'scripts/gen-dart.ts',
+        '.github/workflows/native.yml',
+      ]
   workflow_dispatch:
 
+env:
+  FLUTTER_VERSION: 3.47.5
+  API_URL: ${{ vars.OVL_API_URL || 'http://localhost:4000' }}
+
 jobs:
-  desktop:
-    name: Desktop (${{ matrix.os }})
+  check:
+    name: Analyze and test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clients/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generated Dart code matches the shared TypeScript definitions
+        working-directory: .
+        run: pnpm gen:dart && git diff --exit-code -- clients/app/lib
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: flutter analyze
+      - run: flutter test
+
+  build:
+    name: ${{ matrix.name }}
+    needs: check
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-22.04]
+        include:
+          - name: Android
+            os: ubuntu-latest
+            build: flutter build apk --release
+            artifact: clients/app/build/app/outputs/flutter-apk/*.apk
+          - name: iOS
+            os: macos-latest
+            build: flutter build ios --release --no-codesign
+            artifact: clients/app/build/ios/iphoneos/*.app
+          - name: macOS
+            os: macos-latest
+            build: flutter build macos --release
+            artifact: clients/app/build/macos/Build/Products/Release/*.app
+          - name: Windows
+            os: windows-latest
+            build: flutter build windows --release
+            artifact: clients/app/build/windows/x64/runner/Release/
+          - name: Linux
+            os: ubuntu-latest
+            build: flutter build linux --release
+            artifact: clients/app/build/linux/x64/release/bundle/
     runs-on: ${{ matrix.os }}
-    env:
-      VITE_API_URL: ${{ vars.OVL_API_URL }}
+    defaults:
+      run:
+        working-directory: clients/app
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Linux system dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @ovl/desktop build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: desktop-${{ matrix.os }}
-          path: clients/desktop/src-tauri/target/release/bundle/
-
-  android:
-    name: Android (debug APK)
-    runs-on: ubuntu-latest
-    env:
-      VITE_API_URL: ${{ vars.OVL_API_URL }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
       - uses: actions/setup-java@v4
+        if: matrix.name == 'Android'
         with:
           distribution: temurin
-          java-version: 21
-      - run: pnpm install --frozen-lockfile
-      - name: Generate the Android project if it is not committed yet
-        run: test -d clients/mobile/android || pnpm --filter @ovl/mobile add:android
-      - run: pnpm --filter @ovl/mobile sync
-      - run: ./gradlew assembleDebug
-        working-directory: clients/mobile/android
+          java-version: 17
+      - name: Linux build dependencies
+        if: matrix.name == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev libsecret-1-dev libjsoncpp-dev
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get
+      - run: ${{ matrix.build }} --dart-define=OVL_API_URL=${{ env.API_URL }}
+        shell: bash
       - uses: actions/upload-artifact@v4
         with:
-          name: android-debug-apk
-          path: clients/mobile/android/app/build/outputs/apk/debug/*.apk
-
-  ios:
-    name: iOS (simulator build)
-    runs-on: macos-latest
-    env:
-      VITE_API_URL: ${{ vars.OVL_API_URL }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Generate the iOS project if it is not committed yet
-        run: test -d clients/mobile/ios || pnpm --filter @ovl/mobile add:ios
-      - run: pnpm --filter @ovl/mobile sync
-      - run: >-
-          xcodebuild -project App.xcodeproj -scheme App -sdk iphonesimulator
-          -configuration Debug CODE_SIGNING_ALLOWED=NO build
-        working-directory: clients/mobile/ios/App
+          name: ovl-business-${{ matrix.name }}
+          path: ${{ matrix.artifact }}

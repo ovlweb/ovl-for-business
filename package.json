@@ -2,7 +2,7 @@
   "name": "ovl-for-business",
   "private": true,
   "version": "0.1.0",
-  "description": "OVL For Business \u2014 corporate accounts, licenses, registry, stock exchange and messaging platform",
+  "description": "OVL For Business — corporate accounts, licenses, registry, stock exchange and messaging platform",
   "type": "module",
   "packageManager": "pnpm@10.33.0",
   "engines": {
@@ -19,8 +19,8 @@
     "build": "pnpm -r build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "dev:desktop": "pnpm --filter @ovl/desktop dev",
-    "test:e2e": "pnpm --filter @ovl/e2e test"
+    "test:e2e": "pnpm --filter @ovl/e2e test",
+    "gen:dart": "node --experimental-strip-types --no-warnings scripts/gen-dart.ts"
   },
   "devDependencies": {
     "prettier": "^3.6.2",
