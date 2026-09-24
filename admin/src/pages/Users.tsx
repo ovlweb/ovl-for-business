@@ -10,6 +10,7 @@ import {
   StatusBadge,
   useDebounced,
   UserName,
+  useToast,
 } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -29,6 +30,16 @@ function EditUser({ user, onClose }: { user: AdminUser; onClose: () => void }) {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       onClose();
     },
+  });
+  const toast = useToast();
+  const signOut = useMutation({
+    mutationFn: () => api.admin.signOutUser(user.id),
+    onSuccess: (r) =>
+      toast.success(
+        r.signedOut
+          ? `Signed out on ${r.signedOut} device${r.signedOut === 1 ? '' : 's'}`
+          : 'No active devices',
+      ),
   });
   const editable = can('users.manage') && user.id !== me.id && canAssignRole(me.role, user.role, user.role);
   return (
@@ -59,7 +70,7 @@ function EditUser({ user, onClose }: { user: AdminUser; onClose: () => void }) {
                 ))}
               </select>
             </Field>
-            <ErrorAlert error={save.error} />
+            <ErrorAlert error={save.error ?? signOut.error} />
             <div className="row-wrap">
               <button
                 className="btn primary"
@@ -67,6 +78,9 @@ function EditUser({ user, onClose }: { user: AdminUser; onClose: () => void }) {
                 onClick={() => save.mutate({ role })}
               >
                 Save role
+              </button>
+              <button className="btn" onClick={() => signOut.mutate()} disabled={signOut.isPending}>
+                Sign out everywhere
               </button>
               {user.status === 'active' ? (
                 <button className="btn danger" onClick={() => save.mutate({ status: 'suspended' })}>

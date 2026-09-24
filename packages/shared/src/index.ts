@@ -1,4 +1,5 @@
 export * from './currencies';
+export * from './devices';
 export * from './money';
 export * from './roles';
 export * from './workflows';

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:http/http.dart' as http;
 
@@ -37,6 +38,10 @@ class ApiException implements Exception {
 
 /// HTTP client for /api/v1 with transparent access-token refresh
 /// (concurrent requests share one refresh, like the TypeScript SDK).
+/// Identifies the native app in the account's device list ("OVL Business app on Android").
+final String userAgent =
+    'OVLBusiness/0.1.0 (${Platform.operatingSystem} ${Platform.operatingSystemVersion.split(' ').first})';
+
 class OvlApi {
   OvlApi({required this.baseUrl, required this.tokens, this.onSignedOut});
 
@@ -65,6 +70,7 @@ class OvlApi {
     final current = tokens.tokens;
     final headers = <String, String>{
       'accept': 'application/json',
+      'user-agent': userAgent,
       if (current != null) 'authorization': 'Bearer ${current.accessToken}',
       if (body != null) 'content-type': 'application/json',
     };
@@ -168,6 +174,11 @@ class OvlApi {
   Future<Me> updatePreferences(Json patch) async => Me.fromJson(await _patch('/me/preferences', patch) as Json);
   Future<void> changePassword(String current, String next) =>
       _post('/me/password', {'currentPassword': current, 'newPassword': next});
+
+  Future<List<SessionInfo>> sessions() => _getList('/me/sessions', SessionInfo.fromJson);
+  Future<void> signOutSession(String id) => _delete('/me/sessions/$id');
+  Future<int> signOutOtherSessions() async =>
+      ((await _post('/me/sessions/sign-out-others')) as Json)['signedOut'] as int;
 
   // --- people -------------------------------------------------------------------------------
 

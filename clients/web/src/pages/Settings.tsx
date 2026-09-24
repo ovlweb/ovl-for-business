@@ -1,4 +1,4 @@
-import { getTheme, ROLE_LABELS } from '@ovl/shared';
+import { getTheme, ROLE_LABELS, type Session } from '@ovl/shared';
 import {
   applyTheme,
   Avatar,
@@ -10,8 +10,11 @@ import {
   getThemePreference,
   Icon,
   PageHeader,
+  plural,
+  SkeletonList,
   Switch,
   ThemeGallery,
+  timeAgo,
   useToast,
   type IconName,
 } from '@ovl/ui';
@@ -245,52 +248,147 @@ function AccountsSection() {
   );
 }
 
+const DEVICE_ICONS: Record<Session['kind'], IconName> = {
+  desktop: 'monitor',
+  mobile: 'smartphone',
+  tablet: 'tablet',
+  app: 'smartphone',
+  api: 'terminal',
+  unknown: 'globe',
+};
+
+function SessionsCard() {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const sessions = useQuery({ queryKey: ['sessions'], queryFn: api.me.sessions });
+  const signOut = useMutation({
+    mutationFn: (id: string) => api.me.signOutSession(id),
+    onSuccess: () => {
+      toast.success('Device signed out');
+      return queryClient.invalidateQueries({ queryKey: ['sessions'] });
+    },
+  });
+  const signOutOthers = useMutation({
+    mutationFn: api.me.signOutOtherSessions,
+    onSuccess: (r) => {
+      toast.success(
+        r.signedOut ? `Signed out ${plural(r.signedOut, 'other device')}` : 'No other devices were signed in',
+      );
+      return queryClient.invalidateQueries({ queryKey: ['sessions'] });
+    },
+  });
+  const others = (sessions.data ?? []).filter((s) => !s.current).length;
+  return (
+    <div className="card stack">
+      <div className="spread" style={{ alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+        <div className="stack-sm">
+          <h3>Signed-in devices</h3>
+          <p className="small muted">
+            Every browser and app where this account is signed in. Sign out anything you do not recognise — it
+            stops working immediately.
+          </p>
+        </div>
+        {others > 0 && (
+          <button
+            className="btn sm"
+            onClick={() => signOutOthers.mutate()}
+            disabled={signOutOthers.isPending}
+          >
+            <Icon name="logout" size={15} /> Sign out all other devices
+          </button>
+        )}
+      </div>
+      <ErrorAlert error={sessions.error ?? signOut.error ?? signOutOthers.error} />
+      {sessions.isLoading && <SkeletonList rows={2} avatar={false} />}
+      <div className="list card pad-0">
+        {sessions.data?.map((s) => (
+          <div key={s.id} className="list-item" style={{ cursor: 'default' }}>
+            <span className="kpi-icon">
+              <Icon name={DEVICE_ICONS[s.kind]} size={18} />
+            </span>
+            <div className="grow">
+              <div className="row" style={{ gap: 8 }}>
+                <b>{s.device}</b>
+                {s.current && (
+                  <span className="badge ok">
+                    <span className="dot" />
+                    This device
+                  </span>
+                )}
+              </div>
+              <div className="small muted">
+                {s.ip ? `${s.ip} · ` : ''}
+                {s.current ? 'Active now' : `Last active ${timeAgo(s.lastUsedAt)}`} · signed in{' '}
+                {formatDate(s.createdAt, false)}
+              </div>
+            </div>
+            {!s.current && (
+              <button
+                className="btn sm"
+                aria-label={`Sign out ${s.device}`}
+                onClick={() => signOut.mutate(s.id)}
+                disabled={signOut.isPending}
+              >
+                Sign out
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SecuritySection() {
-  const { logout } = useAuth();
+  const queryClient = useQueryClient();
   const toast = useToast();
   const [form, setForm] = useState({ current: '', next: '' });
   const change = useMutation({
     mutationFn: () => api.me.changePassword(form.current, form.next),
-    onSuccess: async () => {
-      toast.success('Password changed — please sign in again');
-      await logout();
+    onSuccess: () => {
+      toast.success('Password changed — your other devices were signed out');
+      setForm({ current: '', next: '' });
+      return queryClient.invalidateQueries({ queryKey: ['sessions'] });
     },
   });
   return (
-    <form
-      className="card stack"
-      onSubmit={(e) => {
-        e.preventDefault();
-        change.mutate();
-      }}
-    >
-      <h3>Change password</h3>
-      <Field label="Current password">
-        <input
-          className="input"
-          type="password"
-          autoComplete="current-password"
-          value={form.current}
-          onChange={(e) => setForm({ ...form, current: e.target.value })}
-          required
-        />
-      </Field>
-      <Field label="New password" hint="Changing the password signs this account out everywhere.">
-        <input
-          className="input"
-          type="password"
-          autoComplete="new-password"
-          minLength={8}
-          value={form.next}
-          onChange={(e) => setForm({ ...form, next: e.target.value })}
-          required
-        />
-      </Field>
-      <ErrorAlert error={change.error} />
-      <button className="btn primary" style={{ alignSelf: 'flex-start' }} disabled={change.isPending}>
-        Change password
-      </button>
-    </form>
+    <div className="stack-lg">
+      <form
+        className="card stack"
+        onSubmit={(e) => {
+          e.preventDefault();
+          change.mutate();
+        }}
+      >
+        <h3>Change password</h3>
+        <Field label="Current password">
+          <input
+            className="input"
+            type="password"
+            autoComplete="current-password"
+            value={form.current}
+            onChange={(e) => setForm({ ...form, current: e.target.value })}
+            required
+          />
+        </Field>
+        <Field label="New password" hint="Every other device is signed out; this one stays signed in.">
+          <input
+            className="input"
+            type="password"
+            autoComplete="new-password"
+            minLength={8}
+            value={form.next}
+            onChange={(e) => setForm({ ...form, next: e.target.value })}
+            required
+          />
+        </Field>
+        <ErrorAlert error={change.error} />
+        <button className="btn primary" style={{ alignSelf: 'flex-start' }} disabled={change.isPending}>
+          Change password
+        </button>
+      </form>
+      <SessionsCard />
+    </div>
   );
 }
 

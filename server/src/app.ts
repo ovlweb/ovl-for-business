@@ -22,6 +22,7 @@ import { adminRoutes } from './modules/admin';
 import { apiKeyRoutes } from './modules/api-keys';
 import { applicationRoutes } from './modules/applications/routes';
 import { authRoutes } from './modules/auth';
+import { sessionRoutes } from './modules/sessions';
 import { chatRoutes } from './modules/chats/routes';
 import { metaRoutes } from './modules/meta';
 import { organizationRoutes } from './modules/organizations';
@@ -169,6 +170,7 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
     async (api) => {
       await api.register(metaRoutes);
       await api.register(authRoutes);
+      await api.register(sessionRoutes);
       await api.register(userRoutes);
       await api.register(walletRoutes);
       await api.register(organizationRoutes);

@@ -5,8 +5,10 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api/models.dart';
+import '../state/query.dart';
 import '../state/session.dart';
 import '../theme/theme.dart';
+import '../ui/format.dart';
 import '../ui/theme_gallery.dart';
 import '../ui/widgets.dart';
 
@@ -324,45 +326,147 @@ class _SecurityState extends State<_Security> {
 
   @override
   Widget build(BuildContext context) {
-    return OvlCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Change password', style: context.text.titleLarge),
-          const SizedBox(height: 4),
-          Text('Other devices are signed out after the change.', style: context.text.bodyMedium),
-          const SizedBox(height: 16),
-          if (_error != null) ...[ErrorBox(_error), const SizedBox(height: 12)],
-          LabeledField(label: 'Current password', controller: _current, obscure: true),
-          const SizedBox(height: 14),
-          LabeledField(label: 'New password', controller: _next, obscure: true, helper: 'At least 8 characters.'),
-          const SizedBox(height: 18),
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton(
-              onPressed: _busy
-                  ? null
-                  : () async {
-                      final session = context.read<Session>();
-                      setState(() {
-                        _busy = true;
-                        _error = null;
-                      });
-                      try {
-                        await session.api.changePassword(_current.text, _next.text);
-                        if (context.mounted) toast(context, 'Password changed — please sign in again');
-                        await session.logout();
-                      } catch (e) {
-                        if (mounted) setState(() => _error = e);
-                      } finally {
-                        if (mounted) setState(() => _busy = false);
-                      }
-                    },
-              child: const Text('Change password'),
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        OvlCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Change password', style: context.text.titleLarge),
+              const SizedBox(height: 4),
+              Text('Every other device is signed out; this one stays signed in.', style: context.text.bodyMedium),
+              const SizedBox(height: 16),
+              if (_error != null) ...[ErrorBox(_error), const SizedBox(height: 12)],
+              LabeledField(label: 'Current password', controller: _current, obscure: true),
+              const SizedBox(height: 14),
+              LabeledField(label: 'New password', controller: _next, obscure: true, helper: 'At least 8 characters.'),
+              const SizedBox(height: 18),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(
+                  onPressed: _busy
+                      ? null
+                      : () async {
+                          final session = context.read<Session>();
+                          setState(() {
+                            _busy = true;
+                            _error = null;
+                          });
+                          try {
+                            await session.api.changePassword(_current.text, _next.text);
+                            _current.clear();
+                            _next.clear();
+                            session.queries.invalidate('sessions');
+                            if (context.mounted) {
+                              toast(context, 'Password changed — your other devices were signed out');
+                            }
+                          } catch (e) {
+                            if (mounted) setState(() => _error = e);
+                          } finally {
+                            if (mounted) setState(() => _busy = false);
+                          }
+                        },
+                  child: const Text('Change password'),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 16),
+        const _Devices(),
+      ],
+    );
+  }
+}
+
+IconData _deviceIcon(String kind) => switch (kind) {
+  'desktop' => LucideIcons.monitor,
+  'mobile' || 'app' => LucideIcons.smartphone,
+  'tablet' => LucideIcons.tablet,
+  'api' => LucideIcons.terminal,
+  _ => LucideIcons.globe,
+};
+
+/// Devices signed in to the account, with remote sign-out.
+class _Devices extends StatelessWidget {
+  const _Devices();
+
+  @override
+  Widget build(BuildContext context) {
+    final session = context.watch<Session>();
+    Future<void> run(Future<String> Function() action) async {
+      try {
+        final message = await action();
+        session.queries.invalidate('sessions');
+        if (context.mounted) toast(context, message);
+      } catch (e) {
+        if (context.mounted) toast(context, errorText(e), error: true);
+      }
+    }
+
+    return Query<List<SessionInfo>>(
+      client: session.queries,
+      queryKey: 'sessions',
+      fetch: session.api.sessions,
+      builder: (context, s) {
+        final list = s.data ?? const <SessionInfo>[];
+        final others = list.where((d) => !d.current).length;
+        return OvlCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Signed-in devices', style: context.text.titleLarge),
+              const SizedBox(height: 4),
+              Text(
+                'Every browser and app where this account is signed in. Sign out anything you do not recognise — it stops working immediately.',
+                style: context.text.bodyMedium,
+              ),
+              const SizedBox(height: 10),
+              if (!s.hasData)
+                const SkeletonList(rows: 2)
+              else
+                for (final d in list)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: IconTile(_deviceIcon(d.kind), size: 40),
+                    title: Row(
+                      children: [
+                        Flexible(child: Text(d.device, overflow: TextOverflow.ellipsis)),
+                        if (d.current) ...[const SizedBox(width: 8), const StatusPill('this device')],
+                      ],
+                    ),
+                    subtitle: Text(
+                      '${d.ip == null ? '' : '${d.ip} · '}${d.current ? 'Active now' : 'Last active ${timeAgo(d.lastUsedAt)}'} · signed in ${date(d.createdAt)}',
+                    ),
+                    trailing: d.current
+                        ? null
+                        : TextButton(
+                            onPressed: () => run(() async {
+                              await session.api.signOutSession(d.id);
+                              return '${d.device} signed out';
+                            }),
+                            child: const Text('Sign out'),
+                          ),
+                  ),
+              if (others > 0) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: () => run(() async {
+                      final n = await session.api.signOutOtherSessions();
+                      return 'Signed out ${plural(n, 'other device')}';
+                    }),
+                    icon: const Icon(LucideIcons.logOut, size: 17),
+                    label: const Text('Sign out all other devices'),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }

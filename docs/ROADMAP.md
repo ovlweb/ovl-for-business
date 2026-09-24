@@ -20,7 +20,8 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
 ### Trust & security
 
 - Two-factor authentication (TOTP, passkeys) — mandatory for staff and company owners.
-- Email verification, password reset, active sessions list with remote sign-out.
+- ✅ Active sessions list with remote sign-out, refresh-token theft detection (0.2).
+- Email verification, password reset.
 - Identity verification (KYC) for company owners before approval; "verified business" badge.
 - Admin panel behind SSO / IP allow-list; four-eyes approval for large cash operations.
 

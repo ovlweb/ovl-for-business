@@ -70,6 +70,23 @@ export const users = pgTable('users', {
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
 });
 
+/** A signed-in device. Refresh tokens rotate inside it; signing it out revokes all of them. */
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    userAgent: text('user_agent'),
+    ip: text('ip'),
+    createdAt: createdAt(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (t) => [index('sessions_user_idx').on(t.userId)],
+);
+
 export const refreshTokens = pgTable(
   'refresh_tokens',
   {
@@ -77,13 +94,14 @@ export const refreshTokens = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    sessionId: uuid('session_id').references(() => sessions.id, { onDelete: 'cascade' }),
     tokenHash: text('token_hash').notNull().unique(),
     userAgent: text('user_agent'),
     createdAt: createdAt(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
   },
-  (t) => [index('refresh_tokens_user_idx').on(t.userId)],
+  (t) => [index('refresh_tokens_user_idx').on(t.userId), index('refresh_tokens_session_idx').on(t.sessionId)],
 );
 
 export const contacts = pgTable(

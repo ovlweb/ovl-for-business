@@ -26,6 +26,7 @@ import type {
   RegisterInput,
   RegistryEntry,
   RegistrySearchQuery,
+  Session,
   ReviewInput,
   Role,
   StockListing,
@@ -183,6 +184,10 @@ export class OvlClient {
           this.tokens.set({ accessToken: result.accessToken, refreshToken: result.refreshToken });
           return true;
         } catch {
+          // Another tab or process may have refreshed with the same token a moment earlier;
+          // if the store now holds newer tokens, use those instead of signing out.
+          const latest = this.tokens.get();
+          if (latest && latest.refreshToken !== tokens.refreshToken) return true;
           this.tokens.set(null);
           this.onSignedOut?.();
           return false;
@@ -228,6 +233,10 @@ export class OvlClient {
     updatePreferences: (input: Preferences) => this.patch<Me>('/me/preferences', input),
     changePassword: (currentPassword: string, newPassword: string) =>
       this.post<void>('/me/password', { currentPassword, newPassword }),
+    /** Devices signed in to this account. */
+    sessions: () => this.get<Session[]>('/me/sessions'),
+    signOutSession: (id: string) => this.del(`/me/sessions/${id}`),
+    signOutOtherSessions: () => this.post<{ signedOut: number }>('/me/sessions/sign-out-others'),
   };
 
   users = {
@@ -374,5 +383,6 @@ export class OvlClient {
     apiKeys: (query?: { limit?: number; offset?: number }) =>
       this.get<Page<ApiKey>>('/admin/api-keys', query),
     revokeApiKey: (id: string) => this.del(`/admin/api-keys/${id}`),
+    signOutUser: (id: string) => this.post<{ signedOut: number }>(`/admin/users/${id}/sign-out`),
   };
 }

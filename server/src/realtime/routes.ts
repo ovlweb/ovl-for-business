@@ -21,7 +21,7 @@ export async function realtimeRoutes(app: FastifyInstance) {
       return;
     }
 
-    app.hub.add(user.id, user.role, socket);
+    app.hub.add(user.id, user.role, socket, user.sessionId);
     await app.db.update(users).set({ lastSeenAt: new Date() }).where(eq(users.id, user.id));
     socket.send(JSON.stringify({ type: 'ready', userId: user.id }));
 
@@ -60,7 +60,7 @@ export async function realtimeRoutes(app: FastifyInstance) {
 
     socket.on('close', () => {
       clearInterval(heartbeat);
-      app.hub.remove(user.id, socket);
+      app.hub.remove(user.id, socket, user.sessionId);
     });
   });
 }

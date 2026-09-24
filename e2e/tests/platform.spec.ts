@@ -318,6 +318,24 @@ test.describe.serial('OVL For Business end to end', () => {
     await greeting(maria, 'Maria').waitFor();
   });
 
+  test('security: signed-in devices can be signed out remotely', async ({ browser }) => {
+    // The laptop's own console will show the expected 401s after it is signed out.
+    const laptop = await newPage(browser, [], 'maria-laptop');
+    await login(laptop, 'maria');
+    await greeting(laptop, 'Maria').waitFor();
+
+    await maria.goto('./#/settings?section=security');
+    await expect(maria.getByRole('heading', { name: 'Signed-in devices' })).toBeVisible();
+    await expect(maria.getByText('This device')).toBeVisible();
+    await maria.getByRole('button', { name: 'Sign out all other devices' }).click();
+    await expect(maria.getByText(/Signed out \d+ other devices?/)).toBeVisible();
+
+    // The live connection is closed and the laptop lands on the sign-in screen by itself.
+    await expect(laptop.getByLabel('Username or email')).toBeVisible({ timeout: 15_000 });
+    await expect(maria.getByRole('button', { name: 'Sign out all other devices' })).toHaveCount(0);
+    await laptop.context().close();
+  });
+
   test('phone layout: bottom bar with a More sheet', async ({ browser }) => {
     const phone = await newPage(browser, errors, 'phone', true);
     await login(phone, 'maria');

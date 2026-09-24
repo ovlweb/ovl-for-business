@@ -16,7 +16,15 @@ curl https://business.example.com/api/v1/me -H "authorization: Bearer $ACCESS_TO
 ```
 
 Access tokens live 15 minutes. Exchange the refresh token with `POST /auth/refresh` — refresh
-tokens rotate, so always store the new one. `POST /auth/logout` revokes it.
+tokens rotate, so always store the new one. `POST /auth/logout` signs the device out.
+
+Every sign-in starts a **session** (one per device). `GET /me/sessions` lists them with a device
+name parsed from the `User-Agent` ("Chrome on Windows", "OVL Business app on Android"),
+`DELETE /me/sessions/:id` signs one out and `POST /me/sessions/sign-out-others` signs out every
+device but the current one. A signed-out session stops working immediately: its access tokens are
+refused and its realtime connection closes. Re-using a refresh token more than a minute after it
+was rotated is treated as theft and signs that whole session out. Changing the password signs out
+every other device.
 
 Errors always look like `{ "error": "code", "message": "Human readable", "details"?: … }`
 (`validation_error`, `unauthorized`, `forbidden`, `not_found`, `conflict`, `insufficient_funds`…).
@@ -79,13 +87,14 @@ Connect to `wss://…/api/v1/realtime?token=<accessToken>`. The server sends JSO
 | `wallet.updated`      | `walletId`                              |
 
 Clients may send `{"type":"typing","chatId":"…"}` and `{"type":"ping"}`. A close code `4401`
-means the access token expired: refresh it and reconnect.
+means the access token expired or the session was signed out: refresh and reconnect (the refresh
+fails for a signed-out session).
 
 ## Main endpoints
 
 | Area         | Endpoints                                                                                                                                                                                                       |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Auth & me    | `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `GET/PATCH /me`, `POST /me/password`                                                                                                     |
+| Auth & me    | `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `GET/PATCH /me`, `POST /me/password`, `GET /me/sessions`, `DELETE /me/sessions/:id`, `POST /me/sessions/sign-out-others`                 |
 | People       | `GET /users/search`, `GET /users/:username`, `GET/POST /contacts`, `DELETE /contacts/:userId`                                                                                                                   |
 | Wallets      | `GET/POST /wallets`, `GET /wallets/:id`, `/entries`, `/locks`, `POST /wallets/transfer`                                                                                                                         |
 | Companies    | `GET /organizations/mine`, `GET /organizations/:slug`, `PATCH /organizations/:id`, members, wallets                                                                                                             |

@@ -36,6 +36,7 @@ import {
   organizations,
   refreshTokens,
   registryEntries,
+  sessions,
   stockListings,
   stockPriceHistory,
   users,
@@ -49,6 +50,7 @@ import { toApiKeyDto } from './api-keys';
 import { organizationDtos } from './organizations';
 import { getRegistryEntry } from './registry';
 import { changeRole } from './roles';
+import { revokeSessions } from './sessions';
 import { listingDtos } from './stock/service';
 import { walletAudience } from './wallets/routes';
 import { credit, debit, getOrCreateWallet, listOwnerWallets } from './wallets/service';
@@ -263,6 +265,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
         const [row] = await tx.select().from(users).where(eq(users.id, target.id));
         return row!;
       });
+      if (status === 'suspended' && target.status !== 'suspended') {
+        await revokeSessions(app, eq(sessions.userId, target.id));
+      }
       app.hub.updateRole(updated.id, updated.role);
       return {
         ...toUserSummary(updated),
@@ -276,6 +281,36 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
   // ----- Organizations ------------------------------------------------------
 
+  app.post(
+    '/admin/users/:id/sign-out',
+    {
+      preHandler: app.requirePermission('users.manage'),
+      schema: {
+        tags,
+        description: 'Sign an account out on every device (e.g. a lost phone or a compromised password).',
+        params: z.object({ id: z.uuid() }),
+        response: { 200: z.object({ signedOut: z.number().int() }) },
+      },
+    },
+    async (req) => {
+      const me = currentUser(req);
+      const [target] = await app.db.select().from(users).where(eq(users.id, req.params.id));
+      if (!target) throw notFound('User');
+      if (target.id !== me.id && !canAssignRole(me.role, target.role, target.role)) {
+        throw forbidden(`You cannot sign out a ${target.role}`);
+      }
+      const ids = await revokeSessions(app, eq(sessions.userId, target.id));
+      await audit(app.db, {
+        actorId: me.id,
+        action: 'user.sign_out',
+        targetType: 'user',
+        targetId: target.id,
+        data: { sessions: ids.length },
+        ip: req.ip,
+      });
+      return { signedOut: ids.length };
+    },
+  );
   app.get(
     '/admin/organizations',
     {

@@ -149,6 +149,26 @@ class AuthResult {
   final Me user;
 }
 
+/// A device signed in to the account.
+class SessionInfo {
+  SessionInfo.fromJson(Json j)
+    : id = j['id'] as String,
+      device = j['device'] as String,
+      kind = j['kind'] as String,
+      ip = j['ip'] as String?,
+      createdAt = _date(j['createdAt']),
+      lastUsedAt = _date(j['lastUsedAt']),
+      current = j['current'] as bool? ?? false;
+
+  final String id;
+  final String device;
+  final String kind;
+  final String? ip;
+  final DateTime createdAt;
+  final DateTime lastUsedAt;
+  final bool current;
+}
+
 class Contact extends UserSummary {
   Contact.fromJson(Json j)
     : addedAt = _date(j['addedAt']),

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canAssignRole,
+  describeUserAgent,
   can,
   createApplicationSchema,
   formatAmount,
@@ -80,5 +81,31 @@ describe('workflows', () => {
       payload: { licenseType: 'business', title: 'x', description: 'short' },
     });
     expect(bad.success).toBe(false);
+  });
+});
+
+describe('describeUserAgent', () => {
+  it('names browsers, apps and API clients', () => {
+    expect(
+      describeUserAgent(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
+      ),
+    ).toMatchObject({ name: 'Chrome on Windows', kind: 'desktop' });
+    expect(
+      describeUserAgent(
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
+      ),
+    ).toMatchObject({ name: 'Safari on iOS', kind: 'mobile' });
+    expect(
+      describeUserAgent(
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36 Edg/140.0',
+      ).name,
+    ).toBe('Edge on macOS');
+    expect(describeUserAgent('OVLBusiness/0.1.0 (android 15)')).toMatchObject({
+      name: 'OVL Business app on Android',
+      kind: 'app',
+    });
+    expect(describeUserAgent('node')).toMatchObject({ name: 'API client', kind: 'api' });
+    expect(describeUserAgent(null).name).toBe('Unknown device');
   });
 });

@@ -132,6 +132,18 @@ export const changePasswordSchema = z.object({
   newPassword: z.string().min(8).max(128),
 });
 
+/** A signed-in device. Every sign-in starts a session; refreshing tokens keeps it alive. */
+export const sessionSchema = z.object({
+  id: uuid,
+  device: z.string().describe('Human description, e.g. "Chrome on Windows"'),
+  kind: z.enum(['desktop', 'mobile', 'tablet', 'app', 'api', 'unknown']),
+  ip: z.string().nullable(),
+  createdAt: isoDate,
+  lastUsedAt: isoDate,
+  current: z.boolean().describe('The session making this request'),
+});
+export type Session = z.infer<typeof sessionSchema>;
+
 export const contactSchema = userSummarySchema.extend({ addedAt: isoDate });
 export type Contact = z.infer<typeof contactSchema>;
 

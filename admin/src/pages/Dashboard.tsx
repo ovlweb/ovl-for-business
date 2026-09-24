@@ -116,6 +116,7 @@ const AUDIT_TEXT: Record<string, string> = {
   'apikey.revoke': 'revoked an API key',
   'channel.create': 'created a news channel',
   'user.update': 'updated an account',
+  'user.sign_out': 'signed an account out everywhere',
 };
 
 function AuditRow({ log }: { log: AuditLog }) {

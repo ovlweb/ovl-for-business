@@ -47,6 +47,15 @@ class AccountStore {
 
   constructor() {
     if (this.activeId && !this.accounts.some((a) => a.id === this.activeId)) this.activeId = null;
+    // Other tabs rotate tokens too: pick up their changes so a refresh race never signs us out.
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', (e) => {
+        if (e.key !== ACCOUNTS_KEY) return;
+        this.accounts = read<StoredAccount[]>(ACCOUNTS_KEY, []);
+        if (this.activeId && !this.accounts.some((a) => a.id === this.activeId)) this.activeId = null;
+        for (const l of this.listeners) l();
+      });
+    }
   }
 
   private save(): void {
