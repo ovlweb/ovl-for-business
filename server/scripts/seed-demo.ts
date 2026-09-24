@@ -5,9 +5,13 @@
  *   OVL_API_URL=http://localhost:4000 OWNER_PASSWORD=… pnpm --filter @ovl/server seed:demo
  *
  * Demo accounts all use the password "demo-password-1".
+ *
+ * With DATABASE_URL set (it is, when run from server/ with a .env), the data is also spread
+ * over the last two weeks so charts and timelines look lived-in. Set SEED_BACKDATE=0 to skip.
  */
 import { OvlApiError, OvlClient } from '@ovl/sdk';
 import type { Application, Me } from '@ovl/shared';
+import postgres from 'postgres';
 
 const API = process.env.OVL_API_URL ?? 'http://localhost:4000';
 const OWNER = {
@@ -363,7 +367,38 @@ async function main() {
   );
 }
 
-main().catch((error) => {
-  console.error(error instanceof OvlApiError ? `${error.status} ${error.code}: ${error.message}` : error);
-  process.exit(1);
-});
+/**
+ * Everything above happened within a minute. Spread it over the last `days` days, keeping the
+ * order of rows, with more activity towards today. Demo databases only.
+ */
+async function backdate(url: string, days = 13) {
+  const sql = postgres(url, { max: 1, onnotice: () => {} });
+  try {
+    for (const table of ['users', 'messages', 'applications', 'stock_price_history']) {
+      await sql.unsafe(`
+        with ranked as (
+          select id,
+                 (row_number() over (order by created_at desc, id desc) - 1)::float
+                   / greatest(count(*) over () - 1, 1) as age
+          from ${table}
+        )
+        update ${table} t
+        set created_at = now() - interval '${days} days' * power(ranked.age, 1.6) - interval '3 minutes'
+        from ranked
+        where t.id = ranked.id`);
+    }
+    console.log(`Spread the demo activity over the last ${days} days.`);
+  } finally {
+    await sql.end();
+  }
+}
+
+main()
+  .then(async () => {
+    if (process.env.DATABASE_URL && process.env.SEED_BACKDATE !== '0')
+      await backdate(process.env.DATABASE_URL);
+  })
+  .catch((error) => {
+    console.error(error instanceof OvlApiError ? `${error.status} ${error.code}: ${error.message}` : error);
+    process.exit(1);
+  });

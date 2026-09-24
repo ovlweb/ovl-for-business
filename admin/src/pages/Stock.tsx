@@ -100,6 +100,7 @@ export function StockPage() {
   return (
     <div className="page">
       <PageHeader
+        icon="chart"
         title="Stock exchange"
         subtitle="Listings created when company applications with a stock listing are approved."
       />

@@ -1,17 +1,35 @@
 import { motion } from 'motion/react';
 import { useEffect, useId, useRef, useState } from 'react';
 
+/**
+ * Monotone cubic interpolation (Fritsch–Carlson): smooth like a spline, but it never
+ * overshoots, so a flat run of zeros stays flat and prices never dip below real lows.
+ */
 function smoothPath(pts: [number, number][]): string {
-  // Catmull-Rom → cubic Bézier for a smooth line.
+  const n = pts.length;
+  const dx: number[] = [];
+  const slope: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    dx.push(pts[i + 1]![0] - pts[i]![0]);
+    slope.push((pts[i + 1]![1] - pts[i]![1]) / (dx[i] || 1));
+  }
+  const tangent: number[] = [slope[0]!];
+  for (let i = 1; i < n - 1; i++) {
+    const a = slope[i - 1]!;
+    const b = slope[i]!;
+    tangent.push(
+      a * b <= 0
+        ? 0
+        : (3 * (dx[i - 1]! + dx[i]!)) / ((2 * dx[i]! + dx[i - 1]!) / a + (dx[i]! + 2 * dx[i - 1]!) / b),
+    );
+  }
+  tangent.push(slope[n - 2]!);
   let d = `M ${pts[0]![0]} ${pts[0]![1]}`;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i - 1] ?? pts[i]!;
-    const p1 = pts[i]!;
-    const p2 = pts[i + 1]!;
-    const p3 = pts[i + 2] ?? p2;
-    const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
-    const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
-    d += ` C ${c1[0]} ${c1[1]}, ${c2[0]} ${c2[1]}, ${p2[0]} ${p2[1]}`;
+  for (let i = 0; i < n - 1; i++) {
+    const [x0, y0] = pts[i]!;
+    const [x1, y1] = pts[i + 1]!;
+    const h = dx[i]! / 3;
+    d += ` C ${x0 + h} ${y0 + tangent[i]! * h}, ${x1 - h} ${y1 - tangent[i + 1]! * h}, ${x1} ${y1}`;
   }
   return d;
 }
@@ -107,7 +125,7 @@ export function AreaChart({
           {grid.map((g) => (
             <g key={g}>
               <line x1={0} x2={width} y1={y(g)} y2={y(g)} stroke="var(--border)" strokeDasharray="3 5" />
-              <text x={width} y={y(g) - 5} textAnchor="end" className="chart-axis">
+              <text x={2} y={y(g) - 5} className="chart-axis">
                 {format!(g)}
               </text>
             </g>

@@ -32,6 +32,7 @@ import {
   auditLogs,
   cashOperations,
   chats,
+  messages,
   organizations,
   refreshTokens,
   registryEntries,
@@ -53,6 +54,30 @@ import { walletAudience } from './wallets/routes';
 import { credit, debit, getOrCreateWallet, listOwnerWallets } from './wallets/service';
 
 const like = (q: string) => `%${q.replace(/[%_\\]/g, '\\$&')}%`;
+
+const ACTIVITY_DAYS = 14;
+
+/** Daily counts for the dashboard chart, one row per UTC day, oldest first, gaps filled with 0. */
+async function activity(db: Db) {
+  const since = sql`date_trunc('day', now() at time zone 'utc') - interval '${sql.raw(String(ACTIVITY_DAYS - 1))} days'`;
+  const perDay = (table: typeof users | typeof messages | typeof applications) =>
+    db
+      .select({ day: sql<string>`to_char(${table.createdAt} at time zone 'utc', 'YYYY-MM-DD')`, n: count() })
+      .from(table)
+      .where(sql`${table.createdAt} at time zone 'utc' >= ${since}`)
+      .groupBy(sql`1`);
+  const [signups, sent, filed] = await Promise.all([perDay(users), perDay(messages), perDay(applications)]);
+  const lookup = (rows: { day: string; n: number }[]) => new Map(rows.map((r) => [r.day, r.n]));
+  const [s, m, a] = [lookup(signups), lookup(sent), lookup(filed)];
+  const today = new Date();
+  return Array.from({ length: ACTIVITY_DAYS }, (_, i) => {
+    const d = new Date(
+      Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - (ACTIVITY_DAYS - 1 - i)),
+    );
+    const date = d.toISOString().slice(0, 10);
+    return { date, signups: s.get(date) ?? 0, messages: m.get(date) ?? 0, applications: a.get(date) ?? 0 };
+  });
+}
 
 async function cashOperationDtos(db: Db, where?: SQL, limit = 50, offset = 0): Promise<CashOperation[]> {
   const rows = await db
@@ -112,22 +137,24 @@ export async function adminRoutes(fastify: FastifyInstance) {
       schema: { tags, response: { 200: adminStatsSchema } },
     },
     async () => {
-      const [byRole, [orgs], [pending], [tickets], [listings], [registry], balances] = await Promise.all([
-        app.db.select({ role: users.role, n: count() }).from(users).groupBy(users.role),
-        app.db.select({ n: count() }).from(organizations),
-        app.db.select({ n: count() }).from(applications).where(eq(applications.status, 'pending')),
-        app.db
-          .select({ n: count() })
-          .from(chats)
-          .where(and(eq(chats.type, 'support'), eq(chats.supportStatus, 'open'))),
-        app.db.select({ n: count() }).from(stockListings).where(eq(stockListings.status, 'active')),
-        app.db.select({ n: count() }).from(registryEntries),
-        app.db
-          .select({ currency: wallets.currency, total: sql<string>`sum(${wallets.balance})`, n: count() })
-          .from(wallets)
-          .groupBy(wallets.currency)
-          .orderBy(wallets.currency),
-      ]);
+      const [byRole, [orgs], [pending], [tickets], [listings], [registry], balances, daily] =
+        await Promise.all([
+          app.db.select({ role: users.role, n: count() }).from(users).groupBy(users.role),
+          app.db.select({ n: count() }).from(organizations),
+          app.db.select({ n: count() }).from(applications).where(eq(applications.status, 'pending')),
+          app.db
+            .select({ n: count() })
+            .from(chats)
+            .where(and(eq(chats.type, 'support'), eq(chats.supportStatus, 'open'))),
+          app.db.select({ n: count() }).from(stockListings).where(eq(stockListings.status, 'active')),
+          app.db.select({ n: count() }).from(registryEntries),
+          app.db
+            .select({ currency: wallets.currency, total: sql<string>`sum(${wallets.balance})`, n: count() })
+            .from(wallets)
+            .groupBy(wallets.currency)
+            .orderBy(wallets.currency),
+          activity(app.db),
+        ]);
       return {
         users: Object.fromEntries(byRole.map((r) => [r.role, r.n])),
         organizations: orgs?.n ?? 0,
@@ -140,6 +167,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
           total: formatAmount(BigInt(b.total), b.currency),
           wallets: b.n,
         })),
+        activity: daily,
       };
     },
   );

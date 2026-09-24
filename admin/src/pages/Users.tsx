@@ -99,7 +99,7 @@ export function UsersPage() {
 
   return (
     <div className="page">
-      <PageHeader title="Users & roles" subtitle={`${users.data?.total ?? 0} accounts`} />
+      <PageHeader icon="users" title="Users & roles" subtitle={`${users.data?.total ?? 0} accounts`} />
       <div className="filters">
         <input
           className="input"

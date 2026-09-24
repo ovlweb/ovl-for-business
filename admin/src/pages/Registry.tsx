@@ -27,6 +27,7 @@ export function RegistryPage() {
   return (
     <div className="page">
       <PageHeader
+        icon="book"
         title="Registry"
         subtitle="Licenses, organizations and virtual countries rolled out to the public registry."
       />

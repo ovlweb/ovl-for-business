@@ -33,6 +33,7 @@ export function StoriesPage() {
   return (
     <div className="page stack-lg">
       <PageHeader
+        icon="sparkles"
         title="Service stories"
         subtitle="Short announcements shown in every client (web, mobile, desktop) until they expire."
       />

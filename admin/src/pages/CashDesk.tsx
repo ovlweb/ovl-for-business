@@ -183,6 +183,7 @@ export function CashDeskPage() {
   return (
     <div className="page stack-lg">
       <PageHeader
+        icon="wallet"
         title="Cash desk"
         subtitle="Deposits and withdrawals for personal and business balances in any world currency — by manager transfer or physical cash."
       />

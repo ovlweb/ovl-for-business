@@ -101,3 +101,43 @@ export function ThemeGallery({
     </div>
   );
 }
+
+/** Compact theme list for menus and popovers: a swatch, the name and a check. */
+export function ThemeMenu({
+  value,
+  onChange,
+  includeSystem = true,
+}: {
+  value: string;
+  onChange: (id: string, origin: { x: number; y: number }) => void;
+  includeSystem?: boolean;
+}) {
+  const options = [
+    ...(includeSystem
+      ? [{ id: 'system', name: 'Match system', swatch: 'linear-gradient(135deg, #f8fafc 50%, #0b1220 50%)' }]
+      : []),
+    ...THEMES.map((t) => ({
+      id: t.id,
+      name: t.name,
+      swatch: `linear-gradient(135deg, ${t.colors.sidebarBg} 0 45%, ${t.colors.gradFrom} 45% 72%, ${t.colors.gradTo} 72%)`,
+    })),
+  ];
+  return (
+    <div role="radiogroup" aria-label="Theme">
+      {options.map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          role="radio"
+          aria-checked={value === o.id}
+          className="menu-item"
+          onClick={(e) => onChange(o.id, { x: e.clientX, y: e.clientY })}
+        >
+          <span className="theme-swatch" style={{ background: o.swatch }} />
+          <span className="grow">{o.name}</span>
+          {value === o.id && <Icon name="check" size={16} />}
+        </button>
+      ))}
+    </div>
+  );
+}

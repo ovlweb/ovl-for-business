@@ -16,6 +16,7 @@ export function AuditPage() {
   return (
     <div className="page">
       <PageHeader
+        icon="shield"
         title="Audit log"
         subtitle="Every privileged action: role changes, money operations, approvals, registry changes…"
       />

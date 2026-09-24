@@ -12,8 +12,9 @@ function storage(): Storage | null {
   }
 }
 
-export function getThemePreference(): string {
-  return storage()?.getItem(PREFERENCE_KEY) ?? 'system';
+/** The theme chosen on this device; `fallback` when nothing was chosen yet. */
+export function getThemePreference(fallback = 'system'): string {
+  return storage()?.getItem(PREFERENCE_KEY) ?? fallback;
 }
 
 function prefersDark(): boolean {
@@ -89,11 +90,11 @@ export function applyTheme(preference: string, options: ApplyThemeOptions = {}):
 }
 
 /** Keep "system" in sync with the OS setting. Returns an unsubscribe function. */
-export function watchSystemTheme(): () => void {
+export function watchSystemTheme(fallback = 'system'): () => void {
   const media = window.matchMedia?.('(prefers-color-scheme: dark)');
   if (!media) return () => undefined;
   const onChange = () => {
-    if (getThemePreference() === 'system') applyTheme('system');
+    if (getThemePreference(fallback) === 'system') applyTheme('system', { persist: false });
   };
   media.addEventListener('change', onChange);
   return () => media.removeEventListener('change', onChange);

@@ -595,6 +595,10 @@ export const adminStatsSchema = z.object({
   activeListings: z.number(),
   registryEntries: z.number(),
   balances: z.array(z.object({ currency: z.string(), total: z.string(), wallets: z.number() })),
+  /** The last 14 days, oldest first (UTC dates). */
+  activity: z.array(
+    z.object({ date: z.string(), signups: z.number(), messages: z.number(), applications: z.number() }),
+  ),
 });
 export type AdminStats = z.infer<typeof adminStatsSchema>;
 

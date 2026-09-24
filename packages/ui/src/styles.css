@@ -1278,6 +1278,10 @@ code,
   fill: var(--text-3);
   font-size: 11px;
   font-family: var(--font);
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 .chart-tip {
   position: absolute;
@@ -1299,4 +1303,12 @@ code,
 .chart-tip strong {
   color: var(--text);
   font-size: 13px;
+}
+
+.theme-swatch {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 7px;
+  box-shadow: inset 0 0 0 1px rgb(127 127 127 / 0.25);
 }

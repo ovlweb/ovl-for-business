@@ -147,6 +147,7 @@ export function ApplicationsPage() {
   return (
     <div className="page">
       <PageHeader
+        icon="review"
         title="Applications"
         subtitle="Companies, licenses, staff and channel applications with their approval stages."
       />

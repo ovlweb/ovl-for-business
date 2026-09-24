@@ -107,8 +107,9 @@ test.describe.serial('OVL For Business end to end', () => {
   test('the owner deposits cash in the admin panel; the wallet updates live', async () => {
     await maria.goto('./#/wallet');
     await login(admin, 'owner', OWNER_PASSWORD, ADMIN_URL);
-    await admin.getByRole('heading', { name: 'Dashboard' }).waitFor();
-    await admin.getByRole('link', { name: 'Cash desk' }).click();
+    await greeting(admin, 'Owner').waitFor();
+    await expect(admin.getByText('Platform activity')).toBeVisible();
+    await admin.getByRole('navigation', { name: 'Admin' }).getByRole('link', { name: 'Cash desk' }).click();
     await admin.getByPlaceholder('Search a person or a company').fill('maria');
     await admin.getByText('Maria Petrova').click();
     await admin.getByLabel('Amount').fill('500');
