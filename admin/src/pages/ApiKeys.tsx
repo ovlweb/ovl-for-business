@@ -19,6 +19,7 @@ export function ApiKeysPage() {
   return (
     <div className="page">
       <PageHeader
+        icon="key"
         title="Developer API keys"
         subtitle="Keys that external services use for the public registry and stock API."
       />

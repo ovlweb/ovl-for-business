@@ -13,6 +13,7 @@ export function SupportPage() {
   return (
     <div className="page">
       <PageHeader
+        icon="support"
         title="Tech support"
         subtitle="Overview of tickets. Moderators, admins and the owner answer them from the regular client (Support section) with their staff badge."
       />

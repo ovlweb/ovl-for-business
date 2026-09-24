@@ -12,7 +12,7 @@ import {
 } from '@ovl/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 
 const KINDS = [
@@ -66,7 +66,8 @@ function EntryModal({ entry, onClose }: { entry: RegistryEntry; onClose: () => v
 }
 
 export function RegistryPage() {
-  const [q, setQ] = useState('');
+  const [params] = useSearchParams();
+  const [q, setQ] = useState(params.get('q') ?? '');
   const [kind, setKind] = useState('');
   const [licenseType, setLicenseType] = useState('');
   const [offset, setOffset] = useState(0);
@@ -85,6 +86,7 @@ export function RegistryPage() {
   return (
     <div className="page stack-lg">
       <PageHeader
+        icon="book"
         title="Public registry"
         subtitle="Every approved license, organization and virtual country. Also available to other services via the public API."
       />

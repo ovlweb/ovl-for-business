@@ -65,6 +65,7 @@ export const users = pgTable('users', {
   status: accountStatusEnum('status').notNull().default('active'),
   bio: text('bio').notNull().default(''),
   avatarUrl: text('avatar_url'),
+  preferences: jsonb('preferences').$type<Record<string, unknown>>().notNull().default({}),
   createdAt: createdAt(),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
 });

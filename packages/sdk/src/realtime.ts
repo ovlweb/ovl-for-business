@@ -5,7 +5,7 @@ export type RealtimeStatus = 'connecting' | 'open' | 'closed';
 
 /**
  * Auto-reconnecting WebSocket connection to /api/v1/realtime.
- * Works with the WebSocket global of browsers, React Native, Node 22+, Tauri and Capacitor.
+ * Works with the WebSocket global of browsers, React Native and Node 22+.
  */
 export class RealtimeConnection {
   private socket: WebSocket | null = null;

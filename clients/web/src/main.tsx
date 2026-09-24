@@ -1,43 +1,40 @@
 import '@ovl/ui/styles.css';
 import './app.css';
+import { applyTheme, getThemePreference, ToastProvider, watchSystemTheme } from '@ovl/ui';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MotionConfig } from 'motion/react';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
 import { App } from './App';
 import { AuthProvider } from './auth';
-import { isNativeShell } from './config';
-import { setupNativeShell } from './native';
 import { RealtimeProvider } from './realtime';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 15_000, retry: 1, refetchOnWindowFocus: true } },
 });
 
-try {
-  const theme = localStorage.getItem('ovl.theme');
-  if (theme) document.documentElement.dataset.theme = theme;
-} catch {
-  /* ignore */
-}
+applyTheme(getThemePreference());
+watchSystemTheme();
 
-setupNativeShell();
-
-// Hash routing works identically on the web, in Capacitor (Android/iOS) and in Tauri (desktop).
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <RealtimeProvider>
-          <HashRouter>
-            <App />
-          </HashRouter>
-        </RealtimeProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <MotionConfig reducedMotion="user">
+      <QueryClientProvider client={queryClient}>
+        <ToastProvider>
+          <AuthProvider>
+            <RealtimeProvider>
+              <HashRouter>
+                <App />
+              </HashRouter>
+            </RealtimeProvider>
+          </AuthProvider>
+        </ToastProvider>
+      </QueryClientProvider>
+    </MotionConfig>
   </StrictMode>,
 );
 
-if ('serviceWorker' in navigator && import.meta.env.PROD && !isNativeShell) {
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => undefined));
 }

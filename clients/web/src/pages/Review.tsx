@@ -179,6 +179,7 @@ export function ReviewPage() {
   return (
     <div className="page stack-lg" style={{ maxWidth: 1200 }}>
       <PageHeader
+        icon="review"
         title="Review queue"
         subtitle="Moderation, council votes and final confirmations. Council cards also appear in the pinned council chat."
       />

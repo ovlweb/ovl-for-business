@@ -2,7 +2,7 @@
   "name": "@ovl/web",
   "version": "0.1.0",
   "private": true,
-  "description": "OVL For Business client: web, installable web app (PWA) and the UI of the mobile & desktop shells",
+  "description": "OVL For Business web client and installable web app (PWA)",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,6 +15,7 @@
     "@ovl/shared": "workspace:*",
     "@ovl/ui": "workspace:*",
     "@tanstack/react-query": "^5.103.2",
+    "motion": "^13.4.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-router-dom": "^7.18.4"

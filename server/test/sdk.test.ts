@@ -58,6 +58,14 @@ describe('@ovl/sdk against the real server', () => {
     const [wallet] = await alice.wallets.list();
     expect(wallet).toMatchObject({ currency: 'GBP', balance: '12.34', available: '12.34' });
 
+    const stats = await owner.admin.stats();
+    expect(stats.balances).toContainEqual({ currency: 'GBP', total: '12.34', wallets: 1 });
+    expect(stats.activity).toHaveLength(14);
+    const today = stats.activity[stats.activity.length - 1]!;
+    expect(today.date).toBe(new Date().toISOString().slice(0, 10));
+    expect(today.signups).toBeGreaterThanOrEqual(2);
+    expect(today.messages).toBeGreaterThanOrEqual(1);
+
     const error = await alice.admin.stats().catch((e: unknown) => e);
     expect(error).toBeInstanceOf(OvlApiError);
     expect((error as OvlApiError).status).toBe(403);

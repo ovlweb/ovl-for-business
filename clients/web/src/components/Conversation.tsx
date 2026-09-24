@@ -1,5 +1,5 @@
 import type { Chat, Message } from '@ovl/shared';
-import { Avatar, Badge, Badges, ErrorAlert, shortTime, Spinner, StatusBadge } from '@ovl/ui';
+import { Avatar, Badge, Badges, ErrorAlert, plural, shortTime, Spinner, StatusBadge } from '@ovl/ui';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -16,13 +16,13 @@ export function chatSubtitle(chat: Chat): string {
     case 'direct':
       return chat.peer ? `@${chat.peer.username}` : '';
     case 'group':
-      return `Group · ${chat.memberCount} members`;
+      return `Group · ${plural(chat.memberCount, 'member')}`;
     case 'channel':
-      return `News channel · @${chat.handle} · ${chat.memberCount} subscribers`;
+      return `News channel · @${chat.handle} · ${plural(chat.memberCount, 'subscriber')}`;
     case 'council':
-      return `Council · ${chat.memberCount} members`;
+      return `Council · ${plural(chat.memberCount, 'member')}`;
     case 'moderation':
-      return `Moderation team · ${chat.memberCount} members`;
+      return `Moderation team · ${plural(chat.memberCount, 'member')}`;
     case 'support':
       return chat.support ? `Tech support · ${chat.support.requester.displayName}` : 'Tech support';
   }

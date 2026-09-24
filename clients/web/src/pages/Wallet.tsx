@@ -1,4 +1,4 @@
-import { Empty, ErrorAlert, PageHeader, Spinner } from '@ovl/ui';
+import { Empty, ErrorAlert, Icon, PageHeader, Spinner } from '@ovl/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -15,6 +15,7 @@ export function WalletPage() {
   return (
     <div className="page stack-lg">
       <PageHeader
+        icon="wallet"
         title="Wallet"
         subtitle="Your personal balances in any world currency."
         actions={
@@ -26,8 +27,11 @@ export function WalletPage() {
         }
       />
       <div className="alert info small">
-        Deposits and withdrawals are handled by finance managers — by bank transfer or physically at the cash
-        desk. <Link to="/support">Contact support</Link> to top up.
+        <Icon name="info" size={17} />
+        <span>
+          Deposits and withdrawals are handled by finance managers — by bank transfer or physically at the
+          cash desk. <Link to="/support">Contact support</Link> to top up.
+        </span>
       </div>
       {wallets.isLoading && <Spinner center />}
       <ErrorAlert error={wallets.error} />

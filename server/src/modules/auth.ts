@@ -3,11 +3,12 @@ import {
   changePasswordSchema,
   loginSchema,
   meSchema,
+  preferencesSchema,
   refreshSchema,
   registerSchema,
   updateMeSchema,
 } from '@ovl/shared';
-import { and, eq, gt, isNull, or } from 'drizzle-orm';
+import { and, eq, gt, isNull, or, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -148,6 +149,27 @@ export async function authRoutes(fastify: FastifyInstance) {
       const [user] = await app.db
         .update(users)
         .set(req.body)
+        .where(eq(users.id, currentUser(req).id))
+        .returning();
+      return toMe(user!);
+    },
+  );
+
+  app.patch(
+    '/me/preferences',
+    {
+      preHandler: app.authenticate,
+      schema: {
+        tags: ['me'],
+        description: 'Merge settings synced across all clients (theme, onboarding state, goals…).',
+        body: preferencesSchema,
+        response: { 200: meSchema },
+      },
+    },
+    async (req) => {
+      const [user] = await app.db
+        .update(users)
+        .set({ preferences: sql`${users.preferences} || ${JSON.stringify(req.body)}::jsonb` })
         .where(eq(users.id, currentUser(req).id))
         .returning();
       return toMe(user!);

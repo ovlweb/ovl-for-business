@@ -24,7 +24,11 @@ export function OrganizationsPage() {
 
   return (
     <div className="page">
-      <PageHeader title="Organizations" subtitle="Companies registered through approved applications." />
+      <PageHeader
+        icon="building"
+        title="Organizations"
+        subtitle="Companies registered through approved applications."
+      />
       <div className="filters">
         <input
           className="input"
