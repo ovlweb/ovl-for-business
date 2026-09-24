@@ -1,0 +1,15 @@
+# Only the database, for local development (pnpm dev:server / dev:web / dev:admin).
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ovl
+      POSTGRES_PASSWORD: ovl
+      POSTGRES_DB: ovl
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata-dev:/var/lib/postgresql/data
+
+volumes:
+  pgdata-dev:

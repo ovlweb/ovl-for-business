@@ -1,0 +1,84 @@
+# Builds the desktop (macOS / Windows / Linux) and mobile (Android / iOS) apps on demand.
+# Set the repository variable OVL_API_URL to the public API origin the apps should use.
+name: Native apps
+
+on:
+  workflow_dispatch:
+
+jobs:
+  desktop:
+    name: Desktop (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    env:
+      VITE_API_URL: ${{ vars.OVL_API_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @ovl/desktop build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: clients/desktop/src-tauri/target/release/bundle/
+
+  android:
+    name: Android (debug APK)
+    runs-on: ubuntu-latest
+    env:
+      VITE_API_URL: ${{ vars.OVL_API_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: pnpm install --frozen-lockfile
+      - name: Generate the Android project if it is not committed yet
+        run: test -d clients/mobile/android || pnpm --filter @ovl/mobile add:android
+      - run: pnpm --filter @ovl/mobile sync
+      - run: ./gradlew assembleDebug
+        working-directory: clients/mobile/android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          path: clients/mobile/android/app/build/outputs/apk/debug/*.apk
+
+  ios:
+    name: iOS (simulator build)
+    runs-on: macos-latest
+    env:
+      VITE_API_URL: ${{ vars.OVL_API_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Generate the iOS project if it is not committed yet
+        run: test -d clients/mobile/ios || pnpm --filter @ovl/mobile add:ios
+      - run: pnpm --filter @ovl/mobile sync
+      - run: >-
+          xcodebuild -project App.xcodeproj -scheme App -sdk iphonesimulator
+          -configuration Debug CODE_SIGNING_ALLOWED=NO build
+        working-directory: clients/mobile/ios/App

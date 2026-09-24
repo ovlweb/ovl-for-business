@@ -40,4 +40,6 @@ export function setCustomServer(url: string | null): void {
 
 /** Running inside the Capacitor (Android/iOS) or Tauri (desktop) shell. */
 export const isNativeShell =
-  /^(capacitor|tauri|ionic|file):$/.test(location.protocol) || location.hostname === 'tauri.localhost';
+  !!(window as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.() ||
+  '__TAURI_INTERNALS__' in window ||
+  /^(capacitor|tauri|file):$/.test(location.protocol);

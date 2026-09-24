@@ -3,3 +3,6 @@ dist
 pnpm-lock.yaml
 server/drizzle
 clients/desktop/src-tauri/target
+clients/desktop/src-tauri/gen
+clients/mobile/android
+clients/mobile/ios
