@@ -1,28 +1,36 @@
 # Architecture
 
 ```
-            ┌──────────── clients ────────────┐        ┌── staff ──┐
-            │ web / PWA   Android/iOS  desktop │        │  admin    │
-            │ (React)     (Capacitor)  (Tauri) │        │  panel    │
-            └───────────────┬─────────────────┘        └─────┬─────┘
-                            │  @ovl/sdk (REST + WebSocket)     │
-                     ┌──────▼──────────────────────────────────▼──────┐
-                     │ Caddy reverse proxy (HTTPS, separate admin site)│
-                     └──────────────────────┬─────────────────────────┘
-                                            │ /api/v1, /api/v1/realtime
-                     ┌──────────────────────▼─────────────────────────┐
+       ┌──────────────── clients ─────────────────┐     ┌── staff ──┐
+       │ web / PWA       native apps (Flutter)     │     │  admin    │
+       │ (React)         Android · iOS · macOS ·   │     │  panel    │
+       │                 Windows · Linux           │     │ (React)   │
+       └──────┬──────────────────┬─────────────────┘     └─────┬─────┘
+              │ @ovl/sdk         │ Dart client                  │ @ovl/sdk
+       ┌──────▼──────────────────▼──────────────────────────────▼──────┐
+       │        Caddy reverse proxy (HTTPS, separate admin site)        │
+       └───────────────────────────────┬───────────────────────────────┘
+                                       │ /api/v1 (REST), /api/v1/realtime (WebSocket)
+                     ┌─────────────────▼──────────────────────────────┐
   third-party ──────►│ API server (Fastify, zod-validated, OpenAPI)   │
-  services (API key) └──────────────────────┬─────────────────────────┘
-                                            │
-                                   ┌────────▼────────┐
-                                   │   PostgreSQL    │
-                                   └─────────────────┘
+  services (API key) └─────────────────┬──────────────────────────────┘
+                                       │
+                              ┌────────▼────────┐
+                              │   PostgreSQL    │
+                              └─────────────────┘
 ```
 
-- **One UI codebase for all end-user platforms.** `clients/web` is a responsive React app. The same
-  build runs in browsers, is installable as a PWA, and is wrapped by Capacitor (Android, iOS) and
-  Tauri (macOS, Windows, Linux). Hash routing and relative asset paths make it work inside those
-  shells; the API address comes from runtime config, the build, or the sign-in screen.
+- **Web and native clients.** `clients/web` is a responsive React app that runs in browsers and
+  installs as a PWA. `clients/app` is a Flutter app compiled natively for Android, iOS, macOS,
+  Windows and Linux, with the same screens, adaptive layouts (bottom bar on phones, sidebar and
+  split views on large screens), realtime and multi-account support. Tokens are kept in the
+  platform keychain.
+- **One design language everywhere.** The eight colour themes live in
+  `packages/shared/src/themes.ts`. The web client and the admin panel turn them into CSS
+  variables; `pnpm gen:dart` generates the native palettes (and the currency table) from the same
+  file, and CI fails if the generated code is stale. The chosen theme and onboarding state are
+  stored as account preferences (`PATCH /me/preferences`), so they follow the person across
+  devices.
 - **The admin panel is a separate app** (`admin/`) with its own build, container, address and
   session storage. It talks to the same API; staff endpoints are protected by permissions on the
   server, never only by the UI.

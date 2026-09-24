@@ -7,8 +7,10 @@
   moderator, council, news channel), public registry, stock exchange with frozen investment share,
   chats with realtime, tech support desk with staff badges, service stories, audit log, developer
   API keys, OpenAPI docs.
-- Web client + installable web app, Android / iOS (Capacitor) and desktop (Tauri) shells.
-- Separate admin panel.
+- Web client + installable web app with eight themes, an animated sign-in, a first-run tour,
+  multi-account and a command palette.
+- Native apps built with Flutter for Android, iOS, macOS, Windows and Linux (not web views).
+- Separate admin panel with a live dashboard.
 - Docker Compose deployment with Caddy (automatic HTTPS), CI.
 
 ## Suggested next steps
@@ -49,7 +51,7 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
 ### Messaging
 
 - Attachments (images, documents), message search, mentions, reactions, read receipts.
-- Push notifications (Web Push, FCM, APNs) and a notification center.
+- OS push notifications (Web Push, FCM, APNs) and a notification center (in-app banners exist).
 - Channel posts with comments.
 
 ### Platform

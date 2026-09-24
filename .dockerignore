@@ -2,7 +2,6 @@
 **/dist
 **/.env
 .git
-clients/desktop/src-tauri/target
-clients/mobile/android
-clients/mobile/ios
+# The native app is built by its own toolchain, not in Docker.
+clients/app
 **/*.log
