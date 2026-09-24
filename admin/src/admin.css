@@ -1,0 +1,96 @@
+/* Admin panel shell — deliberately different look from the client app */
+
+.admin {
+  display: flex;
+  min-height: 100%;
+}
+.admin-nav {
+  width: 230px;
+  flex: none;
+  background: #151a23;
+  color: #c9d1de;
+  padding: 16px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.admin-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 10px 18px;
+  color: #fff;
+  font-weight: 750;
+}
+.admin-brand small {
+  display: block;
+  color: #e5b53c;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.admin-link {
+  display: block;
+  padding: 9px 12px;
+  border-radius: 8px;
+  color: #c9d1de;
+  font-weight: 600;
+  font-size: 14px;
+}
+.admin-link:hover {
+  background: rgba(255, 255, 255, 0.06);
+  text-decoration: none;
+}
+.admin-link.active {
+  background: rgba(229, 181, 60, 0.15);
+  color: #e5b53c;
+}
+.admin-nav .who {
+  margin-top: auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 12px 10px 0;
+  font-size: 13px;
+}
+.admin-main {
+  flex: 1;
+  min-width: 0;
+}
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  gap: 12px;
+}
+.filters {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.filters .input,
+.filters .select {
+  width: auto;
+  min-width: 180px;
+}
+
+@media (max-width: 860px) {
+  .admin {
+    flex-direction: column;
+  }
+  .admin-nav {
+    width: 100%;
+    height: auto;
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .admin-nav .who {
+    display: none;
+  }
+}

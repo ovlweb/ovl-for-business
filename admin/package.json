@@ -1,0 +1,28 @@
+{
+  "name": "@ovl/admin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OVL For Business admin panel (separate app, separate deployment)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@ovl/sdk": "workspace:*",
+    "@ovl/shared": "workspace:*",
+    "@ovl/ui": "workspace:*",
+    "@tanstack/react-query": "^5.103.2",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.4"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "vite": "^8.3.1"
+  }
+}

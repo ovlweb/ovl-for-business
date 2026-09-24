@@ -15,6 +15,43 @@ importers:
         specifier: ~5.9.3
         version: 5.9.3
 
+  admin:
+    dependencies:
+      '@ovl/sdk':
+        specifier: workspace:*
+        version: link:../packages/sdk
+      '@ovl/shared':
+        specifier: workspace:*
+        version: link:../packages/shared
+      '@ovl/ui':
+        specifier: workspace:*
+        version: link:../packages/ui
+      '@tanstack/react-query':
+        specifier: ^5.103.2
+        version: 5.103.2(react@19.3.0)
+      react:
+        specifier: ^19.3.0
+        version: 19.3.0
+      react-dom:
+        specifier: ^19.3.0
+        version: 19.3.0(react@19.3.0)
+      react-router-dom:
+        specifier: ^7.18.4
+        version: 7.18.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.1.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.1.0
+        version: 19.3.0(@types/react@19.3.0)
+      '@vitejs/plugin-react':
+        specifier: ^6.1.1
+        version: 6.1.1(vite@8.3.1(@types/node@22.20.4)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+      vite:
+        specifier: ^8.3.1
+        version: 8.3.1(@types/node@22.20.4)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1)
+
   clients/web:
     dependencies:
       '@ovl/sdk':
