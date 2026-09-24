@@ -66,9 +66,30 @@ export const users = pgTable('users', {
   bio: text('bio').notNull().default(''),
   avatarUrl: text('avatar_url'),
   preferences: jsonb('preferences').$type<Record<string, unknown>>().notNull().default({}),
+  // Two-factor authentication (TOTP). Secrets are sealed with AES-GCM (see lib/totp.ts).
+  totpSecret: text('totp_secret'),
+  totpPendingSecret: text('totp_pending_secret'),
+  totpEnabledAt: timestamp('totp_enabled_at', { withTimezone: true }),
+  /** Last accepted time step: a code cannot be used twice. */
+  totpLastStep: integer('totp_last_step'),
   createdAt: createdAt(),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
 });
+
+/** One-time codes for signing in without the authenticator. Only hashes are stored. */
+export const recoveryCodes = pgTable(
+  'recovery_codes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    codeHash: text('code_hash').notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('recovery_codes_user_idx').on(t.userId)],
+);
 
 /** A signed-in device. Refresh tokens rotate inside it; signing it out revokes all of them. */
 export const sessions = pgTable(

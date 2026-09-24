@@ -9,7 +9,9 @@ import {
   formatMoney,
   Icon,
   Logo,
+  needsTwoFactor,
   Segmented,
+  TwoFactorPrompt,
 } from '@ovl/ui';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState, type FormEvent } from 'react';
@@ -241,18 +243,36 @@ function SignInForm({ onDone }: { onDone: () => void }) {
   const [form, setForm] = useState({ login: '', password: '' });
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
+  const [needCode, setNeedCode] = useState(false);
+  const attempt = async (code?: string) => {
     setBusy(true);
     setError(null);
     try {
-      await login(form);
+      await login({ ...form, code });
       onDone();
     } catch (err) {
+      if (needsTwoFactor(err)) setNeedCode(true);
       setError(err);
       setBusy(false);
     }
   };
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    void attempt();
+  };
+  if (needCode) {
+    return (
+      <TwoFactorPrompt
+        busy={busy}
+        error={error}
+        onSubmit={(code) => void attempt(code)}
+        onBack={() => {
+          setNeedCode(false);
+          setError(null);
+        }}
+      />
+    );
+  }
   return (
     <form className="stack" onSubmit={submit}>
       <ErrorAlert error={error} />

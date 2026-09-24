@@ -504,3 +504,10 @@ a.admin-kpi:hover {
   width: min(290px, 86vw);
   box-shadow: var(--shadow-lg);
 }
+.admin-attention.security {
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+}
+.admin-attention.security > svg {
+  color: var(--danger);
+}

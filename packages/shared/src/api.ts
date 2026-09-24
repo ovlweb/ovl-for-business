@@ -89,6 +89,7 @@ export const meSchema = userSummarySchema.extend({
   status: z.enum(['active', 'suspended']),
   permissions: z.array(z.string()),
   preferences: preferencesSchema,
+  twoFactorEnabled: z.boolean(),
   createdAt: isoDate,
 });
 export type Me = z.infer<typeof meSchema>;
@@ -104,6 +105,12 @@ export type RegisterInput = z.input<typeof registerSchema>;
 export const loginSchema = z.object({
   login: z.string().trim().min(1).max(254).describe('Username or email'),
   password: z.string().min(1).max(128),
+  code: z
+    .string()
+    .trim()
+    .max(32)
+    .optional()
+    .describe('Authenticator code or a recovery code, for accounts with two-factor authentication'),
 });
 export type LoginInput = z.input<typeof loginSchema>;
 
@@ -130,6 +137,31 @@ export type UpdateMeInput = z.input<typeof updateMeSchema>;
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
   newPassword: z.string().min(8).max(128),
+});
+
+// Two-factor authentication (TOTP authenticator apps + one-time recovery codes)
+
+export const twoFactorStatusSchema = z.object({
+  enabled: z.boolean(),
+  enabledAt: isoDate.nullable(),
+  recoveryCodesLeft: z.number().int(),
+});
+export type TwoFactorStatus = z.infer<typeof twoFactorStatusSchema>;
+
+export const twoFactorSetupSchema = z.object({
+  secret: z.string().describe('Base32 secret for manual entry'),
+  otpauthUrl: z.string(),
+  qr: z.string().describe('PNG data URL of the otpauth QR code'),
+});
+export type TwoFactorSetup = z.infer<typeof twoFactorSetupSchema>;
+
+export const twoFactorCodeSchema = z.object({ code: z.string().trim().min(6).max(32) });
+export const disableTwoFactorSchema = z.object({
+  password: z.string().min(1).max(128),
+  code: z.string().trim().min(6).max(32),
+});
+export const recoveryCodesSchema = z.object({
+  recoveryCodes: z.array(z.string()).describe('Shown once. Each code signs in one time.'),
 });
 
 /** A signed-in device. Every sign-in starts a session; refreshing tokens keeps it alive. */

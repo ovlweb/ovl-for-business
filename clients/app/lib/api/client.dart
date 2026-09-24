@@ -137,8 +137,9 @@ class OvlApi {
 
   // --- auth & profile ---------------------------------------------------------------------
 
-  Future<AuthResult> login(String login, String password) async =>
-      AuthResult.fromJson(await _post('/auth/login', {'login': login, 'password': password}) as Json);
+  /// Throws [ApiException] with code `two_factor_required` when the account needs a [code].
+  Future<AuthResult> login(String login, String password, {String? code}) async =>
+      AuthResult.fromJson(await _post('/auth/login', {'login': login, 'password': password, 'code': ?code}) as Json);
 
   Future<AuthResult> register({
     required String username,
@@ -174,6 +175,15 @@ class OvlApi {
   Future<Me> updatePreferences(Json patch) async => Me.fromJson(await _patch('/me/preferences', patch) as Json);
   Future<void> changePassword(String current, String next) =>
       _post('/me/password', {'currentPassword': current, 'newPassword': next});
+
+  Future<TwoFactorStatus> twoFactorStatus() async => TwoFactorStatus.fromJson(await _get('/me/2fa'));
+  Future<Json> twoFactorSetup() async => await _post('/me/2fa/setup') as Json;
+  Future<List<String>> enableTwoFactor(String code) async =>
+      List<String>.from(((await _post('/me/2fa/enable', {'code': code})) as Json)['recoveryCodes'] as List);
+  Future<void> disableTwoFactor(String password, String code) =>
+      _post('/me/2fa/disable', {'password': password, 'code': code});
+  Future<List<String>> newRecoveryCodes(String code) async =>
+      List<String>.from(((await _post('/me/2fa/recovery-codes', {'code': code})) as Json)['recoveryCodes'] as List);
 
   Future<List<SessionInfo>> sessions() => _getList('/me/sessions', SessionInfo.fromJson);
   Future<void> signOutSession(String id) => _delete('/me/sessions/$id');

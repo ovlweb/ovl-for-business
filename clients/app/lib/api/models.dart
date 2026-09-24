@@ -116,6 +116,7 @@ class Me extends UserSummary {
       status = j['status'] as String,
       permissions = List<String>.from(j['permissions'] as List? ?? const []),
       preferences = Preferences.fromJson(j['preferences'] as Json?),
+      twoFactorEnabled = j['twoFactorEnabled'] as bool? ?? false,
       createdAt = _date(j['createdAt']),
       super(
         id: j['id'] as String,
@@ -131,6 +132,7 @@ class Me extends UserSummary {
   final String status;
   final List<String> permissions;
   final Preferences preferences;
+  final bool twoFactorEnabled;
   final DateTime createdAt;
 
   bool can(String permission) => permissions.contains(permission);
@@ -147,6 +149,17 @@ class AuthResult {
   final String accessToken;
   final String refreshToken;
   final Me user;
+}
+
+class TwoFactorStatus {
+  TwoFactorStatus.fromJson(Json j)
+    : enabled = j['enabled'] as bool,
+      enabledAt = _dateOrNull(j['enabledAt']),
+      recoveryCodesLeft = j['recoveryCodesLeft'] as int;
+
+  final bool enabled;
+  final DateTime? enabledAt;
+  final int recoveryCodesLeft;
 }
 
 /// A device signed in to the account.

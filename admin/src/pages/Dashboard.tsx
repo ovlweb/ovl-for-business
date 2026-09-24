@@ -177,6 +177,20 @@ export function DashboardPage() {
       />
       <ErrorAlert error={stats.error} />
 
+      {!me.twoFactorEnabled && (
+        <motion.div
+          className="admin-attention security"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <Icon name="shield" size={18} />
+          <span className="grow">
+            <b>Protect your staff account.</b> Turn on two-step verification in the OVL For Business app:
+            Settings → Security.
+          </span>
+        </motion.div>
+      )}
+
       {s && s.pendingApplications + s.openTickets > 0 && (
         <motion.div className="admin-attention" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
           <Icon name="bell" size={18} />

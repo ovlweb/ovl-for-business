@@ -117,7 +117,8 @@ class Session extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  Future<void> login(String login, String password) async => _finishSignIn(await api.login(login, password));
+  Future<void> login(String login, String password, {String? code}) async =>
+      _finishSignIn(await api.login(login, password, code: code));
 
   Future<void> register({
     required String username,

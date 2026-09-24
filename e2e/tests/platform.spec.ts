@@ -10,6 +10,7 @@ import {
   register,
   send,
   skipOnboarding,
+  totp,
 } from './helpers';
 
 /**
@@ -334,6 +335,45 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(laptop.getByLabel('Username or email')).toBeVisible({ timeout: 15_000 });
     await expect(maria.getByRole('button', { name: 'Sign out all other devices' })).toHaveCount(0);
     await laptop.context().close();
+  });
+
+  test('security: two-step verification with an authenticator app', async ({ browser }) => {
+    const kim = await newPage(browser, errors, 'kim');
+    await register(kim, 'Kim Park', 'kim');
+    await kim.goto('./#/settings?section=security');
+    await kim.getByRole('button', { name: 'Turn on' }).click();
+    const dialog = kim.getByRole('dialog', { name: 'Turn on two-step verification' });
+    await expect(dialog.getByRole('img', { name: 'QR code for your authenticator app' })).toBeVisible();
+    const secret = (await dialog.locator('code.secret').innerText()).replace(/\s/g, '');
+    await dialog.getByLabel('Code from the app').fill(await totp(secret));
+    await dialog.getByRole('button', { name: 'Turn on' }).click();
+    const saved = kim.getByRole('dialog', { name: 'Save your recovery codes' });
+    await expect(saved.locator('.recovery-grid code')).toHaveCount(10);
+    const recovery = await saved.locator('.recovery-grid code').first().innerText();
+    await saved.getByRole('button', { name: 'I saved them' }).click();
+    await expect(kim.getByText('10 recovery codes left')).toBeVisible();
+    await kim.context().close();
+
+    // Signing in on a new device now asks for the code (its console shows the expected 401s).
+    const laptop = await newPage(browser, [], 'kim-laptop');
+    await login(laptop, 'kim');
+    await expect(laptop.getByText('Two-step verification')).toBeVisible();
+    await laptop.getByLabel('Authentication code').fill('000000');
+    await laptop.getByRole('button', { name: 'Verify' }).click();
+    await expect(laptop.getByText('That code is not valid')).toBeVisible();
+    await laptop.getByLabel('Authentication code').fill(await totp(secret, 1));
+    await laptop.getByRole('button', { name: 'Verify' }).click();
+    await greeting(laptop, 'Kim').waitFor();
+    await laptop.context().close();
+
+    // The admin panel asks for it too (then refuses: Kim is not staff). A recovery code works.
+    const panel = await newPage(browser, [], 'kim-admin');
+    await login(panel, 'kim', undefined, ADMIN_URL);
+    await panel.getByRole('button', { name: 'Use a recovery code' }).click();
+    await panel.getByLabel('Recovery code').fill(recovery);
+    await panel.getByRole('button', { name: 'Verify' }).click();
+    await expect(panel.getByText('This account has no access to the admin panel.')).toBeVisible();
+    await panel.context().close();
   });
 
   test('phone layout: bottom bar with a More sheet', async ({ browser }) => {

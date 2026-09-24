@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
+import '../api/client.dart';
 import '../state/accounts.dart';
 import '../state/session.dart';
 import '../theme/theme.dart';
@@ -184,8 +185,11 @@ class _SignInForm extends StatefulWidget {
 class _SignInFormState extends State<_SignInForm> {
   final _login = TextEditingController();
   final _password = TextEditingController();
+  final _code = TextEditingController();
   bool _show = false;
   bool _busy = false;
+  bool _needCode = false;
+  bool _recovery = false;
   Object? _error;
 
   Future<void> _submit() async {
@@ -194,7 +198,20 @@ class _SignInFormState extends State<_SignInForm> {
       _error = null;
     });
     try {
-      await context.read<Session>().login(_login.text.trim(), _password.text);
+      await context.read<Session>().login(
+        _login.text.trim(),
+        _password.text,
+        code: _needCode ? _code.text.trim() : null,
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        if (e.code == 'two_factor_required') {
+          _needCode = true;
+        } else {
+          _error = e;
+        }
+      });
     } catch (e) {
       if (mounted) setState(() => _error = e);
     } finally {
@@ -202,37 +219,130 @@ class _SignInFormState extends State<_SignInForm> {
     }
   }
 
+  Widget _codeStep() {
+    final c = context.c;
+    return Column(
+      key: const ValueKey('code'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            IconTile(LucideIcons.shieldCheck, size: 42),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Two-step verification', style: context.text.titleMedium),
+                  const SizedBox(height: 2),
+                  Text(
+                    _recovery
+                        ? 'Enter one of the recovery codes you saved. Each code works once.'
+                        : 'Open your authenticator app and enter the 6-digit code for OVL For Business.',
+                    style: context.text.bodyMedium,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        if (_error != null) ...[ErrorBox(_error), const SizedBox(height: 14)],
+        TextField(
+          key: ValueKey(_recovery),
+          controller: _code,
+          autofocus: true,
+          textAlign: TextAlign.center,
+          keyboardType: _recovery ? TextInputType.text : TextInputType.number,
+          autofillHints: const [AutofillHints.oneTimeCode],
+          maxLength: _recovery ? 20 : 6,
+          onChanged: (_) => setState(() {}),
+          onSubmitted: (_) => _submit(),
+          style: font(display, 24, FontWeight.w800, letterSpacing: _recovery ? 2 : 8, color: c.text),
+          decoration: InputDecoration(
+            counterText: '',
+            hintText: _recovery ? 'xxxxx-xxxxx' : '123456',
+            labelText: _recovery ? 'Recovery code' : 'Authentication code',
+          ),
+        ),
+        const SizedBox(height: 18),
+        GradientButton(
+          label: 'Verify',
+          icon: LucideIcons.check,
+          busy: _busy,
+          onPressed: _recovery || _code.text.trim().length == 6 ? _submit : null,
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            TextButton.icon(
+              onPressed: () => setState(() {
+                _needCode = false;
+                _error = null;
+                _code.clear();
+              }),
+              icon: const Icon(LucideIcons.arrowLeft, size: 16),
+              label: const Text('Back'),
+            ),
+            const Spacer(),
+            TextButton(
+              onPressed: () => setState(() {
+                _recovery = !_recovery;
+                _code.clear();
+              }),
+              child: Text(_recovery ? 'Use the authenticator app' : 'Use a recovery code'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return AutofillGroup(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (_error != null) ...[ErrorBox(_error), const SizedBox(height: 14)],
-          LabeledField(
-            label: 'Username or email',
-            controller: _login,
-            icon: LucideIcons.user,
-            autofill: const [AutofillHints.username],
-          ),
-          const SizedBox(height: 16),
-          LabeledField(
-            label: 'Password',
-            controller: _password,
-            icon: LucideIcons.keyRound,
-            obscure: !_show,
-            autofill: const [AutofillHints.password],
-            onSubmitted: (_) => _submit(),
-            suffix: IconButton(
-              tooltip: _show ? 'Hide characters' : 'Show characters',
-              onPressed: () => setState(() => _show = !_show),
-              icon: Icon(_show ? LucideIcons.eyeOff : LucideIcons.eye, size: 18),
-            ),
-          ),
-          const SizedBox(height: 22),
-          GradientButton(label: 'Sign in', icon: LucideIcons.arrowRight, busy: _busy, onPressed: _submit),
-        ],
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 280),
+      transitionBuilder: (child, a) => FadeTransition(
+        opacity: a,
+        child: SlideTransition(
+          position: Tween(begin: const Offset(0.06, 0), end: Offset.zero).animate(a),
+          child: child,
+        ),
       ),
+      child: _needCode
+          ? _codeStep()
+          : AutofillGroup(
+              key: const ValueKey('password'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_error != null) ...[ErrorBox(_error), const SizedBox(height: 14)],
+                  LabeledField(
+                    label: 'Username or email',
+                    controller: _login,
+                    icon: LucideIcons.user,
+                    autofill: const [AutofillHints.username],
+                  ),
+                  const SizedBox(height: 16),
+                  LabeledField(
+                    label: 'Password',
+                    controller: _password,
+                    icon: LucideIcons.keyRound,
+                    obscure: !_show,
+                    autofill: const [AutofillHints.password],
+                    onSubmitted: (_) => _submit(),
+                    suffix: IconButton(
+                      tooltip: _show ? 'Hide characters' : 'Show characters',
+                      onPressed: () => setState(() => _show = !_show),
+                      icon: Icon(_show ? LucideIcons.eyeOff : LucideIcons.eye, size: 18),
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  GradientButton(label: 'Sign in', icon: LucideIcons.arrowRight, busy: _busy, onPressed: _submit),
+                ],
+              ),
+            ),
     );
   }
 }

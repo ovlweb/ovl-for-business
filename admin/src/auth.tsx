@@ -6,7 +6,7 @@ import { api } from './api';
 interface AdminAuth {
   me: Me | null;
   loading: boolean;
-  login: (login: string, password: string) => Promise<void>;
+  login: (login: string, password: string, code?: string) => Promise<void>;
   logout: () => Promise<void>;
   can: (permission: Permission) => boolean;
 }
@@ -41,8 +41,8 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const value: AdminAuth = {
     me,
     loading,
-    login: async (login, password) => {
-      const user = await api.auth.login({ login, password });
+    login: async (login, password, code) => {
+      const user = await api.auth.login({ login, password, code });
       if (!user.permissions.includes('admin.panel')) {
         await api.auth.logout();
         throw new Error('This account has no access to the admin panel.');

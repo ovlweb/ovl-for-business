@@ -9,6 +9,7 @@ import {
   formatDate,
   getThemePreference,
   Icon,
+  Modal,
   PageHeader,
   plural,
   SkeletonList,
@@ -339,6 +340,265 @@ function SessionsCard() {
   );
 }
 
+function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void }) {
+  const toast = useToast();
+  const text = `OVL For Business recovery codes\n\n${codes.join('\n')}\n\nEach code signs in once.`;
+  return (
+    <div className="stack">
+      <div className="alert warning small">
+        <Icon name="info" size={17} />
+        <span>
+          Save these codes somewhere safe. Each one signs you in once if you lose your phone. They are shown
+          only now.
+        </span>
+      </div>
+      <div className="recovery-grid">
+        {codes.map((c) => (
+          <code key={c}>{c}</code>
+        ))}
+      </div>
+      <div className="row-wrap">
+        <button
+          type="button"
+          className="btn"
+          onClick={() =>
+            navigator.clipboard?.writeText(text).then(() => toast.success('Recovery codes copied'))
+          }
+        >
+          <Icon name="copy" size={16} /> Copy
+        </button>
+        <a
+          className="btn"
+          download="ovl-recovery-codes.txt"
+          href={`data:text/plain;charset=utf-8,${encodeURIComponent(text)}`}
+        >
+          <Icon name="download" size={16} /> Download
+        </a>
+        <button type="button" className="btn primary" onClick={onDone}>
+          I saved them
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EnableTwoFactor({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [code, setCode] = useState('');
+  const [codes, setCodes] = useState<string[] | null>(null);
+  const setup = useQuery({
+    queryKey: ['2fa', 'setup'],
+    queryFn: api.me.twoFactor.setup,
+    staleTime: Infinity,
+    gcTime: 0,
+  });
+  const enable = useMutation({
+    mutationFn: () => api.me.twoFactor.enable(code),
+    onSuccess: (r) => {
+      setCodes(r.recoveryCodes);
+      return queryClient.invalidateQueries({ queryKey: ['2fa', 'status'] });
+    },
+  });
+  return (
+    <Modal title={codes ? 'Save your recovery codes' : 'Turn on two-step verification'} onClose={onClose}>
+      {codes ? (
+        <RecoveryCodes codes={codes} onDone={onClose} />
+      ) : (
+        <form
+          className="stack"
+          onSubmit={(e) => {
+            e.preventDefault();
+            enable.mutate();
+          }}
+        >
+          <ol className="steps small">
+            <li>
+              Install an authenticator app — Google Authenticator, 1Password, Authy, Microsoft Authenticator…
+            </li>
+            <li>Scan this QR code with it, or type the key.</li>
+            <li>Enter the 6-digit code the app shows.</li>
+          </ol>
+          <ErrorAlert error={setup.error} />
+          <div className="qr-row">
+            {setup.data ? (
+              <img
+                className="qr"
+                src={setup.data.qr}
+                alt="QR code for your authenticator app"
+                width={180}
+                height={180}
+              />
+            ) : (
+              <div className="qr skeleton" />
+            )}
+            <div className="stack-sm grow">
+              <span className="small muted">Key for manual entry</span>
+              <code className="secret">{setup.data?.secret.match(/.{1,4}/g)?.join(' ') ?? '…'}</code>
+            </div>
+          </div>
+          <Field label="Code from the app">
+            <input
+              className="input code-input"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              placeholder="123 456"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              required
+            />
+          </Field>
+          <ErrorAlert error={enable.error} />
+          <button className="btn primary" disabled={code.length !== 6 || enable.isPending || !setup.data}>
+            Turn on
+          </button>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
+function TwoFactorCard() {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const status = useQuery({ queryKey: ['2fa', 'status'], queryFn: api.me.twoFactor.status });
+  const [dialog, setDialog] = useState<'enable' | 'disable' | 'codes' | null>(null);
+  const [form, setForm] = useState({ password: '', code: '' });
+  const [codes, setCodes] = useState<string[] | null>(null);
+  const close = () => {
+    setDialog(null);
+    setCodes(null);
+    setForm({ password: '', code: '' });
+  };
+  const disable = useMutation({
+    mutationFn: () => api.me.twoFactor.disable(form.password, form.code),
+    onSuccess: () => {
+      toast.success('Two-step verification is off');
+      close();
+      return queryClient.invalidateQueries({ queryKey: ['2fa', 'status'] });
+    },
+  });
+  const renew = useMutation({
+    mutationFn: () => api.me.twoFactor.newRecoveryCodes(form.code),
+    onSuccess: (r) => {
+      setCodes(r.recoveryCodes);
+      return queryClient.invalidateQueries({ queryKey: ['2fa', 'status'] });
+    },
+  });
+  const s = status.data;
+  return (
+    <div className="card stack">
+      <div className="spread" style={{ alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+        <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
+          <span className="kpi-icon">
+            <Icon name="shield" size={18} />
+          </span>
+          <div className="stack-sm">
+            <div className="row" style={{ gap: 8 }}>
+              <h3>Two-step verification</h3>
+              {s && (
+                <span className={`badge ${s.enabled ? 'ok' : 'warn'}`}>
+                  <span className="dot" />
+                  {s.enabled ? 'On' : 'Off'}
+                </span>
+              )}
+            </div>
+            <p className="small muted">
+              {s?.enabled
+                ? `Signing in asks for a code from your authenticator app. On since ${formatDate(s.enabledAt!, false)} · ${plural(s.recoveryCodesLeft, 'recovery code')} left.`
+                : 'Protect the account with a code from an authenticator app, so a stolen password is not enough.'}
+            </p>
+          </div>
+        </div>
+        {s &&
+          (s.enabled ? (
+            <div className="row-wrap">
+              <button className="btn sm" onClick={() => setDialog('codes')}>
+                New recovery codes
+              </button>
+              <button className="btn sm danger" onClick={() => setDialog('disable')}>
+                Turn off
+              </button>
+            </div>
+          ) : (
+            <button className="btn primary sm" onClick={() => setDialog('enable')}>
+              Turn on
+            </button>
+          ))}
+      </div>
+      <ErrorAlert error={status.error} />
+      {dialog === 'enable' && <EnableTwoFactor onClose={close} />}
+      {dialog === 'codes' && (
+        <Modal title="New recovery codes" onClose={close}>
+          {codes ? (
+            <RecoveryCodes codes={codes} onDone={close} />
+          ) : (
+            <form
+              className="stack"
+              onSubmit={(e) => {
+                e.preventDefault();
+                renew.mutate();
+              }}
+            >
+              <p className="small muted">
+                Your old recovery codes stop working. Confirm with a code from the app.
+              </p>
+              <Field label="Authentication or recovery code">
+                <input
+                  className="input"
+                  autoComplete="one-time-code"
+                  value={form.code}
+                  onChange={(e) => setForm({ ...form, code: e.target.value })}
+                  required
+                />
+              </Field>
+              <ErrorAlert error={renew.error} />
+              <button className="btn primary" disabled={renew.isPending}>
+                Create new codes
+              </button>
+            </form>
+          )}
+        </Modal>
+      )}
+      {dialog === 'disable' && (
+        <Modal title="Turn off two-step verification" onClose={close}>
+          <form
+            className="stack"
+            onSubmit={(e) => {
+              e.preventDefault();
+              disable.mutate();
+            }}
+          >
+            <p className="small muted">Your account will be protected by the password only.</p>
+            <Field label="Password">
+              <input
+                className="input"
+                type="password"
+                autoComplete="current-password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                required
+              />
+            </Field>
+            <Field label="Authentication or recovery code">
+              <input
+                className="input"
+                autoComplete="one-time-code"
+                value={form.code}
+                onChange={(e) => setForm({ ...form, code: e.target.value })}
+                required
+              />
+            </Field>
+            <ErrorAlert error={disable.error} />
+            <button className="btn danger" disabled={disable.isPending}>
+              Turn off
+            </button>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 function SecuritySection() {
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -387,6 +647,7 @@ function SecuritySection() {
           Change password
         </button>
       </form>
+      <TwoFactorCard />
       <SessionsCard />
     </div>
   );

@@ -1636,3 +1636,48 @@ kbd {
     display: none;
   }
 }
+
+/* ---------- two-step verification ---------- */
+.steps {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  color: var(--text-2);
+}
+.qr-row {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.qr {
+  width: 180px;
+  height: 180px;
+  border-radius: 14px;
+  background: #fff;
+  padding: 8px;
+  border: 1px solid var(--border);
+}
+.secret {
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  word-break: break-all;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.recovery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.recovery-grid code {
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px dashed var(--border-strong);
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  text-align: center;
+}

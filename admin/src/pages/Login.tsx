@@ -1,4 +1,4 @@
-import { ErrorAlert, Field, Icon, Logo, type IconName } from '@ovl/ui';
+import { ErrorAlert, Field, Icon, Logo, needsTwoFactor, TwoFactorPrompt, type IconName } from '@ovl/ui';
 import { motion } from 'motion/react';
 import { useState } from 'react';
 import { useAdminAuth } from '../auth';
@@ -18,6 +18,18 @@ export function LoginPage() {
   const [show, setShow] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const [needCode, setNeedCode] = useState(false);
+  const attempt = async (code?: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await login(form.login, form.password, code);
+    } catch (err) {
+      if (needsTwoFactor(err)) setNeedCode(true);
+      setError(err);
+      setBusy(false);
+    }
+  };
   return (
     <div className="admin-login">
       <div className="admin-login-art" aria-hidden>
@@ -61,71 +73,79 @@ export function LoginPage() {
         </div>
       </div>
       <div className="admin-login-panel">
-        <motion.form
-          className="admin-login-card stack-lg"
-          initial={{ opacity: 0, y: 20, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.6, ease, delay: 0.1 }}
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setBusy(true);
-            setError(null);
-            try {
-              await login(form.login, form.password);
-            } catch (err) {
-              setError(err);
-              setBusy(false);
-            }
-          }}
-        >
-          <div className="stack-sm">
-            <Logo size={48} animated />
-            <h2 style={{ marginTop: 10 }}>Admin console</h2>
-            <p className="small muted">Staff only: moderators, finance managers, admins and the owner.</p>
+        {needCode ? (
+          <div className="admin-login-card stack-lg">
+            <Logo size={48} />
+            <TwoFactorPrompt
+              busy={busy}
+              error={error}
+              onSubmit={(code) => void attempt(code)}
+              onBack={() => {
+                setNeedCode(false);
+                setError(null);
+              }}
+            />
           </div>
-          <ErrorAlert error={error} />
-          <Field label="Username or email">
-            <div className="input-with-icon">
-              <Icon name="user" size={17} />
-              <input
-                className="input"
-                autoComplete="username"
-                value={form.login}
-                onChange={(e) => setForm({ ...form, login: e.target.value })}
-                required
-              />
+        ) : (
+          <motion.form
+            className="admin-login-card stack-lg"
+            initial={{ opacity: 0, y: 20, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.6, ease, delay: 0.1 }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              void attempt();
+            }}
+          >
+            <div className="stack-sm">
+              <Logo size={48} animated />
+              <h2 style={{ marginTop: 10 }}>Admin console</h2>
+              <p className="small muted">Staff only: moderators, finance managers, admins and the owner.</p>
             </div>
-          </Field>
-          <Field label="Password">
-            <div className="input-with-icon">
-              <Icon name="key" size={17} />
-              <input
-                className="input"
-                type={show ? 'text' : 'password'}
-                autoComplete="current-password"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                required
-              />
-              <button
-                type="button"
-                className="input-action"
-                onClick={() => setShow(!show)}
-                aria-label="Show characters"
-                aria-pressed={show}
-              >
-                <Icon name={show ? 'eyeOff' : 'eye'} size={17} />
-              </button>
-            </div>
-          </Field>
-          <button className="btn gradient lg block" disabled={busy}>
-            {busy ? 'Signing in…' : 'Sign in'}
-            {!busy && <Icon name="arrowRight" size={18} />}
-          </button>
-          <p className="tiny muted center-text">
-            Sessions end when this tab closes. Every action is audited.
-          </p>
-        </motion.form>
+            <ErrorAlert error={error} />
+            <Field label="Username or email">
+              <div className="input-with-icon">
+                <Icon name="user" size={17} />
+                <input
+                  className="input"
+                  autoComplete="username"
+                  value={form.login}
+                  onChange={(e) => setForm({ ...form, login: e.target.value })}
+                  required
+                />
+              </div>
+            </Field>
+            <Field label="Password">
+              <div className="input-with-icon">
+                <Icon name="key" size={17} />
+                <input
+                  className="input"
+                  type={show ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  required
+                />
+                <button
+                  type="button"
+                  className="input-action"
+                  onClick={() => setShow(!show)}
+                  aria-label="Show characters"
+                  aria-pressed={show}
+                >
+                  <Icon name={show ? 'eyeOff' : 'eye'} size={17} />
+                </button>
+              </div>
+            </Field>
+            <button className="btn gradient lg block" disabled={busy}>
+              {busy ? 'Signing in…' : 'Sign in'}
+              {!busy && <Icon name="arrowRight" size={18} />}
+            </button>
+            <p className="tiny muted center-text">
+              Sessions end when this tab closes. Every action is audited.
+            </p>
+          </motion.form>
+        )}
       </div>
     </div>
   );

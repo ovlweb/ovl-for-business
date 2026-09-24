@@ -18,6 +18,7 @@ import { badRequest, conflict, forbidden, notFound, unauthorized } from '../lib/
 import { toMe } from '../lib/mappers';
 import { currentUser } from '../plugins/auth';
 import { clientContext, revokeSessions, startSession, type ClientContext } from './sessions';
+import { checkSecondFactor, invalidTwoFactorCode, twoFactorRequired } from './two-factor';
 
 type UserRow = typeof users.$inferSelect;
 
@@ -95,6 +96,10 @@ export async function authRoutes(fastify: FastifyInstance) {
         throw unauthorized('Wrong username / email or password');
       }
       if (user.status !== 'active') throw forbidden('This account is suspended');
+      if (user.totpEnabledAt) {
+        if (!req.body.code) throw twoFactorRequired();
+        if (!(await checkSecondFactor(app, user, req.body.code))) throw invalidTwoFactorCode();
+      }
       return issueTokens(app, user, clientContext(req));
     },
   );

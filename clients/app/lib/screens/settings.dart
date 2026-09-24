@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -374,7 +377,308 @@ class _SecurityState extends State<_Security> {
           ),
         ),
         const SizedBox(height: 16),
+        const _TwoFactor(),
+        const SizedBox(height: 16),
         const _Devices(),
+      ],
+    );
+  }
+}
+
+/// Two-step verification: authenticator app codes plus one-time recovery codes.
+class _TwoFactor extends StatelessWidget {
+  const _TwoFactor();
+
+  @override
+  Widget build(BuildContext context) {
+    final session = context.watch<Session>();
+    return Query<TwoFactorStatus>(
+      client: session.queries,
+      queryKey: '2fa',
+      fetch: session.api.twoFactorStatus,
+      builder: (context, q) {
+        final s = q.data;
+        return OvlCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: Text('Two-step verification', style: context.text.titleLarge)),
+                  if (s != null) StatusPill(s.enabled ? 'active' : 'off'),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                s?.enabled ?? false
+                    ? 'Signing in asks for a code from your authenticator app. ${plural(s!.recoveryCodesLeft, 'recovery code')} left.'
+                    : 'Protect the account with a code from an authenticator app, so a stolen password is not enough.',
+                style: context.text.bodyMedium,
+              ),
+              const SizedBox(height: 14),
+              if (s != null)
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: s.enabled
+                      ? [
+                          OutlinedButton(
+                            onPressed: () => _confirm(context, newCodes: true),
+                            child: const Text('New recovery codes'),
+                          ),
+                          OutlinedButton(
+                            style: OutlinedButton.styleFrom(foregroundColor: context.c.danger),
+                            onPressed: () => _confirm(context, newCodes: false),
+                            child: const Text('Turn off'),
+                          ),
+                        ]
+                      : [
+                          FilledButton.icon(
+                            onPressed: () => _enable(context),
+                            icon: const Icon(LucideIcons.shieldCheck, size: 17),
+                            label: const Text('Turn on'),
+                          ),
+                        ],
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _enable(BuildContext context) async {
+    final session = context.read<Session>();
+    final code = TextEditingController();
+    final setupFuture = session.api.twoFactorSetup();
+    List<String>? recovery;
+    Object? error;
+    var busy = false;
+    await showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      builder: (sheet) => StatefulBuilder(
+        builder: (sheet, set) => Padding(
+          padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(sheet).bottom),
+          child: SingleChildScrollView(
+            child: recovery != null
+                ? _RecoveryCodes(codes: recovery!, onDone: () => Navigator.pop(sheet))
+                : FutureBuilder<Json>(
+                    future: setupFuture,
+                    builder: (sheet, snap) {
+                      final data = snap.data;
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text('Turn on two-step verification', style: sheet.text.headlineSmall),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Scan the QR code with an authenticator app (Google Authenticator, 1Password, Authy…), '
+                            'then enter the 6-digit code it shows.',
+                            style: sheet.text.bodyMedium,
+                          ),
+                          const SizedBox(height: 16),
+                          if (snap.hasError) ErrorBox(snap.error),
+                          if (data != null) ...[
+                            Center(
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+                                child: Image.memory(
+                                  base64Decode((data['qr'] as String).split(',').last),
+                                  width: 180,
+                                  height: 180,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            SelectableText(
+                              RegExp('.{1,4}').allMatches(data['secret'] as String).map((m) => m[0]).join(' '),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontFamily: 'monospace', fontSize: 15, letterSpacing: 1),
+                            ),
+                          ] else if (!snap.hasError)
+                            const Center(
+                              child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()),
+                            ),
+                          const SizedBox(height: 16),
+                          if (error != null) ...[ErrorBox(error), const SizedBox(height: 12)],
+                          TextField(
+                            controller: code,
+                            keyboardType: TextInputType.number,
+                            textAlign: TextAlign.center,
+                            maxLength: 6,
+                            onChanged: (_) => set(() {}),
+                            style: font(display, 22, FontWeight.w800, letterSpacing: 8, color: sheet.c.text),
+                            decoration: const InputDecoration(
+                              counterText: '',
+                              labelText: 'Code from the app',
+                              hintText: '123456',
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          GradientButton(
+                            label: 'Turn on',
+                            busy: busy,
+                            onPressed: data == null || code.text.trim().length != 6
+                                ? null
+                                : () async {
+                                    set(() {
+                                      busy = true;
+                                      error = null;
+                                    });
+                                    try {
+                                      final codes = await session.api.enableTwoFactor(code.text.trim());
+                                      session.queries.invalidate('2fa');
+                                      set(() => recovery = codes);
+                                    } catch (e) {
+                                      set(() => error = e);
+                                    } finally {
+                                      set(() => busy = false);
+                                    }
+                                  },
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// New recovery codes or turning it off: both confirm with a code (and the password to turn off).
+  Future<void> _confirm(BuildContext context, {required bool newCodes}) async {
+    final session = context.read<Session>();
+    final password = TextEditingController();
+    final code = TextEditingController();
+    List<String>? recovery;
+    Object? error;
+    var busy = false;
+    await showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      builder: (sheet) => StatefulBuilder(
+        builder: (sheet, set) => Padding(
+          padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(sheet).bottom),
+          child: recovery != null
+              ? _RecoveryCodes(codes: recovery!, onDone: () => Navigator.pop(sheet))
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      newCodes ? 'New recovery codes' : 'Turn off two-step verification',
+                      style: sheet.text.headlineSmall,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      newCodes
+                          ? 'Your old recovery codes stop working. Confirm with a code from the app.'
+                          : 'Your account will be protected by the password only.',
+                      style: sheet.text.bodyMedium,
+                    ),
+                    const SizedBox(height: 16),
+                    if (error != null) ...[ErrorBox(error), const SizedBox(height: 12)],
+                    if (!newCodes) ...[
+                      LabeledField(label: 'Password', controller: password, obscure: true),
+                      const SizedBox(height: 12),
+                    ],
+                    LabeledField(label: 'Authentication or recovery code', controller: code),
+                    const SizedBox(height: 18),
+                    GradientButton(
+                      label: newCodes ? 'Create new codes' : 'Turn off',
+                      busy: busy,
+                      onPressed: () async {
+                        set(() {
+                          busy = true;
+                          error = null;
+                        });
+                        try {
+                          if (newCodes) {
+                            final codes = await session.api.newRecoveryCodes(code.text.trim());
+                            set(() => recovery = codes);
+                          } else {
+                            await session.api.disableTwoFactor(password.text, code.text.trim());
+                            if (sheet.mounted) Navigator.pop(sheet);
+                            if (context.mounted) toast(context, 'Two-step verification is off');
+                          }
+                          session.queries.invalidate('2fa');
+                        } catch (e) {
+                          set(() => error = e);
+                        } finally {
+                          if (sheet.mounted) set(() => busy = false);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RecoveryCodes extends StatelessWidget {
+  const _RecoveryCodes({required this.codes, required this.onDone});
+
+  final List<String> codes;
+  final VoidCallback onDone;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Save your recovery codes', style: context.text.headlineSmall),
+        const SizedBox(height: 6),
+        Text(
+          'Each code signs you in once if you lose your phone. They are shown only now.',
+          style: context.text.bodyMedium,
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final code in codes)
+              Container(
+                width: 150,
+                padding: const EdgeInsets.symmetric(vertical: 9),
+                decoration: BoxDecoration(
+                  color: c.surface2,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: c.borderStrong),
+                ),
+                child: Text(
+                  code,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 15, letterSpacing: 1),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            OutlinedButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: codes.join('\n')));
+                if (context.mounted) toast(context, 'Recovery codes copied');
+              },
+              icon: const Icon(LucideIcons.copy, size: 16),
+              label: const Text('Copy'),
+            ),
+            const Spacer(),
+            FilledButton(onPressed: onDone, child: const Text('I saved them')),
+          ],
+        ),
       ],
     );
   }

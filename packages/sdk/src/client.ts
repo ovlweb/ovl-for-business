@@ -27,6 +27,8 @@ import type {
   RegistryEntry,
   RegistrySearchQuery,
   Session,
+  TwoFactorSetup,
+  TwoFactorStatus,
   ReviewInput,
   Role,
   StockListing,
@@ -233,6 +235,15 @@ export class OvlClient {
     updatePreferences: (input: Preferences) => this.patch<Me>('/me/preferences', input),
     changePassword: (currentPassword: string, newPassword: string) =>
       this.post<void>('/me/password', { currentPassword, newPassword }),
+    /** Two-factor authentication (authenticator app + recovery codes). */
+    twoFactor: {
+      status: () => this.get<TwoFactorStatus>('/me/2fa'),
+      setup: () => this.post<TwoFactorSetup>('/me/2fa/setup'),
+      enable: (code: string) => this.post<{ recoveryCodes: string[] }>('/me/2fa/enable', { code }),
+      disable: (password: string, code: string) => this.post<void>('/me/2fa/disable', { password, code }),
+      newRecoveryCodes: (code: string) =>
+        this.post<{ recoveryCodes: string[] }>('/me/2fa/recovery-codes', { code }),
+    },
     /** Devices signed in to this account. */
     sessions: () => this.get<Session[]>('/me/sessions'),
     signOutSession: (id: string) => this.del(`/me/sessions/${id}`),
