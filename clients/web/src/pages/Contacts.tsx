@@ -28,6 +28,7 @@ export function ContactsPage() {
   return (
     <div className="page stack-lg">
       <PageHeader
+        icon="users"
         title="Contacts"
         subtitle="People you can invite to groups. Staff show their badge — council members get a unique council badge."
       />

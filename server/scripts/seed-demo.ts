@@ -1,0 +1,369 @@
+/**
+ * Fills a running server with realistic demo data through the public API — the same
+ * calls the apps make, so every approval goes through the real workflows.
+ *
+ *   OVL_API_URL=http://localhost:4000 OWNER_PASSWORD=… pnpm --filter @ovl/server seed:demo
+ *
+ * Demo accounts all use the password "demo-password-1".
+ */
+import { OvlApiError, OvlClient } from '@ovl/sdk';
+import type { Application, Me } from '@ovl/shared';
+
+const API = process.env.OVL_API_URL ?? 'http://localhost:4000';
+const OWNER = {
+  login: process.env.OWNER_USERNAME ?? 'owner',
+  password: process.env.OWNER_PASSWORD ?? 'change-me-please',
+};
+const PASSWORD = 'demo-password-1';
+
+const COMPANY_CHECKS = ['identity', 'company', 'business_plan', 'license', 'listing'];
+const LICENSE_CHECKS = ['holder', 'content', 'virtual_only'];
+
+interface Person {
+  username: string;
+  displayName: string;
+  bio: string;
+  role?: 'moderator' | 'manager' | 'council' | 'admin';
+  theme?: string;
+}
+
+const PEOPLE: Person[] = [
+  {
+    username: 'elena',
+    displayName: 'Elena Marković',
+    bio: 'Council member · governance and licensing',
+    role: 'council',
+    theme: 'midnight',
+  },
+  {
+    username: 'viktor',
+    displayName: 'Viktor Hale',
+    bio: 'Council member · capital markets',
+    role: 'council',
+  },
+  {
+    username: 'arjun',
+    displayName: 'Arjun Mehta',
+    bio: 'Moderation team lead',
+    role: 'moderator',
+    theme: 'graphite',
+  },
+  {
+    username: 'sofia',
+    displayName: 'Sofia Lindqvist',
+    bio: 'Finance desk manager',
+    role: 'manager',
+    theme: 'emerald',
+  },
+  {
+    username: 'maria',
+    displayName: 'Maria Petrova',
+    bio: 'Founder of Aurora Media Group',
+    theme: 'daylight',
+  },
+  {
+    username: 'ivan',
+    displayName: 'Ivan Sokolov',
+    bio: 'Angel investor · games and media',
+    theme: 'obsidian',
+  },
+  { username: 'chen', displayName: 'Chen Wei', bio: 'CEO at Northwind Studio', theme: 'aurora' },
+  {
+    username: 'amara',
+    displayName: 'Amara Okafor',
+    bio: 'Builds virtual cities at Helios Works',
+    theme: 'ivory',
+  },
+];
+
+async function signIn(login: string, password: string): Promise<{ client: OvlClient; me: Me }> {
+  const client = new OvlClient({ baseUrl: API });
+  const me = await client.auth.login({ login, password });
+  return { client, me };
+}
+
+async function person(p: Person): Promise<{ client: OvlClient; me: Me }> {
+  const client = new OvlClient({ baseUrl: API });
+  try {
+    const me = await client.auth.register({
+      username: p.username,
+      email: `${p.username}@demo.ovl`,
+      password: PASSWORD,
+      displayName: p.displayName,
+    });
+    await client.me.update({ bio: p.bio });
+    await client.me.updatePreferences({
+      onboardingCompleted: true,
+      theme: p.theme ?? 'system',
+      goals: ['invest', 'chat'],
+    });
+    return { client, me };
+  } catch (error) {
+    if (error instanceof OvlApiError && error.status === 409) return signIn(p.username, PASSWORD);
+    throw error;
+  }
+}
+
+async function approveAll(app: Application, reviewers: OvlClient[], checklist: Record<string, string[]>) {
+  let current = app;
+  for (const reviewer of reviewers) {
+    if (current.status !== 'pending') break;
+    const stage = current.currentStage ?? '';
+    current = await reviewer.applications
+      .review(current.id, { decision: 'approve', checklist: checklist[stage] ?? [] })
+      .catch((e: unknown) => {
+        if (e instanceof OvlApiError && (e.status === 403 || e.status === 409)) return current;
+        throw e;
+      });
+  }
+  return current;
+}
+
+async function main() {
+  console.log(`Seeding demo data into ${API}`);
+  const owner = await signIn(OWNER.login, OWNER.password);
+  await owner.client.me.updatePreferences({ onboardingCompleted: true, theme: 'midnight' });
+
+  const users = new Map<string, { client: OvlClient; me: Me }>();
+  for (const p of PEOPLE) {
+    const u = await person(p);
+    users.set(p.username, u);
+    if (p.role && u.me.role !== p.role) await owner.client.admin.updateUser(u.me.id, { role: p.role });
+  }
+  const u = (name: string) => users.get(name)!;
+  const reviewers = [u('arjun').client, u('elena').client, u('viktor').client, owner.client];
+
+  // --- Cash desk deposits (finance manager) -------------------------------------------
+  const sofia = u('sofia').client;
+  const deposits: [string, string, string][] = [
+    ['maria', 'EUR', '48500'],
+    ['maria', 'USD', '12000'],
+    ['ivan', 'EUR', '95000'],
+    ['ivan', 'USD', '40000'],
+    ['chen', 'USD', '26000'],
+    ['amara', 'GBP', '18750'],
+    ['amara', 'EUR', '9000'],
+    ['elena', 'CHF', '7200'],
+  ];
+  for (const [name, currency, amount] of deposits) {
+    await sofia.admin.cashOperation({
+      ownerType: 'user',
+      ownerId: u(name).me.id,
+      currency,
+      amount,
+      type: 'deposit',
+      method: Number(amount) > 20000 ? 'manager_transfer' : 'physical_cash',
+      reference: `DEMO-${name.toUpperCase()}-${currency}`,
+    });
+  }
+
+  // --- Companies through the full approval workflow -----------------------------------
+  const companies = [
+    {
+      founder: 'maria',
+      ticker: 'AURA',
+      name: 'Aurora Media Group',
+      currency: 'EUR',
+      price: '12.50',
+      shares: 200000,
+      description: 'Virtual media holding: TV, radio and web projects with a combined audience of 2.4M.',
+      plan: 'Advertising, sponsorships and licensed content across our virtual channels.',
+      prices: ['11.20', '11.85', '11.40', '12.10', '12.95', '12.60', '13.40', '14.05'],
+    },
+    {
+      founder: 'chen',
+      ticker: 'NWS',
+      name: 'Northwind Studio',
+      currency: 'USD',
+      price: '5.00',
+      shares: 500000,
+      description: 'Independent game studio making strategy and simulation games.',
+      plan: 'Premium games, expansions and a creator marketplace.',
+      prices: ['5.20', '4.95', '5.60', '6.10', '5.85', '6.40'],
+    },
+    {
+      founder: 'amara',
+      ticker: 'HLX',
+      name: 'Helios Works',
+      currency: 'GBP',
+      price: '2.40',
+      shares: 1000000,
+      description: 'Designs and runs virtual cities and districts for communities.',
+      plan: 'District leases, city services and infrastructure licensing.',
+      prices: ['2.55', '2.70', '2.62', '2.88', '3.05'],
+    },
+  ];
+  for (const c of companies) {
+    const founder = u(c.founder).client;
+    const mine = await founder.organizations.mine();
+    if (mine.some((o) => o.name === c.name)) continue;
+    const app = await founder.applications.submit({
+      type: 'company',
+      payload: {
+        name: c.name,
+        description: c.description,
+        baseCurrency: c.currency,
+        businessPlan: c.plan,
+        website: `https://${c.ticker.toLowerCase()}.example.com`,
+        listOnExchange: true,
+        listing: { ticker: c.ticker, sharePrice: c.price, totalShares: c.shares },
+      },
+    });
+    await approveAll(app, reviewers, { moderation: COMPANY_CHECKS });
+    const listing = await owner.client.stock.listing(c.ticker);
+    for (const price of c.prices) await owner.client.admin.updateListing(listing.id, { sharePrice: price });
+  }
+
+  // --- Investments ---------------------------------------------------------------------
+  const invest: [string, string, string][] = [
+    ['ivan', 'AURA', '25000'],
+    ['ivan', 'NWS', '12000'],
+    ['elena', 'AURA', '1400'],
+    ['maria', 'NWS', '3500'],
+    ['chen', 'AURA', '4200'],
+    ['ivan', 'HLX', '0'],
+  ];
+  for (const [name, ticker, amount] of invest) {
+    if (amount === '0') continue;
+    await u(name)
+      .client.stock.invest(ticker, amount)
+      .catch(() => undefined);
+  }
+
+  // --- Licenses -------------------------------------------------------------------------
+  const licenses = [
+    {
+      who: 'maria',
+      licenseType: 'tv_channel' as const,
+      title: 'Aurora TV',
+      description: '24/7 virtual business news channel.',
+    },
+    {
+      who: 'amara',
+      licenseType: 'virtual_country' as const,
+      title: 'Republic of Helios',
+      description: 'A virtual country with its own districts and citizens.',
+    },
+    {
+      who: 'chen',
+      licenseType: 'game' as const,
+      title: 'Northwind Online',
+      description: 'Persistent strategy game world.',
+    },
+    {
+      who: 'ivan',
+      licenseType: 'verified_website' as const,
+      title: 'sokolov.capital',
+      description: 'Verified website of Ivan Sokolov’s fund.',
+    },
+  ];
+  const existing = await owner.client.registry.search({ limit: 100 });
+  for (const l of licenses) {
+    if (existing.items.some((e) => e.title === l.title)) continue;
+    const app = await u(l.who).client.applications.submit({ type: 'license', payload: l });
+    await approveAll(app, reviewers, { moderation: LICENSE_CHECKS });
+  }
+  // One application still waiting for the council, for the review queue.
+  const pending = await u('ivan').client.applications.mine();
+  if (!pending.some((a) => a.status === 'pending')) {
+    const app = await u('ivan').client.applications.submit({
+      type: 'license',
+      payload: {
+        licenseType: 'radio_channel',
+        title: 'Capital FM',
+        description: 'Radio about markets and startups.',
+      },
+    });
+    await u('arjun').client.applications.review(app.id, { decision: 'approve', checklist: LICENSE_CHECKS });
+  }
+
+  // --- Contacts, chats, a group and a news channel --------------------------------------
+  const maria = u('maria').client;
+  for (const name of ['ivan', 'chen', 'amara', 'elena'])
+    await maria.contacts.add(name).catch(() => undefined);
+  await u('ivan')
+    .client.contacts.add('maria')
+    .catch(() => undefined);
+
+  const direct = await maria.chats.direct(u('ivan').me.id);
+  const history = await maria.chats.messages(direct.id, { limit: 5 });
+  if (history.length === 0) {
+    const script: [OvlClient, string][] = [
+      [maria, 'Hi Ivan! The Q3 numbers for Aurora are ready.'],
+      [u('ivan').client, 'Great — send them over. How did the TV launch go?'],
+      [maria, 'Audience up 38% since the license was approved 🎉'],
+      [u('ivan').client, 'Impressive. I topped up my AURA position this morning.'],
+      [maria, 'Thank you! The frozen part unlocks in December, we plan to use it for the radio studio.'],
+    ];
+    for (const [client, body] of script) await client.chats.send(direct.id, body);
+  }
+
+  const chats = await maria.chats.list();
+  if (!chats.some((c) => c.title === 'Board — Aurora Media')) {
+    const group = await maria.chats.createGroup({
+      title: 'Board — Aurora Media',
+      memberIds: [u('ivan').me.id, u('chen').me.id, u('elena').me.id],
+    });
+    await maria.chats.send(group.id, 'Agenda for Friday: Q3 results, radio license, hiring plan.');
+    await u('chen').client.chats.send(group.id, 'I can present the cross-promotion with Northwind.');
+    await u('elena').client.chats.send(group.id, 'Council will review the radio license on Thursday.');
+  }
+
+  const channels = await owner.client.chats.discoverChannels('ovl_news');
+  if (channels.length === 0) {
+    const channel = await u('arjun').client.chats.createChannel({
+      title: 'OVL Platform News',
+      handle: 'ovl_news',
+      description: 'Official announcements from the OVL team.',
+    });
+    await u('arjun').client.chats.send(
+      channel.id,
+      'The stock exchange now shows price history for every listing.',
+    );
+    await u('arjun').client.chats.send(
+      channel.id,
+      'New: themes, multi-account and native apps for every platform.',
+    );
+    for (const name of ['maria', 'ivan', 'chen', 'amara']) await u(name).client.chats.join(channel.id);
+  }
+
+  // --- Service stories -------------------------------------------------------------------
+  const stories = await owner.client.stories.list();
+  if (stories.length === 0) {
+    await owner.client.stories.publish({
+      text: 'Welcome to OVL For Business 2.0 — native apps are here!',
+      background: '#2563EB',
+    });
+    await u('elena').client.stories.publish({
+      text: 'Council session on Thursday: 3 licenses on the agenda.',
+      background: '#7C3AED',
+    });
+    await owner.client.stories.publish({
+      text: 'Exchange tip: 30% of each investment is frozen for 90 days.',
+      background: '#047857',
+    });
+  }
+
+  // --- Tech support -------------------------------------------------------------------------
+  const tickets = await u('amara').client.support.mine();
+  if (tickets.length === 0) {
+    const ticket = await u('amara').client.support.create(
+      'Deposit in GBP',
+      'Can I deposit GBP at the cash desk?',
+    );
+    await u('arjun').client.chats.send(
+      ticket.id,
+      'Yes — any currency. Bring your ID and the reference from your wallet page.',
+    );
+    await owner.client.chats.send(ticket.id, 'We also added GBP to the exchange, enjoy!');
+  }
+
+  console.log(
+    'Demo data ready. Accounts: ' + PEOPLE.map((p) => p.username).join(', ') + ` (password "${PASSWORD}")`,
+  );
+}
+
+main().catch((error) => {
+  console.error(error instanceof OvlApiError ? `${error.status} ${error.code}: ${error.message}` : error);
+  process.exit(1);
+});

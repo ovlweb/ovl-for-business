@@ -3,11 +3,12 @@ import {
   Empty,
   ErrorAlert,
   Field,
+  Icon,
   formatDate,
   formatMoney,
   Money,
   PageHeader,
-  Sparkline,
+  AreaChart,
   Spinner,
   StatusBadge,
 } from '@ovl/ui';
@@ -22,6 +23,7 @@ export function ExchangePage() {
   return (
     <div className="page stack-lg">
       <PageHeader
+        icon="chart"
         title="Stock exchange"
         subtitle="Invest in approved companies. Part of every investment is frozen on the company balance for 3–6 months."
         actions={
@@ -151,8 +153,16 @@ export function ListingPage() {
       </div>
       <div className="grid-2">
         <div className="card stack">
-          <h3>Price history</h3>
-          <Sparkline values={l.priceHistory.map((p) => Number(p.price))} />
+          <div className="spread">
+            <h3>Price history</h3>
+            <PriceChange history={l.priceHistory.map((p) => Number(p.price))} />
+          </div>
+          <AreaChart
+            values={l.priceHistory.map((p) => Number(p.price))}
+            labels={l.priceHistory.map((p) => formatDate(p.at))}
+            format={(v) => formatMoney(v.toFixed(2), l.currency)}
+            height={220}
+          />
           <p className="small" style={{ whiteSpace: 'pre-wrap' }}>
             {l.description}
           </p>
@@ -217,6 +227,7 @@ export function PortfolioPage() {
   return (
     <div className="page stack-lg">
       <PageHeader
+        icon="pie"
         title="My portfolio"
         actions={
           <Link className="btn" to="/exchange">
@@ -288,5 +299,20 @@ export function PortfolioPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function PriceChange({ history }: { history: number[] }) {
+  const first = history[0];
+  const last = history[history.length - 1];
+  if (history.length < 2 || !first || last === undefined) return null;
+  const change = ((last - first) / first) * 100;
+  const up = change >= 0;
+  return (
+    <span className={`badge ${up ? 'ok' : 'bad'}`}>
+      <Icon name={up ? 'arrowUpRight' : 'arrowDownLeft'} size={13} />
+      {up ? '+' : ''}
+      {change.toFixed(2)}%
+    </span>
   );
 }

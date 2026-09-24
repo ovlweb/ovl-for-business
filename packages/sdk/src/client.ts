@@ -21,6 +21,7 @@ import type {
   Message,
   Organization,
   OrgMember,
+  Preferences,
   OrgRole,
   RegisterInput,
   RegistryEntry,
@@ -224,6 +225,7 @@ export class OvlClient {
   me = {
     get: () => this.get<Me>('/me'),
     update: (input: UpdateMeInput) => this.patch<Me>('/me', input),
+    updatePreferences: (input: Preferences) => this.patch<Me>('/me/preferences', input),
     changePassword: (currentPassword: string, newPassword: string) =>
       this.post<void>('/me/password', { currentPassword, newPassword }),
   };

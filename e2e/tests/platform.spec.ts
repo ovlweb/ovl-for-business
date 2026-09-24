@@ -1,6 +1,16 @@
 import { expect, test, type Page } from '@playwright/test';
 import { ADMIN_URL, OWNER_PASSWORD } from '../constants';
-import { bubble, login, newPage, openChat, register, send } from './helpers';
+import {
+  bubble,
+  greeting,
+  login,
+  newPage,
+  openChat,
+  PASSWORD,
+  register,
+  send,
+  skipOnboarding,
+} from './helpers';
 
 /**
  * One realistic story across the web client and the admin panel, run in order:
@@ -29,7 +39,38 @@ test.describe.serial('OVL For Business end to end', () => {
     await register(maria, 'Maria Petrova', 'maria');
     await register(ivan, 'Ivan Sokolov', 'ivan');
     await login(owner, 'owner', OWNER_PASSWORD);
-    await owner.getByRole('heading', { name: 'Chats' }).waitFor();
+    await skipOnboarding(owner, 'Owner');
+  });
+
+  test('first sign-in: the setup tour picks a theme that follows the account', async ({ browser }) => {
+    const chen = await newPage(browser, errors, 'chen');
+    await chen.goto('./');
+    await chen.getByRole('tab', { name: 'Create account' }).click();
+    await chen.getByLabel('Display name').fill('Chen Wei');
+    await chen.getByLabel('Username').fill('chen');
+    await chen.getByLabel('Email').fill('chen@example.test');
+    await chen.getByLabel('Password').fill(PASSWORD);
+    await chen.getByRole('button', { name: 'Create account' }).click();
+
+    await chen.getByRole('button', { name: 'Get started' }).click();
+    await chen.getByRole('radio', { name: 'Emerald' }).click();
+    await expect(chen.locator('html')).toHaveAttribute('data-theme', 'emerald');
+    await chen.getByRole('button', { name: 'Continue' }).click();
+    await chen.getByLabel('About you (optional)').fill('CEO at Northwind Studio');
+    await chen.getByRole('button', { name: 'Continue' }).click();
+    await chen.getByRole('button', { name: /Invest in companies/ }).click();
+    await chen.getByRole('button', { name: 'Continue' }).click();
+    await chen.getByRole('button', { name: 'Maybe later' }).click();
+    await chen.getByRole('button', { name: 'Open the exchange' }).click();
+    await chen.getByRole('heading', { name: 'Stock exchange' }).waitFor();
+
+    // Another device: the account brings its theme along and skips the tour.
+    const laptop = await newPage(browser, errors, 'chen-laptop');
+    await login(laptop, 'chen');
+    await greeting(laptop, 'Chen').waitFor();
+    await expect(laptop.locator('html')).toHaveAttribute('data-theme', 'emerald');
+    await laptop.context().close();
+    await chen.context().close();
   });
 
   test('contacts and a live direct chat', async () => {
@@ -225,10 +266,61 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(maria.getByRole('link', { name: 'https://northwind.example.com' })).toBeVisible();
   });
 
+  test('settings: switching the theme applies instantly and is saved', async () => {
+    await maria.goto('./#/settings?section=appearance');
+    await maria.getByRole('radio', { name: 'Midnight' }).click();
+    await expect(maria.locator('html')).toHaveAttribute('data-theme', 'midnight');
+    await expect(maria.getByText('Midnight theme applied')).toBeVisible();
+    await maria.reload();
+    await expect(maria.locator('html')).toHaveAttribute('data-theme', 'midnight');
+    await maria.getByRole('radio', { name: 'Daylight' }).click();
+    await expect(maria.locator('html')).toHaveAttribute('data-theme', 'daylight');
+  });
+
+  test('multi-account: add a second account and switch between them', async () => {
+    await maria
+      .getByRole('button', { name: /Maria Petrova/ })
+      .first()
+      .click();
+    await maria.getByRole('button', { name: 'Add another account' }).click();
+    await expect(maria.getByRole('heading', { name: 'Add another account' })).toBeVisible();
+    await maria.getByLabel('Username or email').fill('ivan');
+    await maria.getByLabel('Password').fill(PASSWORD);
+    await maria.getByRole('button', { name: 'Sign in' }).click();
+    await greeting(maria, 'Ivan').waitFor();
+
+    await maria
+      .getByRole('button', { name: /Ivan Sokolov/ })
+      .first()
+      .click();
+    await maria
+      .getByRole('menu')
+      .getByRole('button', { name: /Maria Petrova/ })
+      .click();
+    await greeting(maria, 'Maria').waitFor();
+
+    // Signing out of one account falls back to the other one still signed in.
+    await maria
+      .getByRole('button', { name: /Maria Petrova/ })
+      .first()
+      .click();
+    await maria.getByRole('button', { name: 'Sign out' }).click();
+    await greeting(maria, 'Ivan').waitFor();
+    await maria
+      .getByRole('button', { name: /Ivan Sokolov/ })
+      .first()
+      .click();
+    await maria.getByRole('button', { name: 'Add another account' }).click();
+    await maria.getByLabel('Username or email').fill('maria');
+    await maria.getByLabel('Password').fill(PASSWORD);
+    await maria.getByRole('button', { name: 'Sign in' }).click();
+    await greeting(maria, 'Maria').waitFor();
+  });
+
   test('phone layout: bottom bar with a More sheet', async ({ browser }) => {
     const phone = await newPage(browser, errors, 'phone', true);
     await login(phone, 'maria');
-    await phone.getByRole('heading', { name: 'Chats' }).waitFor();
+    await greeting(phone, 'Maria').waitFor();
     await expect(phone.locator('.sidebar .nav-link:visible')).toHaveCount(5);
     await phone.getByRole('button', { name: 'More' }).click();
     await phone.getByRole('dialog', { name: 'More' }).getByText('Registry').click();

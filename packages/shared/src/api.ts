@@ -5,6 +5,7 @@
  */
 import { z } from 'zod';
 import { BADGES, ROLES } from './roles';
+import { THEME_IDS } from './themes';
 import {
   APPLICATION_STATUSES,
   APPLICATION_TYPES,
@@ -67,11 +68,27 @@ export const userProfileSchema = userSummarySchema.extend({
 });
 export type UserProfile = z.infer<typeof userProfileSchema>;
 
+/** What the user wants to do on the platform (asked during onboarding). */
+export const GOALS = ['company', 'invest', 'license', 'chat', 'channel', 'staff'] as const;
+
+/** Per-account settings synced across the web client, the admin panel and the native apps. */
+export const preferencesSchema = z.object({
+  theme: z
+    .string()
+    .refine((t) => t === 'system' || THEME_IDS.includes(t), 'Unknown theme')
+    .optional(),
+  onboardingCompleted: z.boolean().optional(),
+  goals: z.array(z.enum(GOALS)).max(GOALS.length).optional(),
+  compactSidebar: z.boolean().optional(),
+});
+export type Preferences = z.infer<typeof preferencesSchema>;
+
 export const meSchema = userSummarySchema.extend({
   email: z.string(),
   bio: z.string(),
   status: z.enum(['active', 'suspended']),
   permissions: z.array(z.string()),
+  preferences: preferencesSchema,
   createdAt: isoDate,
 });
 export type Me = z.infer<typeof meSchema>;

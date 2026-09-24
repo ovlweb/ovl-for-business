@@ -37,9 +37,3 @@ export function setCustomServer(url: string | null): void {
     /* storage unavailable */
   }
 }
-
-/** Running inside the Capacitor (Android/iOS) or Tauri (desktop) shell. */
-export const isNativeShell =
-  !!(window as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.() ||
-  '__TAURI_INTERNALS__' in window ||
-  /^(capacitor|tauri|file):$/.test(location.protocol);

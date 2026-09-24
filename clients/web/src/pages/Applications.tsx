@@ -338,6 +338,7 @@ export function ApplicationsPage() {
   return (
     <div className="page stack-lg">
       <PageHeader
+        icon="file"
         title="Applications"
         subtitle="Register companies and licenses or join the moderation team or the council. Every application goes through moderation and confirmations."
       />

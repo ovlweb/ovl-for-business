@@ -37,15 +37,28 @@ export async function newPage(
   return page;
 }
 
+/** The home screen greets people by their first name. */
+export function greeting(page: Page, firstName: string) {
+  return page.getByRole('heading', {
+    name: new RegExp(`^Good (morning|afternoon|evening|night), ${firstName}$`),
+  });
+}
+
 export async function register(page: Page, displayName: string, username: string) {
   await page.goto('./');
-  await page.getByText('Create a personal account').click();
+  await page.getByRole('tab', { name: 'Create account' }).click();
   await page.getByLabel('Display name').fill(displayName);
   await page.getByLabel('Username').fill(username);
   await page.getByLabel('Email').fill(`${username}@example.test`);
   await page.getByLabel('Password').fill(PASSWORD);
   await page.getByRole('button', { name: 'Create account' }).click();
-  await page.getByRole('heading', { name: 'Chats' }).waitFor();
+  await skipOnboarding(page, displayName.split(' ')[0]!);
+}
+
+/** First sign-in shows the setup tour; tests that are not about it skip it. */
+export async function skipOnboarding(page: Page, firstName: string) {
+  await page.getByRole('button', { name: 'Skip setup' }).click();
+  await greeting(page, firstName).waitFor();
 }
 
 export async function login(page: Page, username: string, password = PASSWORD, url = './') {

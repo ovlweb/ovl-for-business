@@ -1,6 +1,7 @@
 import {
   badgesForRole,
   PERMISSIONS,
+  preferencesSchema,
   type Me,
   type Permission,
   type Role,
@@ -38,6 +39,8 @@ export function toMe(u: UserRow): Me {
     bio: u.bio,
     status: u.status,
     permissions: permissionsFor(u.role),
+    // Tolerate old or unknown keys in stored preferences.
+    preferences: preferencesSchema.catch({}).parse(u.preferences),
     createdAt: iso(u.createdAt),
   };
 }

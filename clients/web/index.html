@@ -12,6 +12,17 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./icon-192.png" />
     <title>OVL For Business</title>
+    <!-- Paint the last used theme before the app loads, so there is no flash. -->
+    <script>
+      try {
+        var t = JSON.parse(localStorage.getItem('ovl.theme.vars') || 'null');
+        if (t) {
+          for (var k in t.vars) document.documentElement.style.setProperty(k, t.vars[k]);
+          document.documentElement.dataset.mode = t.mode;
+          document.documentElement.dataset.theme = t.id;
+        }
+      } catch (e) {}
+    </script>
     <!-- Runtime configuration (API URL). Overwritten by the Docker image entrypoint. -->
     <script src="./config.js"></script>
   </head>

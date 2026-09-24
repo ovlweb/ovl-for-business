@@ -24,6 +24,19 @@ describe('auth', () => {
     expect(ownerMe.body.permissions).toContain('wallet.cash');
   });
 
+  it('stores synced preferences (theme, onboarding) and merges updates', async () => {
+    const erin = await api.register('erin');
+    expect((await api.get('/me', erin)).body.preferences).toEqual({});
+    await api.patch('/me/preferences', erin, { theme: 'emerald' });
+    const merged = await api.patch('/me/preferences', erin, { onboardingCompleted: true, goals: ['invest'] });
+    expect(merged.body.preferences).toEqual({
+      theme: 'emerald',
+      onboardingCompleted: true,
+      goals: ['invest'],
+    });
+    expect((await api.patch('/me/preferences', erin, { theme: 'neon-pink' })).status).toBe(400);
+  });
+
   it('rejects duplicate usernames and bad passwords', async () => {
     await api.register('bob');
     const dup = await api.post('/auth/register', null, {

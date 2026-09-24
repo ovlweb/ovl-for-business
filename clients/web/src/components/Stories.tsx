@@ -1,7 +1,7 @@
 import type { Story } from '@ovl/shared';
 import { Avatar, Badges, ErrorAlert, Field, Modal, timeAgo } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { Icon } from './Icon';
@@ -173,7 +173,21 @@ export function StoriesBar() {
   const [viewing, setViewing] = useState<number | null>(null);
   const [publishing, setPublishing] = useState(false);
   const canPublish = can('stories.publish');
-  const list = stories.data ?? [];
+  // Viewer order groups each author's stories together; the bar shows one bubble per author.
+  const list = useMemo(() => {
+    const data = stories.data ?? [];
+    const order = [...new Set(data.map((s) => s.author.id))];
+    return order.flatMap((id) => data.filter((s) => s.author.id === id));
+  }, [stories.data]);
+  const authors = useMemo(() => {
+    const out: { author: (typeof list)[number]['author']; start: number; seen: boolean }[] = [];
+    list.forEach((s, i) => {
+      const last = out[out.length - 1];
+      if (last?.author.id === s.author.id) last.seen &&= s.viewed;
+      else out.push({ author: s.author, start: i, seen: s.viewed });
+    });
+    return out;
+  }, [list]);
   if (!list.length && !canPublish) return null;
 
   return (
@@ -187,13 +201,18 @@ export function StoriesBar() {
             New story
           </button>
         )}
-        {list.map((s, i) => (
-          <button key={s.id} className="story-bubble" onClick={() => setViewing(i)} title={s.text}>
-            <span className={`story-ring${s.viewed ? ' seen' : ''}`}>
-              <Avatar name={s.author.displayName} url={s.author.avatarUrl} size={48} />
+        {authors.map(({ author, start, seen }) => (
+          <button
+            key={author.id}
+            className="story-bubble"
+            onClick={() => setViewing(start)}
+            title={author.displayName}
+          >
+            <span className={`story-ring${seen ? ' seen' : ''}`}>
+              <Avatar name={author.displayName} url={author.avatarUrl} size={48} />
             </span>
             <span className="ellipsis" style={{ maxWidth: 58 }}>
-              {s.author.displayName}
+              {author.displayName}
             </span>
           </button>
         ))}

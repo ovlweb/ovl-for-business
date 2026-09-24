@@ -24,6 +24,7 @@ export function CompaniesPage() {
   return (
     <div className="page stack-lg">
       <PageHeader
+        icon="building"
         title="Companies"
         subtitle="Your business accounts. New companies are registered through an application reviewed by moderation and the council."
         actions={
