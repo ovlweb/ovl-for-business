@@ -1,0 +1,30 @@
+# Reverse proxy in front of everything.
+#   WEB_ADDRESS    where the client lives   (default :8080, e.g. business.example.com for automatic HTTPS)
+#   ADMIN_ADDRESS  where the admin panel lives (default :8081, e.g. admin.business.example.com)
+# Both forward /api/* (REST + WebSocket) and /health to the API server.
+
+{$WEB_ADDRESS::8080} {
+	encode gzip
+	handle /api/* {
+		reverse_proxy api:4000
+	}
+	handle /health {
+		reverse_proxy api:4000
+	}
+	handle {
+		reverse_proxy web:80
+	}
+}
+
+{$ADMIN_ADDRESS::8081} {
+	encode gzip
+	# Optionally restrict the admin panel to office / VPN addresses:
+	# @outside not remote_ip 10.0.0.0/8 192.168.0.0/16
+	# respond @outside 403
+	handle /api/* {
+		reverse_proxy api:4000
+	}
+	handle {
+		reverse_proxy admin:80
+	}
+}

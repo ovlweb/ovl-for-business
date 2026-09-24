@@ -1,0 +1,90 @@
+# Full stack: PostgreSQL, API server, web client, admin panel and a Caddy reverse proxy.
+#   cp .env.example .env   # then edit secrets
+#   docker compose up -d --build
+# Client: http://localhost:8080   Admin panel: http://localhost:8081   API docs: http://localhost:8080/api/docs
+
+name: ovl
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ovl}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-ovl}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-ovl} -d ${POSTGRES_DB:-ovl}']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    image: ovl-server:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-ovl}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ovl}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      OWNER_USERNAME: ${OWNER_USERNAME:-owner}
+      OWNER_EMAIL: ${OWNER_EMAIL:-owner@example.com}
+      OWNER_PASSWORD: ${OWNER_PASSWORD:?set OWNER_PASSWORD in .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      COUNCIL_QUORUM: ${COUNCIL_QUORUM:-3}
+      STOCK_FREEZE_PERCENT: ${STOCK_FREEZE_PERCENT:-30}
+      STOCK_LOCK_DAYS: ${STOCK_LOCK_DAYS:-90}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/docker/static.Dockerfile
+      args:
+        APP: '@ovl/web'
+        APP_DIR: clients/web
+    image: ovl-web:latest
+    restart: unless-stopped
+    environment:
+      # Empty = same origin (Caddy routes /api to the server).
+      OVL_API_URL: ${PUBLIC_API_URL:-}
+
+  admin:
+    build:
+      context: .
+      dockerfile: deploy/docker/static.Dockerfile
+      args:
+        APP: '@ovl/admin'
+        APP_DIR: admin
+    image: ovl-admin:latest
+    restart: unless-stopped
+    environment:
+      OVL_API_URL: ${PUBLIC_API_URL:-}
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [api, web, admin]
+    environment:
+      WEB_ADDRESS: ${WEB_ADDRESS:-:8080}
+      ADMIN_ADDRESS: ${ADMIN_ADDRESS:-:8081}
+    ports:
+      - '${WEB_PORT:-8080}:8080'
+      - '${ADMIN_PORT:-8081}:8081'
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

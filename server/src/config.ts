@@ -20,6 +20,9 @@ const envSchema = z.object({
   ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).default(900),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).default(30),
 
+  /** Trust X-Forwarded-For (client IPs for rate limits and audit). Disable if the API is exposed directly. */
+  TRUST_PROXY: bool,
+
   /** Comma separated list of allowed browser origins, or * */
   CORS_ORIGINS: z.string().default('*'),
 

@@ -29,6 +29,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@ovl/sdk": "workspace:*",
     "@types/node": "^22.19.0",
     "@types/ws": "^8.18.1",
     "drizzle-kit": "^0.31.11",

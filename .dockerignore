@@ -1,0 +1,8 @@
+**/node_modules
+**/dist
+**/.env
+.git
+clients/desktop/src-tauri/target
+clients/mobile/android
+clients/mobile/ios
+**/*.log

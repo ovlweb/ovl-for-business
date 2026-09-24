@@ -56,8 +56,18 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
             level: config.LOG_LEVEL,
             transport: config.LOG_PRETTY ? { target: 'pino-pretty' } : undefined,
             redact: ['req.headers.authorization', 'req.headers["x-api-key"]'],
+            serializers: {
+              // The realtime socket carries the access token in its query string: never log it.
+              req: (req: { method: string; url: string; hostname?: string; ip?: string }) => ({
+                method: req.method,
+                url: req.url.replace(/([?&]token=)[^&]*/, '$1[redacted]'),
+                hostname: req.hostname,
+                remoteAddress: req.ip,
+              }),
+            },
           },
-    trustProxy: true,
+    // Only trust X-Forwarded-* when running behind the reverse proxy.
+    trustProxy: config.TRUST_PROXY ?? true,
     bodyLimit: 1024 * 1024,
   }).withTypeProvider<ZodTypeProvider>();
 
