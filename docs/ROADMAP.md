@@ -22,6 +22,8 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
 - ✅ Two-step verification with authenticator apps and recovery codes (0.2), mandatory for staff
   and for people who move company money.
 - ✅ Active sessions list with remote sign-out, refresh-token theft detection (0.2).
+- ✅ Passkeys (WebAuthn) for the web client and the admin panel (0.2). Next: passkeys in the native
+  apps (platform credential managers with associated domains).
 - ✅ Email confirmation, email change and password reset by emailed links (SMTP) (0.2).
 - Identity verification (KYC) for company owners before approval; "verified business" badge.
 - Admin panel behind SSO / IP allow-list; four-eyes approval for large cash operations.

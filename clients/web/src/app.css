@@ -1823,3 +1823,8 @@ kbd {
     padding: 14px 16px 0;
   }
 }
+
+.passkey-row {
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}

@@ -39,6 +39,7 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
       COUNCIL_QUORUM: ${COUNCIL_QUORUM:-3}
       PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:8080}
+      PUBLIC_ADMIN_URL: ${PUBLIC_ADMIN_URL:-http://localhost:8081}
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-OVL For Business <no-reply@localhost>}
       REQUIRE_2FA_FOR_STAFF: ${REQUIRE_2FA_FOR_STAFF:-true}

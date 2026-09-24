@@ -12,6 +12,9 @@ import {
   Modal,
   PageHeader,
   plural,
+  addPasskey,
+  passkeyCancelled,
+  passkeysSupported,
   RecoveryCodes,
   StatusBadge,
   SkeletonList,
@@ -458,6 +461,110 @@ function EnableTwoFactor({ onClose }: { onClose: () => void }) {
   );
 }
 
+function defaultPasskeyName(): string {
+  const ua = navigator.userAgent;
+  const browser = /Edg\//.test(ua)
+    ? 'Edge'
+    : /Chrome\//.test(ua)
+      ? 'Chrome'
+      : /Firefox\//.test(ua)
+        ? 'Firefox'
+        : /Safari\//.test(ua)
+          ? 'Safari'
+          : 'Browser';
+  const os = /Android/.test(ua)
+    ? 'Android'
+    : /iPhone|iPad/.test(ua)
+      ? 'iOS'
+      : /Mac/.test(ua)
+        ? 'Mac'
+        : /Windows/.test(ua)
+          ? 'Windows'
+          : /Linux/.test(ua)
+            ? 'Linux'
+            : '';
+  return os ? `${browser} on ${os}` : browser;
+}
+
+function PasskeysCard() {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const keys = useQuery({ queryKey: ['passkeys'], queryFn: api.me.passkeys.list });
+  const [name, setName] = useState(defaultPasskeyName);
+  const add = useMutation({
+    mutationFn: () => addPasskey(api, name.trim() || defaultPasskeyName()),
+    onSuccess: (key) => {
+      void queryClient.invalidateQueries({ queryKey: ['passkeys'] });
+      toast.success(`Passkey "${key.name}" added`);
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.me.passkeys.remove(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['passkeys'] }),
+  });
+  const supported = passkeysSupported();
+  return (
+    <div className="card stack">
+      <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
+        <span className="kpi-icon" style={{ width: 42, height: 42 }}>
+          <Icon name="key" size={19} />
+        </span>
+        <div className="grow">
+          <h3>Passkeys</h3>
+          <p className="small muted" style={{ margin: '2px 0 0' }}>
+            Sign in with your fingerprint, face or device PIN instead of a password. Passkeys cannot be
+            phished and are stored by your device or password manager.
+          </p>
+        </div>
+      </div>
+      {keys.data?.map((k) => (
+        <div key={k.id} className="spread passkey-row">
+          <div>
+            <b>{k.name}</b>
+            <div className="small muted">
+              Added {formatDate(k.createdAt, false)}
+              {k.lastUsedAt ? ` · last used ${timeAgo(k.lastUsedAt)}` : ' · not used yet'}
+              {k.backedUp ? ' · synced' : ''}
+            </div>
+          </div>
+          <button
+            className="btn ghost sm"
+            disabled={remove.isPending}
+            onClick={() => remove.mutate(k.id)}
+            aria-label={`Remove ${k.name}`}
+          >
+            <Icon name="trash" size={15} /> Remove
+          </button>
+        </div>
+      ))}
+      <ErrorAlert error={add.error && !passkeyCancelled(add.error) ? add.error : remove.error} />
+      {supported ? (
+        <form
+          className="row-wrap"
+          onSubmit={(e) => {
+            e.preventDefault();
+            add.mutate();
+          }}
+        >
+          <input
+            className="input"
+            style={{ maxWidth: 260 }}
+            aria-label="Passkey name"
+            value={name}
+            maxLength={64}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <button className="btn primary" disabled={add.isPending}>
+            <Icon name="plus" size={16} /> Add a passkey
+          </button>
+        </form>
+      ) : (
+        <p className="small muted">This browser does not support passkeys.</p>
+      )}
+    </div>
+  );
+}
+
 function TwoFactorCard() {
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -649,6 +756,7 @@ function SecuritySection() {
         </button>
       </form>
       <TwoFactorCard />
+      <PasskeysCard />
       <SessionsCard />
     </div>
   );

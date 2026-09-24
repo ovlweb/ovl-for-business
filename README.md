@@ -159,6 +159,7 @@ Server environment variables (see `server/src/config.ts`):
 | `COUNCIL_QUORUM`                                    | `3`                     | Council approvals needed (capped by the council size)                                                       |
 | `PUBLIC_WEB_URL`                                    | `http://localhost:5173` | Web client address, used in email links                                                                     |
 | `SMTP_URL` / `MAIL_FROM`                            | —                       | `smtp://user:pass@host:587`; without it emails are logged (and kept in `/api/v1/dev/outbox` in development) |
+| `PUBLIC_ADMIN_URL`                                  | `http://localhost:5174` | Admin panel address (a passkey origin); `WEBAUTHN_RP_ID` / `WEBAUTHN_ORIGINS` override                      |
 | `REQUIRE_2FA_FOR_STAFF`                             | `true`                  | Staff must turn on two-step verification before using staff tools                                           |
 | `REQUIRE_2FA_FOR_COMPANY_FINANCE`                   | `true`                  | Company owners, directors and accountants need it to move company money                                     |
 | `REQUIRE_VERIFIED_EMAIL`                            | `true`                  | Applications need a confirmed email address                                                                 |

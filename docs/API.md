@@ -108,6 +108,14 @@ new one must be confirmed). `POST /auth/password/forgot {email}` always answers 
 one-hour link when the address is known; `POST /auth/password/reset {token, password}` sets the new
 password and signs out every session. Only the newest link of each kind works.
 
+**Passkeys** (WebAuthn): `POST /me/passkeys/options` → `navigator.credentials.create()` →
+`POST /me/passkeys {challengeId, name, response}`; `GET /me/passkeys`, `DELETE /me/passkeys/:id`.
+Sign in with `POST /auth/passkey/options` → `navigator.credentials.get()` →
+`POST /auth/passkey {challengeId, response}` (user verification is required, so no authenticator
+code is asked). They work on the web client and the admin panel origins (`PUBLIC_WEB_URL`,
+`PUBLIC_ADMIN_URL`, or `WEBAUTHN_RP_ID` / `WEBAUTHN_ORIGINS`). The native apps sign in with a
+password and an authenticator code.
+
 `GET /meta` publishes the server's `security` rules. With them on (the default):
 
 - staff without two-step verification act as regular users and get

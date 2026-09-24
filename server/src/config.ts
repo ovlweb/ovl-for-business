@@ -50,6 +50,12 @@ const envSchema = z.object({
 
   /** Where people open the web client; used for links in emails. */
   PUBLIC_WEB_URL: z.string().url().default('http://localhost:5173'),
+  /** Where staff open the admin panel (a passkey origin). */
+  PUBLIC_ADMIN_URL: z.string().url().default('http://localhost:5174'),
+  /** Passkeys: the relying-party ID (defaults to the web client's host name). */
+  WEBAUTHN_RP_ID: z.string().optional(),
+  /** Passkeys: comma-separated origins allowed to use them (defaults to the web and admin URLs). */
+  WEBAUTHN_ORIGINS: z.string().optional(),
   /** smtp://user:pass@host:587 (or smtps://…). Without it, emails are written to the log. */
   SMTP_URL: z.string().optional(),
   MAIL_FROM: z.string().default('OVL For Business <no-reply@localhost>'),

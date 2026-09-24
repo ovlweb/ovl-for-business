@@ -476,6 +476,39 @@ test.describe.serial('OVL For Business end to end', () => {
     await greeting(guest, 'Nina').waitFor();
   });
 
+  test('security: add a passkey and sign in with it', async ({ browser }) => {
+    const omar = await newPage(browser, errors, 'omar');
+    // Chrome's virtual authenticator stands in for Touch ID, Windows Hello or a phone.
+    const cdp = await omar.context().newCDPSession(omar);
+    await cdp.send('WebAuthn.enable');
+    await cdp.send('WebAuthn.addVirtualAuthenticator', {
+      options: {
+        protocol: 'ctap2',
+        transport: 'internal',
+        hasResidentKey: true,
+        hasUserVerification: true,
+        isUserVerified: true,
+        automaticPresenceSimulation: true,
+      },
+    });
+    await register(omar, 'Omar Haddad', 'omar');
+    await omar.goto('./#/settings?section=security');
+    await omar.getByLabel('Passkey name').fill('Work laptop');
+    await omar.getByRole('button', { name: 'Add a passkey' }).click();
+    await expect(omar.getByText('Passkey "Work laptop" added')).toBeVisible();
+    await expect(omar.getByText('not used yet')).toBeVisible();
+
+    // Forget the account on this device, then come back with the passkey alone.
+    await omar.evaluate(() => localStorage.clear());
+    await omar.goto('./');
+    await omar.reload();
+    await omar.getByRole('button', { name: 'Sign in with a passkey' }).click();
+    await greeting(omar, 'Omar').waitFor();
+    await omar.goto('./#/settings?section=security');
+    await expect(omar.getByText(/last used/)).toBeVisible();
+    await omar.context().close();
+  });
+
   test('phone layout: bottom bar with a More sheet', async ({ browser }) => {
     const phone = await newPage(browser, errors, 'phone', true);
     await login(phone, 'maria');

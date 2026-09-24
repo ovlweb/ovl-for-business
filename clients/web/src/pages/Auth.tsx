@@ -11,6 +11,8 @@ import {
   Icon,
   Logo,
   needsTwoFactor,
+  passkeyCancelled,
+  passkeysSupported,
   Segmented,
   TwoFactorPrompt,
 } from '@ovl/ui';
@@ -241,7 +243,7 @@ function PasswordInput({
 }
 
 function SignInForm({ onDone }: { onDone: () => void }) {
-  const { login } = useAuth();
+  const { login, loginWithPasskey } = useAuth();
   const [form, setForm] = useState({ login: '', password: '' });
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -315,6 +317,26 @@ function SignInForm({ onDone }: { onDone: () => void }) {
         {busy ? <span className="spinner light" /> : <>Sign in</>}
         {!busy && <Icon name="arrowRight" size={18} />}
       </button>
+      {passkeysSupported() && (
+        <button
+          type="button"
+          className="btn lg block"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError(null);
+            try {
+              await loginWithPasskey();
+              onDone();
+            } catch (err) {
+              if (!passkeyCancelled(err)) setError(err);
+              setBusy(false);
+            }
+          }}
+        >
+          <Icon name="key" size={17} /> Sign in with a passkey
+        </button>
+      )}
     </form>
   );
 }

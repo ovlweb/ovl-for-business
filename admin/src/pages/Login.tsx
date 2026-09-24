@@ -5,6 +5,8 @@ import {
   Icon,
   Logo,
   needsTwoFactor,
+  passkeyCancelled,
+  passkeysSupported,
   TwoFactorPrompt,
   type IconName,
 } from '@ovl/ui';
@@ -23,7 +25,7 @@ const DUTIES: { icon: IconName; title: string; text: string }[] = [
 ];
 
 export function LoginPage() {
-  const { login } = useAdminAuth();
+  const { login, loginWithPasskey } = useAdminAuth();
   const [form, setForm] = useState({ login: '', password: '' });
   const [show, setShow] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -164,6 +166,25 @@ export function LoginPage() {
               {busy ? 'Signing in…' : 'Sign in'}
               {!busy && <Icon name="arrowRight" size={18} />}
             </button>
+            {passkeysSupported() && (
+              <button
+                type="button"
+                className="btn lg block"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  setError(null);
+                  try {
+                    await loginWithPasskey();
+                  } catch (err) {
+                    if (!passkeyCancelled(err)) setError(err);
+                    setBusy(false);
+                  }
+                }}
+              >
+                <Icon name="key" size={17} /> Sign in with a passkey
+              </button>
+            )}
             <p className="tiny muted center-text">
               Sessions end when this tab closes. Every action is audited.
             </p>

@@ -1,4 +1,5 @@
 import type { Me, Permission } from '@ovl/shared';
+import { signInWithPasskey } from '@ovl/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api } from './api';
@@ -7,6 +8,7 @@ interface AdminAuth {
   me: Me | null;
   loading: boolean;
   login: (login: string, password: string, code?: string) => Promise<void>;
+  loginWithPasskey: () => Promise<void>;
   logout: () => Promise<void>;
   /** Load the account again (after turning on two-step verification). */
   reload: () => Promise<void>;
@@ -45,6 +47,14 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     loading,
     login: async (login, password, code) => {
       const user = await api.auth.login({ login, password, code });
+      if (!user.permissions.includes('admin.panel')) {
+        await api.auth.logout();
+        throw new Error('This account has no access to the admin panel.');
+      }
+      setMe(user);
+    },
+    loginWithPasskey: async () => {
+      const user = await signInWithPasskey(api);
       if (!user.permissions.includes('admin.panel')) {
         await api.auth.logout();
         throw new Error('This account has no access to the admin panel.');

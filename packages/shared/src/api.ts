@@ -146,6 +146,30 @@ export const changeEmailSchema = z.object({
   password: z.string().min(1).max(128),
 });
 
+export const passkeySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  backedUp: z.boolean().describe('Synced by the password manager (usable on other devices)'),
+  createdAt: isoDate,
+  lastUsedAt: isoDate.nullable(),
+});
+export type Passkey = z.infer<typeof passkeySchema>;
+
+/** WebAuthn options for the browser, plus the id of the server-side challenge to send back. */
+export const passkeyOptionsSchema = z.object({
+  challengeId: z.uuid(),
+  options: z.record(z.string(), z.unknown()),
+});
+export const addPasskeySchema = z.object({
+  challengeId: z.uuid(),
+  name: z.string().trim().min(1).max(64),
+  response: z.record(z.string(), z.unknown()).describe('RegistrationResponseJSON from the browser'),
+});
+export const passkeyLoginSchema = z.object({
+  challengeId: z.uuid(),
+  response: z.record(z.string(), z.unknown()).describe('AuthenticationResponseJSON from the browser'),
+});
+
 /** Security rules of this server, published in /meta so clients can guide people. */
 export const securityPolicySchema = z.object({
   twoFactorForStaff: z.boolean(),

@@ -80,6 +80,35 @@ export const users = pgTable('users', {
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
 });
 
+/** WebAuthn credentials ("passkeys") for signing in without a password. */
+export const passkeys = pgTable(
+  'passkeys',
+  {
+    /** The credential ID (base64url), as the browser reports it. */
+    id: text('id').primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 64 }).notNull(),
+    publicKey: text('public_key').notNull(),
+    counter: bigint('counter', { mode: 'number' }).notNull().default(0),
+    transports: jsonb('transports').$type<string[]>().notNull().default([]),
+    backedUp: boolean('backed_up').notNull().default(false),
+    createdAt: createdAt(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  },
+  (t) => [index('passkeys_user_idx').on(t.userId)],
+);
+
+/** Pending WebAuthn challenges (a few minutes each). */
+export const webauthnChallenges = pgTable('webauthn_challenges', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  purpose: varchar('purpose', { length: 16 }).notNull(),
+  challenge: text('challenge').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+});
+
 export const emailTokenPurposeEnum = pgEnum('email_token_purpose', ['verify_email', 'reset_password']);
 
 /** Links sent by email (confirm the address, reset the password). Only hashes are stored. */

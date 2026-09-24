@@ -26,6 +26,7 @@ import type {
   Me,
   Message,
   Organization,
+  Passkey,
   OrgMember,
   Preferences,
   OrgRole,
@@ -251,6 +252,12 @@ export class OvlClient {
     register: async (input: RegisterInput) =>
       this.storeAuth(await this.post<AuthResult>('/auth/register', input)),
     login: async (input: LoginInput) => this.storeAuth(await this.post<AuthResult>('/auth/login', input)),
+    /** Passkey sign-in, step 1: options for navigator.credentials.get(). */
+    passkeyOptions: () =>
+      this.post<{ challengeId: string; options: Record<string, unknown> }>('/auth/passkey/options'),
+    /** Passkey sign-in, step 2: send the browser's answer. */
+    passkeyLogin: async (challengeId: string, response: unknown) =>
+      this.storeAuth(await this.post<AuthResult>('/auth/passkey', { challengeId, response })),
     /** Confirm an email address with the token from the link. */
     verifyEmail: (token: string) => this.post<{ email: string }>('/auth/verify-email', { token }),
     /** Email a reset link (always succeeds, so it never reveals whether an address is registered). */
@@ -274,6 +281,14 @@ export class OvlClient {
     /** Change the email address; the new one must be confirmed through the emailed link. */
     changeEmail: (email: string, password: string) => this.post<Me>('/me/email', { email, password }),
     resendVerification: () => this.post<void>('/me/email/verification'),
+    passkeys: {
+      list: () => this.get<Passkey[]>('/me/passkeys'),
+      options: () =>
+        this.post<{ challengeId: string; options: Record<string, unknown> }>('/me/passkeys/options'),
+      add: (challengeId: string, name: string, response: unknown) =>
+        this.post<Passkey>('/me/passkeys', { challengeId, name, response }),
+      remove: (id: string) => this.del(`/me/passkeys/${encodeURIComponent(id)}`),
+    },
     /** Two-factor authentication (authenticator app + recovery codes). */
     twoFactor: {
       status: () => this.get<TwoFactorStatus>('/me/2fa'),
