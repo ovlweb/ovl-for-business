@@ -1,0 +1,5 @@
+node_modules
+dist
+pnpm-lock.yaml
+server/drizzle
+clients/desktop/src-tauri/target
