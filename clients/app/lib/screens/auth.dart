@@ -338,7 +338,14 @@ class _SignInFormState extends State<_SignInForm> {
                       icon: Icon(_show ? LucideIcons.eyeOff : LucideIcons.eye, size: 18),
                     ),
                   ),
-                  const SizedBox(height: 22),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => showForgotPassword(context, initial: _login.text.trim()),
+                      child: const Text('Forgot password?'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   GradientButton(label: 'Sign in', icon: LucideIcons.arrowRight, busy: _busy, onPressed: _submit),
                 ],
               ),
@@ -913,4 +920,70 @@ class _FloatingCardsState extends State<_FloatingCards> with SingleTickerProvide
       },
     );
   }
+}
+
+/// Ask for a reset link; the emailed link opens the web client to choose a new password.
+void showForgotPassword(BuildContext context, {String initial = ''}) {
+  final session = context.read<Session>();
+  final email = TextEditingController(text: initial.contains('@') ? initial : '');
+  var busy = false;
+  var sent = false;
+  Object? error;
+  showModalBottomSheet<void>(
+    context: context,
+    useRootNavigator: true,
+    isScrollControlled: true,
+    builder: (sheet) => StatefulBuilder(
+      builder: (sheet, set) => Padding(
+        padding: EdgeInsets.fromLTRB(20, 0, 20, 24 + MediaQuery.viewInsetsOf(sheet).bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(sent ? 'Check your inbox' : 'Reset your password', style: sheet.text.headlineSmall),
+            const SizedBox(height: 6),
+            Text(
+              sent
+                  ? 'If an account uses ${email.text.trim()}, we sent it a link to choose a new password. The link works for one hour.'
+                  : 'Enter the email address of your account and we will send you a link to choose a new password.',
+              style: sheet.text.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            if (error != null) ...[ErrorBox(error), const SizedBox(height: 12)],
+            if (!sent) ...[
+              LabeledField(
+                label: 'Email',
+                controller: email,
+                icon: LucideIcons.mail,
+                keyboard: TextInputType.emailAddress,
+                autofocus: true,
+                autofill: const [AutofillHints.email],
+              ),
+              const SizedBox(height: 18),
+              GradientButton(
+                label: 'Send reset link',
+                icon: LucideIcons.send,
+                busy: busy,
+                onPressed: () async {
+                  set(() {
+                    busy = true;
+                    error = null;
+                  });
+                  try {
+                    await session.api.forgotPassword(email.text.trim());
+                    set(() => sent = true);
+                  } catch (e) {
+                    set(() => error = e);
+                  } finally {
+                    set(() => busy = false);
+                  }
+                },
+              ),
+            ] else
+              FilledButton(onPressed: () => Navigator.pop(sheet), child: const Text('Back to sign in')),
+          ],
+        ),
+      ),
+    ),
+  );
 }

@@ -43,6 +43,13 @@
       "when": 1790281033425,
       "tag": "0005_invoices",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790282549423,
+      "tag": "0006_email_tokens",
+      "breakpoints": true
     }
   ]
 }

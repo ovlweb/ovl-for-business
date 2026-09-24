@@ -117,6 +117,7 @@ class Me extends UserSummary {
       permissions = List<String>.from(j['permissions'] as List? ?? const []),
       preferences = Preferences.fromJson(j['preferences'] as Json?),
       twoFactorEnabled = j['twoFactorEnabled'] as bool? ?? false,
+      emailVerified = j['emailVerified'] as bool? ?? true,
       createdAt = _date(j['createdAt']),
       super(
         id: j['id'] as String,
@@ -133,6 +134,7 @@ class Me extends UserSummary {
   final List<String> permissions;
   final Preferences preferences;
   final bool twoFactorEnabled;
+  final bool emailVerified;
   final DateTime createdAt;
 
   bool can(String permission) => permissions.contains(permission);

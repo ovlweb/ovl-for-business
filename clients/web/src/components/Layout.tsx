@@ -1,6 +1,6 @@
-import { ROLE_LABELS } from '@ovl/shared';
-import { Avatar, Badges, Icon, Logo, PageTransition, Popover, type IconName } from '@ovl/ui';
-import { useQuery } from '@tanstack/react-query';
+import { ORG_FINANCE_ROLES, ROLE_LABELS, type SecurityPolicy } from '@ovl/shared';
+import { Avatar, Badges, Icon, Logo, PageTransition, Popover, useToast, type IconName } from '@ovl/ui';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -55,6 +55,76 @@ function useConnectionLost(status: string): boolean {
     return () => clearTimeout(t);
   }, [status]);
   return lost;
+}
+
+/** Things the account should do: confirm the email, turn on two-step verification where required. */
+function AccountNotices() {
+  const me = useMe();
+  const toast = useToast();
+  const navigate = useNavigate();
+  const meta = useQuery({ queryKey: ['meta'], queryFn: api.meta, staleTime: Infinity });
+  const orgs = useQuery({ queryKey: ['orgs', 'mine'], queryFn: api.organizations.mine });
+  const [hidden, setHidden] = useState(() => {
+    try {
+      return sessionStorage.getItem('ovl.hideEmailNotice') === me.id;
+    } catch {
+      return false;
+    }
+  });
+  const resend = useMutation({
+    mutationFn: api.me.resendVerification,
+    onSuccess: () => toast.success(`Link sent to ${me.email}`),
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const policy = meta.data?.security as SecurityPolicy | undefined;
+  const handlesMoney = orgs.data?.some((o) => o.myRole && ORG_FINANCE_ROLES.includes(o.myRole));
+  const needsTwoFactor =
+    !me.twoFactorEnabled &&
+    ((policy?.twoFactorForStaff && me.role !== 'user') ||
+      (policy?.twoFactorForCompanyFinance && handlesMoney));
+  if (!needsTwoFactor && (me.emailVerified || hidden)) return null;
+  return (
+    <div className="account-notices">
+      {needsTwoFactor && (
+        <div className="alert warning small">
+          <Icon name="shield" size={17} />
+          <span className="grow">
+            {me.role !== 'user'
+              ? `As ${ROLE_LABELS[me.role].toLowerCase()} you need two-step verification before you can use staff tools.`
+              : 'Turn on two-step verification before moving company money.'}
+          </span>
+          <button className="btn sm" onClick={() => navigate('/settings?section=security')}>
+            Set it up
+          </button>
+        </div>
+      )}
+      {!me.emailVerified && !hidden && (
+        <div className="alert info small">
+          <Icon name="send" size={17} />
+          <span className="grow">
+            Confirm your email address: we sent a link to <b>{me.email}</b>.
+          </span>
+          <button className="btn sm" disabled={resend.isPending} onClick={() => resend.mutate()}>
+            Send again
+          </button>
+          <button
+            className="btn ghost icon sm"
+            aria-label="Hide"
+            onClick={() => {
+              setHidden(true);
+              try {
+                sessionStorage.setItem('ovl.hideEmailNotice', me.id);
+              } catch {
+                /* private mode */
+              }
+            }}
+          >
+            <Icon name="x" size={15} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function AccountSwitcher({ collapsed }: { collapsed: boolean }) {
@@ -325,6 +395,7 @@ export function Layout() {
             </motion.div>
           )}
         </AnimatePresence>
+        <AccountNotices />
         {/* Enter-only: an exiting copy of the old page would stay clickable (and keep marking chats read). */}
         <PageTransition key={sectionKey}>
           <Outlet />

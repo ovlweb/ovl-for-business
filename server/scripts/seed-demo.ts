@@ -86,6 +86,15 @@ async function signIn(login: string, password: string): Promise<{ client: OvlCli
   return { client, me };
 }
 
+/** Without SMTP the development server keeps emails in /dev/outbox: follow the confirmation link. */
+async function confirmEmail(client: OvlClient, email: string) {
+  const res = await fetch(`${API}/api/v1/dev/outbox`);
+  if (!res.ok) return;
+  const mails = (await res.json()) as { to: string; text: string }[];
+  const token = mails.find((m) => m.to === email)?.text.match(/verify-email\?token=([\w-]+)/)?.[1];
+  if (token) await client.auth.verifyEmail(token);
+}
+
 async function person(p: Person): Promise<{ client: OvlClient; me: Me }> {
   const client = new OvlClient({ baseUrl: API });
   try {
@@ -95,6 +104,7 @@ async function person(p: Person): Promise<{ client: OvlClient; me: Me }> {
       password: PASSWORD,
       displayName: p.displayName,
     });
+    await confirmEmail(client, `${p.username}@demo.ovl`);
     await client.me.update({ bio: p.bio });
     await client.me.updatePreferences({
       onboardingCompleted: true,

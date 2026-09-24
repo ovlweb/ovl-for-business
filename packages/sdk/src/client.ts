@@ -251,6 +251,12 @@ export class OvlClient {
     register: async (input: RegisterInput) =>
       this.storeAuth(await this.post<AuthResult>('/auth/register', input)),
     login: async (input: LoginInput) => this.storeAuth(await this.post<AuthResult>('/auth/login', input)),
+    /** Confirm an email address with the token from the link. */
+    verifyEmail: (token: string) => this.post<{ email: string }>('/auth/verify-email', { token }),
+    /** Email a reset link (always succeeds, so it never reveals whether an address is registered). */
+    forgotPassword: (email: string) => this.post<void>('/auth/password/forgot', { email }),
+    resetPassword: (token: string, password: string) =>
+      this.post<void>('/auth/password/reset', { token, password }),
     logout: async () => {
       const tokens = this.tokens.get();
       this.tokens.set(null);
@@ -265,6 +271,9 @@ export class OvlClient {
     updatePreferences: (input: Preferences) => this.patch<Me>('/me/preferences', input),
     changePassword: (currentPassword: string, newPassword: string) =>
       this.post<void>('/me/password', { currentPassword, newPassword }),
+    /** Change the email address; the new one must be confirmed through the emailed link. */
+    changeEmail: (email: string, password: string) => this.post<Me>('/me/email', { email, password }),
+    resendVerification: () => this.post<void>('/me/email/verification'),
     /** Two-factor authentication (authenticator app + recovery codes). */
     twoFactor: {
       status: () => this.get<TwoFactorStatus>('/me/2fa'),

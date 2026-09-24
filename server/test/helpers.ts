@@ -19,6 +19,10 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
     OWNER_EMAIL: 'owner@example.test',
     OWNER_PASSWORD: OWNER.password,
     COUNCIL_QUORUM: '3',
+    // Most tests are not about these rules; security.test.ts turns them on.
+    REQUIRE_2FA_FOR_STAFF: 'false',
+    REQUIRE_2FA_FOR_COMPANY_FINANCE: 'false',
+    REQUIRE_VERIFIED_EMAIL: 'false',
     ...overrides,
   });
   const app = await buildApp(config);

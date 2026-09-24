@@ -90,6 +90,7 @@ export const meSchema = userSummarySchema.extend({
   permissions: z.array(z.string()),
   preferences: preferencesSchema,
   twoFactorEnabled: z.boolean(),
+  emailVerified: z.boolean(),
   createdAt: isoDate,
 });
 export type Me = z.infer<typeof meSchema>;
@@ -133,6 +134,25 @@ export const updateMeSchema = z.object({
     .optional(),
 });
 export type UpdateMeInput = z.input<typeof updateMeSchema>;
+
+export const verifyEmailSchema = z.object({ token: z.string().min(16).max(128) });
+export const forgotPasswordSchema = z.object({ email: z.email().trim().toLowerCase() });
+export const resetPasswordSchema = z.object({
+  token: z.string().min(16).max(128),
+  password: z.string().min(8).max(128),
+});
+export const changeEmailSchema = z.object({
+  email: z.email().trim().toLowerCase(),
+  password: z.string().min(1).max(128),
+});
+
+/** Security rules of this server, published in /meta so clients can guide people. */
+export const securityPolicySchema = z.object({
+  twoFactorForStaff: z.boolean(),
+  twoFactorForCompanyFinance: z.boolean(),
+  verifiedEmailForApplications: z.boolean(),
+});
+export type SecurityPolicy = z.infer<typeof securityPolicySchema>;
 
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),

@@ -31,5 +31,10 @@ export async function metaRoutes(app: FastifyInstance) {
       lockDaysMax: app.config.STOCK_LOCK_DAYS_MAX,
     },
     councilQuorum: app.config.COUNCIL_QUORUM,
+    security: {
+      twoFactorForStaff: app.config.REQUIRE_2FA_FOR_STAFF,
+      twoFactorForCompanyFinance: app.config.REQUIRE_2FA_FOR_COMPANY_FINANCE,
+      verifiedEmailForApplications: app.config.REQUIRE_VERIFIED_EMAIL,
+    },
   }));
 }

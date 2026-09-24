@@ -14,6 +14,11 @@ const serverEnv = {
   COUNCIL_QUORUM: '1',
   PORT: String(API_PORT),
   LOG_LEVEL: 'warn',
+  PUBLIC_WEB_URL: `http://localhost:${WEB_PORT}`,
+  // The story below predates these rules; the account test covers email links on its own.
+  REQUIRE_2FA_FOR_STAFF: 'false',
+  REQUIRE_2FA_FOR_COMPANY_FINANCE: 'false',
+  REQUIRE_VERIFIED_EMAIL: 'false',
 };
 
 export default defineConfig({

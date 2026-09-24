@@ -16,8 +16,8 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { applicationReviews, applications, chats, organizationMembers, stockListings } from '../../db/schema';
 import { audit } from '../../lib/audit';
-import { badRequest, conflict, forbidden, notFound } from '../../lib/errors';
-import { currentUser, type AuthUser } from '../../plugins/auth';
+import { badRequest, conflict, forbidden, HttpError, notFound } from '../../lib/errors';
+import { currentUser, twoFactorSetupRequired, type AuthUser } from '../../plugins/auth';
 import { publishMessage } from '../chats/service';
 import {
   announceStage,
@@ -115,6 +115,12 @@ export async function applicationRoutes(fastify: FastifyInstance) {
     },
     async (req, reply) => {
       const me = currentUser(req);
+      if (app.config.REQUIRE_VERIFIED_EMAIL && !me.emailVerified)
+        throw new HttpError(
+          403,
+          'email_not_verified',
+          'Confirm your email address first: we sent you a link (Settings → Account can send a new one)',
+        );
       await validateSubmission(me, req.body);
       const { row, announcements } = await app.db.transaction(async (tx) => {
         const [row] = await tx
@@ -255,6 +261,7 @@ export async function applicationRoutes(fastify: FastifyInstance) {
     },
     async (req) => {
       const me = currentUser(req);
+      if (me.role !== me.accountRole) throw twoFactorSetupRequired();
       const outcome = await app.db.transaction(async (tx) => {
         const result = await reviewApplication(tx, app.config, req.params.id, me, req.body);
         await audit(tx, {

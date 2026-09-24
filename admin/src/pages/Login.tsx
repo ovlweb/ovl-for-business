@@ -1,6 +1,16 @@
-import { ErrorAlert, Field, Icon, Logo, needsTwoFactor, TwoFactorPrompt, type IconName } from '@ovl/ui';
+import {
+  ErrorAlert,
+  Field,
+  ForgotPasswordForm,
+  Icon,
+  Logo,
+  needsTwoFactor,
+  TwoFactorPrompt,
+  type IconName,
+} from '@ovl/ui';
 import { motion } from 'motion/react';
 import { useState } from 'react';
+import { api } from '../api';
 import { useAdminAuth } from '../auth';
 
 const ease = [0.22, 1, 0.36, 1] as const;
@@ -19,6 +29,7 @@ export function LoginPage() {
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [needCode, setNeedCode] = useState(false);
+  const [forgot, setForgot] = useState(false);
   const attempt = async (code?: string) => {
     setBusy(true);
     setError(null);
@@ -73,7 +84,16 @@ export function LoginPage() {
         </div>
       </div>
       <div className="admin-login-panel">
-        {needCode ? (
+        {forgot ? (
+          <div className="admin-login-card stack-lg">
+            <Logo size={48} />
+            <ForgotPasswordForm
+              initialEmail={form.login}
+              onSubmit={(email) => api.auth.forgotPassword(email)}
+              onBack={() => setForgot(false)}
+            />
+          </div>
+        ) : needCode ? (
           <div className="admin-login-card stack-lg">
             <Logo size={48} />
             <TwoFactorPrompt
@@ -137,6 +157,9 @@ export function LoginPage() {
                 </button>
               </div>
             </Field>
+            <button type="button" className="link-button small" onClick={() => setForgot(true)}>
+              Forgot password?
+            </button>
             <button className="btn gradient lg block" disabled={busy}>
               {busy ? 'Signing in…' : 'Sign in'}
               {!busy && <Icon name="arrowRight" size={18} />}

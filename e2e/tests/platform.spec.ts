@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { ADMIN_URL, OWNER_PASSWORD } from '../constants';
+import { ADMIN_URL, API_URL, OWNER_PASSWORD } from '../constants';
 import {
   bubble,
   greeting,
@@ -438,6 +438,42 @@ test.describe.serial('OVL For Business end to end', () => {
     await panel.getByRole('button', { name: 'Verify' }).click();
     await expect(panel.getByText('This account has no access to the admin panel.')).toBeVisible();
     await panel.context().close();
+  });
+
+  test('account: confirm the email and reset a forgotten password through emailed links', async ({
+    browser,
+  }) => {
+    const nina = await newPage(browser, errors, 'nina');
+    await register(nina, 'Nina Park', 'nina');
+    await expect(nina.getByText('Confirm your email address: we sent a link to')).toBeVisible();
+    const link = async (to: string, path: string) => {
+      const mails = (await (await fetch(`${API_URL}dev/outbox`)).json()) as { to: string; text: string }[];
+      return mails.find((m) => m.to === to && m.text.includes(path))!.text.match(/https?:\S+/)![0];
+    };
+    await nina.goto(await link('nina@example.test', 'verify-email'));
+    await expect(nina.getByRole('heading', { name: 'Email confirmed' })).toBeVisible();
+    await nina.getByRole('button', { name: 'Continue' }).click();
+    await greeting(nina, 'Nina').waitFor();
+    await expect(nina.getByText('Confirm your email address: we sent a link to')).toBeHidden();
+    const outbox = await link('nina@example.test', 'verify-email');
+    expect(outbox).toContain('/#/verify-email?token=');
+    // The reset below signs out every device, this one included.
+    await nina.context().close();
+
+    const guest = await newPage(browser, errors, 'guest');
+    await guest.goto('./');
+    await guest.getByRole('button', { name: 'Forgot password?' }).click();
+    await guest.getByLabel('Email').fill('nina@example.test');
+    await guest.getByRole('button', { name: 'Send reset link' }).click();
+    await expect(guest.getByText('Check your inbox')).toBeVisible();
+    await guest.goto(await link('nina@example.test', 'reset-password'));
+    await guest.getByLabel(/^New password/).fill('a-brand-new-password');
+    await guest.getByLabel('Repeat the new password').fill('a-brand-new-password');
+    await guest.getByRole('button', { name: 'Set new password' }).click();
+    await expect(guest.getByRole('heading', { name: 'Password changed' })).toBeVisible();
+    await guest.getByRole('button', { name: 'Sign in' }).click();
+    await login(guest, 'nina', 'a-brand-new-password');
+    await greeting(guest, 'Nina').waitFor();
   });
 
   test('phone layout: bottom bar with a More sheet', async ({ browser }) => {

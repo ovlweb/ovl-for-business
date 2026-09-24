@@ -12,9 +12,12 @@ import {
   Modal,
   PageHeader,
   plural,
+  RecoveryCodes,
+  StatusBadge,
   SkeletonList,
   Switch,
   ThemeGallery,
+  TwoFactorSetupForm,
   timeAgo,
   useToast,
   type IconName,
@@ -43,6 +46,100 @@ const SECTIONS: { id: Section; label: string; icon: IconName; hint: string }[] =
   { id: 'security', label: 'Security', icon: 'lock', hint: 'Password and sessions' },
   { id: 'developer', label: 'Developer', icon: 'key', hint: 'API keys' },
 ];
+
+/** The account's email: confirmed or not, send the link again, or change the address. */
+function EmailCard() {
+  const me = useMe();
+  const { reload } = useAuth();
+  const toast = useToast();
+  const [changing, setChanging] = useState(false);
+  const [form, setForm] = useState({ email: '', password: '' });
+  const resend = useMutation({
+    mutationFn: api.me.resendVerification,
+    onSuccess: () => toast.success(`Link sent to ${me.email}`),
+  });
+  const change = useMutation({
+    mutationFn: () => api.me.changeEmail(form.email, form.password),
+    onSuccess: async (updated) => {
+      await reload();
+      setChanging(false);
+      setForm({ email: '', password: '' });
+      toast.success(`Check ${updated.email} for a confirmation link`);
+    },
+  });
+  return (
+    <div className="card stack">
+      <div className="spread">
+        <div>
+          <h3>Email</h3>
+          <div className="row" style={{ gap: 8, marginTop: 4 }}>
+            <span>{me.email}</span>
+            <StatusBadge status={me.emailVerified ? 'confirmed' : 'not_confirmed'} />
+          </div>
+        </div>
+        {!changing && (
+          <button className="btn" onClick={() => setChanging(true)}>
+            Change email
+          </button>
+        )}
+      </div>
+      {!me.emailVerified && !changing && (
+        <div className="alert warning small">
+          <Icon name="info" size={16} />
+          <span className="grow">
+            Confirm your address with the link we emailed you. Applications for companies and licenses need a
+            confirmed email.
+          </span>
+          <button className="btn sm" disabled={resend.isPending} onClick={() => resend.mutate()}>
+            Send the link again
+          </button>
+        </div>
+      )}
+      <ErrorAlert error={resend.error} />
+      {changing && (
+        <form
+          className="stack"
+          onSubmit={(e) => {
+            e.preventDefault();
+            change.mutate();
+          }}
+        >
+          <div className="grid-2">
+            <Field label="New email">
+              <input
+                className="input"
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                autoFocus
+                required
+              />
+            </Field>
+            <Field label="Your password">
+              <input
+                className="input"
+                type="password"
+                autoComplete="current-password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                required
+              />
+            </Field>
+          </div>
+          <ErrorAlert error={change.error} />
+          <div className="row-wrap">
+            <button className="btn primary" disabled={change.isPending}>
+              Change and send a confirmation link
+            </button>
+            <button type="button" className="btn ghost" onClick={() => setChanging(false)}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
 
 function ProfileSection() {
   const me = useMe();
@@ -121,6 +218,7 @@ function ProfileSection() {
           Save profile
         </button>
       </form>
+      <EmailCard />
     </div>
   );
 }
@@ -340,119 +438,22 @@ function SessionsCard() {
   );
 }
 
-function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void }) {
-  const toast = useToast();
-  const text = `OVL For Business recovery codes\n\n${codes.join('\n')}\n\nEach code signs in once.`;
-  return (
-    <div className="stack">
-      <div className="alert warning small">
-        <Icon name="info" size={17} />
-        <span>
-          Save these codes somewhere safe. Each one signs you in once if you lose your phone. They are shown
-          only now.
-        </span>
-      </div>
-      <div className="recovery-grid">
-        {codes.map((c) => (
-          <code key={c}>{c}</code>
-        ))}
-      </div>
-      <div className="row-wrap">
-        <button
-          type="button"
-          className="btn"
-          onClick={() =>
-            navigator.clipboard?.writeText(text).then(() => toast.success('Recovery codes copied'))
-          }
-        >
-          <Icon name="copy" size={16} /> Copy
-        </button>
-        <a
-          className="btn"
-          download="ovl-recovery-codes.txt"
-          href={`data:text/plain;charset=utf-8,${encodeURIComponent(text)}`}
-        >
-          <Icon name="download" size={16} /> Download
-        </a>
-        <button type="button" className="btn primary" onClick={onDone}>
-          I saved them
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function EnableTwoFactor({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
-  const [code, setCode] = useState('');
-  const [codes, setCodes] = useState<string[] | null>(null);
-  const setup = useQuery({
-    queryKey: ['2fa', 'setup'],
-    queryFn: api.me.twoFactor.setup,
-    staleTime: Infinity,
-    gcTime: 0,
-  });
-  const enable = useMutation({
-    mutationFn: () => api.me.twoFactor.enable(code),
-    onSuccess: (r) => {
-      setCodes(r.recoveryCodes);
-      return queryClient.invalidateQueries({ queryKey: ['2fa', 'status'] });
-    },
-  });
+  const { reload } = useAuth();
+  const [enabled, setEnabled] = useState(false);
   return (
-    <Modal title={codes ? 'Save your recovery codes' : 'Turn on two-step verification'} onClose={onClose}>
-      {codes ? (
-        <RecoveryCodes codes={codes} onDone={onClose} />
-      ) : (
-        <form
-          className="stack"
-          onSubmit={(e) => {
-            e.preventDefault();
-            enable.mutate();
-          }}
-        >
-          <ol className="steps small">
-            <li>
-              Install an authenticator app — Google Authenticator, 1Password, Authy, Microsoft Authenticator…
-            </li>
-            <li>Scan this QR code with it, or type the key.</li>
-            <li>Enter the 6-digit code the app shows.</li>
-          </ol>
-          <ErrorAlert error={setup.error} />
-          <div className="qr-row">
-            {setup.data ? (
-              <img
-                className="qr"
-                src={setup.data.qr}
-                alt="QR code for your authenticator app"
-                width={180}
-                height={180}
-              />
-            ) : (
-              <div className="qr skeleton" />
-            )}
-            <div className="stack-sm grow">
-              <span className="small muted">Key for manual entry</span>
-              <code className="secret">{setup.data?.secret.match(/.{1,4}/g)?.join(' ') ?? '…'}</code>
-            </div>
-          </div>
-          <Field label="Code from the app">
-            <input
-              className="input code-input"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              placeholder="123 456"
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              required
-            />
-          </Field>
-          <ErrorAlert error={enable.error} />
-          <button className="btn primary" disabled={code.length !== 6 || enable.isPending || !setup.data}>
-            Turn on
-          </button>
-        </form>
-      )}
+    <Modal title={enabled ? 'Save your recovery codes' : 'Turn on two-step verification'} onClose={onClose}>
+      <TwoFactorSetupForm
+        load={api.me.twoFactor.setup}
+        enable={api.me.twoFactor.enable}
+        onEnabled={() => setEnabled(true)}
+        onDone={() => {
+          void queryClient.invalidateQueries({ queryKey: ['2fa', 'status'] });
+          void reload();
+          onClose();
+        }}
+      />
     </Modal>
   );
 }

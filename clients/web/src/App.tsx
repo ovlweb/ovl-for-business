@@ -1,8 +1,9 @@
 import { Logo } from '@ovl/ui';
 import { AnimatePresence, motion } from 'motion/react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { MeProvider, useAuth } from './auth';
 import { Layout } from './components/Layout';
+import { AccountLinkPage } from './pages/AccountLinks';
 import { ApplicationsPage } from './pages/Applications';
 import { LoginPage } from './pages/Auth';
 import { ChatsPage } from './pages/Chats';
@@ -35,9 +36,15 @@ function Splash() {
 
 export function App() {
   const { me, loading, addingAccount } = useAuth();
+  const { pathname } = useLocation();
 
   let content;
-  if (loading && !me) content = <Splash key="splash" />;
+  // Links from emails work whether or not someone is signed in on this device.
+  if (pathname === '/verify-email' || pathname === '/reset-password')
+    content = (
+      <AccountLinkPage key={pathname} kind={pathname.slice(1) as 'verify-email' | 'reset-password'} />
+    );
+  else if (loading && !me) content = <Splash key="splash" />;
   else if (!me || addingAccount) content = <LoginPage key="login" />;
   else if (!me.preferences.onboardingCompleted)
     content = (
@@ -49,6 +56,9 @@ export function App() {
     content = (
       <MeProvider key={`app-${me.id}`} me={me}>
         <Routes>
+          {/* Shown by AccountLinkPage; listed so the catch-all below does not redirect them away. */}
+          <Route path="/verify-email" element={null} />
+          <Route path="/reset-password" element={null} />
           <Route element={<Layout />}>
             <Route path="/" element={<Navigate to="/home" replace />} />
             <Route path="/home" element={<HomePage />} />

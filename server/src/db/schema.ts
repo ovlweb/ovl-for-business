@@ -75,9 +75,31 @@ export const users = pgTable('users', {
   totpEnabledAt: timestamp('totp_enabled_at', { withTimezone: true }),
   /** Last accepted time step: a code cannot be used twice. */
   totpLastStep: integer('totp_last_step'),
+  emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
   createdAt: createdAt(),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
 });
+
+export const emailTokenPurposeEnum = pgEnum('email_token_purpose', ['verify_email', 'reset_password']);
+
+/** Links sent by email (confirm the address, reset the password). Only hashes are stored. */
+export const emailTokens = pgTable(
+  'email_tokens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    purpose: emailTokenPurposeEnum('purpose').notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    /** The address the link was sent to: a link stops working if the email changes. */
+    email: varchar('email', { length: 254 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('email_tokens_user_idx').on(t.userId, t.purpose)],
+);
 
 /** One-time codes for signing in without the authenticator. Only hashes are stored. */
 export const recoveryCodes = pgTable(

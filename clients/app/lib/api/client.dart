@@ -173,6 +173,12 @@ class OvlApi {
         }) as Json,
       );
   Future<Me> updatePreferences(Json patch) async => Me.fromJson(await _patch('/me/preferences', patch) as Json);
+
+  /// Emails a reset link; always succeeds so it never reveals whether an address is registered.
+  Future<void> forgotPassword(String email) => _post('/auth/password/forgot', {'email': email});
+  Future<void> resendVerification() => _post('/me/email/verification');
+  Future<Me> changeEmail(String email, String password) async =>
+      Me.fromJson(await _post('/me/email', {'email': email, 'password': password}) as Json);
   Future<void> changePassword(String current, String next) =>
       _post('/me/password', {'currentPassword': current, 'newPassword': next});
 

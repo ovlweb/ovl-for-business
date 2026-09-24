@@ -1,7 +1,9 @@
+import type { TwoFactorSetup } from '@ovl/shared';
 import { motion } from 'motion/react';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ErrorAlert, Field } from './components';
 import { Icon } from './icons';
+import { useToast } from './toast';
 
 /** True for the server's "this account needs a second factor" answer. */
 export function needsTwoFactor(error: unknown): boolean {
@@ -85,5 +87,137 @@ export function TwoFactorPrompt({
         </button>
       </div>
     </motion.form>
+  );
+}
+
+/** One-time recovery codes, shown once after turning two-step verification on. */
+export function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void }) {
+  const toast = useToast();
+  const text = `OVL For Business recovery codes\n\n${codes.join('\n')}\n\nEach code signs in once.`;
+  return (
+    <div className="stack">
+      <div className="alert warning small">
+        <Icon name="info" size={17} />
+        <span>
+          Save these codes somewhere safe. Each one signs you in once if you lose your phone. They are shown
+          only now.
+        </span>
+      </div>
+      <div className="recovery-grid">
+        {codes.map((c) => (
+          <code key={c}>{c}</code>
+        ))}
+      </div>
+      <div className="row-wrap">
+        <button
+          type="button"
+          className="btn"
+          onClick={() =>
+            navigator.clipboard?.writeText(text).then(() => toast.success('Recovery codes copied'))
+          }
+        >
+          <Icon name="copy" size={16} /> Copy
+        </button>
+        <a
+          className="btn"
+          download="ovl-recovery-codes.txt"
+          href={`data:text/plain;charset=utf-8,${encodeURIComponent(text)}`}
+        >
+          <Icon name="download" size={16} /> Download
+        </a>
+        <button type="button" className="btn primary" onClick={onDone}>
+          I saved them
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Turn on two-step verification: scan the QR code, confirm a code, save the recovery codes.
+ * Used in the web client's settings and by the admin panel's staff gate.
+ */
+export function TwoFactorSetupForm({
+  load,
+  enable,
+  onDone,
+  onEnabled,
+}: {
+  load: () => Promise<TwoFactorSetup>;
+  enable: (code: string) => Promise<{ recoveryCodes: string[] }>;
+  onDone: () => void;
+  /** Called when it is on and the recovery codes are shown. */
+  onEnabled?: () => void;
+}) {
+  const [setup, setSetup] = useState<TwoFactorSetup | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [codes, setCodes] = useState<string[] | null>(null);
+  // Every call makes a new secret (and replaces the previous one), so load exactly once.
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    load().then(setSetup, setError);
+  }, [load]);
+  if (codes) return <RecoveryCodes codes={codes} onDone={onDone} />;
+  return (
+    <form
+      className="stack"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setError(null);
+        try {
+          setCodes((await enable(code)).recoveryCodes);
+          onEnabled?.();
+        } catch (err) {
+          setError(err);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <ol className="steps small">
+        <li>
+          Install an authenticator app — Google Authenticator, 1Password, Authy, Microsoft Authenticator…
+        </li>
+        <li>Scan this QR code with it, or type the key.</li>
+        <li>Enter the 6-digit code the app shows.</li>
+      </ol>
+      <div className="qr-row">
+        {setup ? (
+          <img
+            className="qr"
+            src={setup.qr}
+            alt="QR code for your authenticator app"
+            width={180}
+            height={180}
+          />
+        ) : (
+          <div className="qr skeleton" />
+        )}
+        <div className="stack-sm grow">
+          <span className="small muted">Key for manual entry</span>
+          <code className="secret">{setup?.secret.match(/.{1,4}/g)?.join(' ') ?? '…'}</code>
+        </div>
+      </div>
+      <Field label="Code from the app">
+        <input
+          className="input code-input"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          placeholder="123 456"
+          value={code}
+          onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+          required
+        />
+      </Field>
+      <ErrorAlert error={error} />
+      <button className="btn primary" disabled={code.length !== 6 || busy || !setup}>
+        {busy ? <span className="spinner light" /> : 'Turn on'}
+      </button>
+    </form>
   );
 }

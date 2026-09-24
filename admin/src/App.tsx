@@ -1,6 +1,16 @@
 import type { Permission } from '@ovl/shared';
-import { ROLE_LABELS } from '@ovl/shared';
-import { Avatar, Badges, Icon, Logo, PageTransition, Popover, ThemeMenu, type IconName } from '@ovl/ui';
+import { ROLE_LABELS, type SecurityPolicy } from '@ovl/shared';
+import {
+  Avatar,
+  Badges,
+  Icon,
+  Logo,
+  PageTransition,
+  Popover,
+  ThemeMenu,
+  TwoFactorSetupForm,
+  type IconName,
+} from '@ovl/ui';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState } from 'react';
@@ -317,10 +327,43 @@ function Splash() {
   );
 }
 
+/** Staff must turn on two-step verification before the console opens (when the server requires it). */
+function TwoFactorGate() {
+  const { reload, logout, me } = useAdminAuth();
+  return (
+    <div className="admin-login">
+      <div className="admin-login-panel" style={{ gridColumn: '1 / -1' }}>
+        <div className="admin-login-card stack-lg" style={{ width: 'min(520px, 100%)' }}>
+          <div className="stack-sm">
+            <Logo size={44} />
+            <h2 style={{ marginTop: 10 }}>Turn on two-step verification</h2>
+            <p className="small muted">
+              Staff accounts need a code from an authenticator app at every sign-in. Set it up once, then the
+              console opens.
+            </p>
+          </div>
+          <TwoFactorSetupForm
+            load={api.me.twoFactor.setup}
+            enable={api.me.twoFactor.enable}
+            onDone={reload}
+          />
+          <button className="btn ghost sm" style={{ alignSelf: 'flex-start' }} onClick={() => void logout()}>
+            <Icon name="logout" size={15} /> Sign out {me?.username}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   const { me, loading, can } = useAdminAuth();
+  const meta = useQuery({ queryKey: ['meta'], queryFn: api.meta, staleTime: Infinity, enabled: !!me });
   if (loading) return <Splash />;
   if (!me) return <LoginPage />;
+  const policy = meta.data?.security as SecurityPolicy | undefined;
+  if (!meta.data) return <Splash />;
+  if (policy?.twoFactorForStaff && !me.twoFactorEnabled) return <TwoFactorGate />;
   return (
     <Routes>
       <Route element={<Shell />}>

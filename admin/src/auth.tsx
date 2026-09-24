@@ -8,6 +8,8 @@ interface AdminAuth {
   loading: boolean;
   login: (login: string, password: string, code?: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** Load the account again (after turning on two-step verification). */
+  reload: () => Promise<void>;
   can: (permission: Permission) => boolean;
 }
 
@@ -54,6 +56,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       queryClient.clear();
       setMe(null);
     },
+    reload: load,
     can: (p) => !!me?.permissions.includes(p),
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

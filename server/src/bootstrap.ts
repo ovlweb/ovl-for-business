@@ -32,6 +32,7 @@ export async function bootstrap(app: FastifyInstance): Promise<void> {
       displayName: 'Owner',
       passwordHash: await hashPassword(config.OWNER_PASSWORD),
       role: 'owner',
+      emailVerifiedAt: new Date(),
     })
     .returning();
   await syncStaffChats(db, created!.id, 'owner');

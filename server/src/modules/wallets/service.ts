@@ -2,7 +2,7 @@ import { can, formatAmount, ORG_FINANCE_ROLES, type Role, type Wallet } from '@o
 import { and, eq, gt, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client';
 import { fundLocks, ledgerEntries, organizationMembers, wallets } from '../../db/schema';
-import { badRequest, forbidden, insufficientFunds, notFound } from '../../lib/errors';
+import { badRequest, forbidden, HttpError, insufficientFunds, notFound } from '../../lib/errors';
 import { iso } from '../../lib/mappers';
 
 export type WalletRow = typeof wallets.$inferSelect;
@@ -183,13 +183,21 @@ export async function orgRoleOf(db: Db, organizationId: string, userId: string) 
 export async function assertWalletAccess(
   db: Db,
   wallet: WalletRow,
-  user: { id: string; role: Role },
+  user: { id: string; role: Role; companyMoneyLocked?: boolean },
   move = false,
 ): Promise<void> {
   if (wallet.ownerType === 'user' && wallet.userId === user.id) return;
   if (wallet.ownerType === 'organization') {
     const role = await orgRoleOf(db, wallet.organizationId!, user.id);
-    if (role && ORG_FINANCE_ROLES.includes(role)) return;
+    if (role && ORG_FINANCE_ROLES.includes(role)) {
+      if (move && user.companyMoneyLocked)
+        throw new HttpError(
+          403,
+          'two_factor_setup_required',
+          'Turn on two-step verification (Settings → Security) to move company money',
+        );
+      return;
+    }
   }
   if (!move && can(user.role, 'wallet.view_all')) return;
   throw forbidden('You do not have access to this wallet');

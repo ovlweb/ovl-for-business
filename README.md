@@ -151,17 +151,22 @@ them in `.github/workflows/native.yml`.
 
 Server environment variables (see `server/src/config.ts`):
 
-| Variable                                            | Default      | Meaning                                                                                    |
-| --------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------ |
-| `DATABASE_URL`                                      | —            | PostgreSQL connection string                                                               |
-| `JWT_SECRET`                                        | —            | ≥ 32 characters                                                                            |
-| `OWNER_USERNAME` / `OWNER_EMAIL` / `OWNER_PASSWORD` | `owner`      | The single owner account, created on first start                                           |
-| `COUNCIL_QUORUM`                                    | `3`          | Council approvals needed (capped by the council size)                                      |
-| `STOCK_FREEZE_PERCENT`                              | `30`         | Frozen share of each investment                                                            |
-| `STOCK_LOCK_DAYS`                                   | `90`         | Default lock period; admins may set 90–183 days per listing                                |
-| `CORS_ORIGINS`                                      | `*`          | Allowed browser origins                                                                    |
-| `TRUST_PROXY`                                       | `true`       | Trust `X-Forwarded-For` from the reverse proxy; set `false` if the API is exposed directly |
-| `PUBLIC_RATE_LIMIT` / `API_KEY_RATE_LIMIT`          | `60` / `600` | Requests per minute on the public API                                                      |
+| Variable                                            | Default                 | Meaning                                                                                                     |
+| --------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                      | —                       | PostgreSQL connection string                                                                                |
+| `JWT_SECRET`                                        | —                       | ≥ 32 characters                                                                                             |
+| `OWNER_USERNAME` / `OWNER_EMAIL` / `OWNER_PASSWORD` | `owner`                 | The single owner account, created on first start                                                            |
+| `COUNCIL_QUORUM`                                    | `3`                     | Council approvals needed (capped by the council size)                                                       |
+| `PUBLIC_WEB_URL`                                    | `http://localhost:5173` | Web client address, used in email links                                                                     |
+| `SMTP_URL` / `MAIL_FROM`                            | —                       | `smtp://user:pass@host:587`; without it emails are logged (and kept in `/api/v1/dev/outbox` in development) |
+| `REQUIRE_2FA_FOR_STAFF`                             | `true`                  | Staff must turn on two-step verification before using staff tools                                           |
+| `REQUIRE_2FA_FOR_COMPANY_FINANCE`                   | `true`                  | Company owners, directors and accountants need it to move company money                                     |
+| `REQUIRE_VERIFIED_EMAIL`                            | `true`                  | Applications need a confirmed email address                                                                 |
+| `STOCK_FREEZE_PERCENT`                              | `30`                    | Frozen share of each investment                                                                             |
+| `STOCK_LOCK_DAYS`                                   | `90`                    | Default lock period; admins may set 90–183 days per listing                                                 |
+| `CORS_ORIGINS`                                      | `*`                     | Allowed browser origins                                                                                     |
+| `TRUST_PROXY`                                       | `true`                  | Trust `X-Forwarded-For` from the reverse proxy; set `false` if the API is exposed directly                  |
+| `PUBLIC_RATE_LIMIT` / `API_KEY_RATE_LIMIT`          | `60` / `600`            | Requests per minute on the public API                                                                       |
 
 ## Documentation
 

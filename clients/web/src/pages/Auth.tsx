@@ -6,6 +6,7 @@ import {
   Badges,
   ErrorAlert,
   Field,
+  ForgotPasswordForm,
   formatMoney,
   Icon,
   Logo,
@@ -15,6 +16,7 @@ import {
 } from '@ovl/ui';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState, type FormEvent } from 'react';
+import { api } from '../api';
 import { useAuth } from '../auth';
 import { apiUrl, customServer, setCustomServer } from '../config';
 
@@ -244,6 +246,7 @@ function SignInForm({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [needCode, setNeedCode] = useState(false);
+  const [forgot, setForgot] = useState(false);
   const attempt = async (code?: string) => {
     setBusy(true);
     setError(null);
@@ -260,6 +263,15 @@ function SignInForm({ onDone }: { onDone: () => void }) {
     e.preventDefault();
     void attempt();
   };
+  if (forgot) {
+    return (
+      <ForgotPasswordForm
+        initialEmail={form.login}
+        onSubmit={(email) => api.auth.forgotPassword(email)}
+        onBack={() => setForgot(false)}
+      />
+    );
+  }
   if (needCode) {
     return (
       <TwoFactorPrompt
@@ -296,6 +308,9 @@ function SignInForm({ onDone }: { onDone: () => void }) {
           autoComplete="current-password"
         />
       </Field>
+      <button type="button" className="link-button small" onClick={() => setForgot(true)}>
+        Forgot password?
+      </button>
       <button className="btn gradient lg block" disabled={busy}>
         {busy ? <span className="spinner light" /> : <>Sign in</>}
         {!busy && <Icon name="arrowRight" size={18} />}

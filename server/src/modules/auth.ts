@@ -17,6 +17,7 @@ import { hashPassword, randomToken, sha256, verifyPassword } from '../lib/crypto
 import { badRequest, conflict, forbidden, notFound, unauthorized } from '../lib/errors';
 import { toMe } from '../lib/mappers';
 import { currentUser } from '../plugins/auth';
+import { sendVerification } from './email';
 import { clientContext, revokeSessions, startSession, type ClientContext } from './sessions';
 import { checkSecondFactor, invalidTwoFactorCode, twoFactorRequired } from './two-factor';
 
@@ -76,6 +77,7 @@ export async function authRoutes(fastify: FastifyInstance) {
         .insert(users)
         .values({ username, email, displayName, passwordHash: await hashPassword(password) })
         .returning();
+      await sendVerification(app, user!).catch((err) => req.log.error({ err }, 'verification email failed'));
       return reply.status(201).send(await issueTokens(app, user!, clientContext(req)));
     },
   );

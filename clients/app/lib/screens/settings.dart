@@ -48,7 +48,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     'security' => const _Security(),
     'server' => const _Server(),
     'about' => const _About(),
-    _ => const _Profile(),
+    _ => const Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [_Profile(), SizedBox(height: 16), _Email()],
+    ),
   };
 
   @override
@@ -218,6 +221,112 @@ class _ProfileState extends State<_Profile> {
                     },
               child: const Text('Save profile'),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The account's email: confirmed or not, send the link again, change the address.
+class _Email extends StatefulWidget {
+  const _Email();
+
+  @override
+  State<_Email> createState() => _EmailState();
+}
+
+class _EmailState extends State<_Email> {
+  bool _changing = false;
+  bool _busy = false;
+  Object? _error;
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+
+  Future<void> _run(Future<void> Function() action, String done) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await action();
+      if (mounted) toast(context, done);
+    } catch (e) {
+      if (mounted) setState(() => _error = e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final session = context.watch<Session>();
+    final me = session.me!;
+    final c = context.c;
+    return OvlCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Email', style: context.text.titleMedium),
+                    const SizedBox(height: 4),
+                    Text(me.email, style: context.text.bodyMedium),
+                  ],
+                ),
+              ),
+              StatusPill(me.emailVerified ? 'confirmed' : 'not confirmed'),
+            ],
+          ),
+          if (_error != null) ...[const SizedBox(height: 12), ErrorBox(_error)],
+          if (!me.emailVerified && !_changing) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Confirm your address with the link we emailed you. Applications for companies and licenses need a confirmed email.',
+              style: context.text.bodySmall?.copyWith(color: c.warning),
+            ),
+          ],
+          const SizedBox(height: 12),
+          if (_changing) ...[
+            LabeledField(
+              label: 'New email',
+              controller: _email,
+              icon: LucideIcons.mail,
+              keyboard: TextInputType.emailAddress,
+            ),
+            const SizedBox(height: 12),
+            LabeledField(label: 'Your password', controller: _password, icon: LucideIcons.keyRound, obscure: true),
+            const SizedBox(height: 14),
+          ],
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.end,
+            children: [
+              if (!me.emailVerified && !_changing)
+                OutlinedButton(
+                  onPressed: _busy ? null : () => _run(session.api.resendVerification, 'Link sent to ${me.email}'),
+                  child: const Text('Send the link again'),
+                ),
+              if (_changing)
+                TextButton(onPressed: () => setState(() => _changing = false), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: _busy
+                    ? null
+                    : _changing
+                    ? () => _run(() async {
+                        await session.api.changeEmail(_email.text.trim(), _password.text);
+                        await session.reload();
+                        if (mounted) setState(() => _changing = false);
+                      }, 'Check ${_email.text.trim()} for a confirmation link')
+                    : () => setState(() => _changing = true),
+                child: Text(_changing ? 'Change email' : 'Change email…'),
+              ),
+            ],
           ),
         ],
       ),

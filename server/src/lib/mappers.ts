@@ -42,6 +42,7 @@ export function toMe(u: UserRow): Me {
     // Tolerate old or unknown keys in stored preferences.
     preferences: preferencesSchema.catch({}).parse(u.preferences),
     twoFactorEnabled: u.totpEnabledAt !== null,
+    emailVerified: u.emailVerifiedAt !== null,
     createdAt: iso(u.createdAt),
   };
 }

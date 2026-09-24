@@ -20,7 +20,7 @@ tokens rotate, so always store the new one. `POST /auth/logout` signs the device
 
 Every sign-in starts a **session** (one per device). `GET /me/sessions` lists them with a device
 name parsed from the `User-Agent` ("Chrome on Windows", "OVL Business app on Android"),
-`DELETE /me/sessions/:id` signs one out and `POST /me/sessions/sign-out-others`, `GET /me/2fa`, `POST /me/2fa/{setup,enable,disable,recovery-codes}` signs out every
+`DELETE /me/sessions/:id` signs one out and `POST /me/sessions/sign-out-others`, `GET /me/2fa`, `POST /me/2fa/{setup,enable,disable,recovery-codes}`, `POST /me/email`, `POST /me/email/verification`, `POST /auth/verify-email`, `POST /auth/password/{forgot,reset}` signs out every
 device but the current one. A signed-out session stops working immediately: its access tokens are
 refused and its realtime connection closes. Re-using a refresh token more than a minute after it
 was rotated is treated as theft and signs that whole session out. Changing the password signs out
@@ -100,6 +100,21 @@ Clients may send `{"type":"typing","chatId":"…"}` and `{"type":"ping"}`. A clo
 means the access token expired or the session was signed out: refresh and reconnect (the refresh
 fails for a signed-out session).
 
+## Accounts: email and password
+
+Sign-up emails a confirmation link (`POST /auth/verify-email {token}`); `POST /me/email/verification`
+sends a new one and `POST /me/email {email, password}` changes the address (the old one is told, the
+new one must be confirmed). `POST /auth/password/forgot {email}` always answers 202 and emails a
+one-hour link when the address is known; `POST /auth/password/reset {token, password}` sets the new
+password and signs out every session. Only the newest link of each kind works.
+
+`GET /meta` publishes the server's `security` rules. With them on (the default):
+
+- staff without two-step verification act as regular users and get
+  `403 two_factor_setup_required` from staff tools;
+- company owners, directors and accountants need it to move company money (same error);
+- applications need a confirmed email (`403 email_not_verified`).
+
 ## Deposits, payouts and statements
 
 People and company finance roles ask for money to come in or go out; a finance manager handles it
@@ -135,18 +150,18 @@ Both sides receive `invoice.updated`.
 
 ## Main endpoints
 
-| Area         | Endpoints                                                                                                                                                                                                                                                                   |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Auth & me    | `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `GET/PATCH /me`, `POST /me/password`, `GET /me/sessions`, `DELETE /me/sessions/:id`, `POST /me/sessions/sign-out-others`, `GET /me/2fa`, `POST /me/2fa/{setup,enable,disable,recovery-codes}`        |
-| People       | `GET /users/search`, `GET /users/:username`, `GET/POST /contacts`, `DELETE /contacts/:userId`                                                                                                                                                                               |
-| Wallets      | `GET/POST /wallets`, `GET /wallets/:id`, `/entries`, `/locks`, `POST /wallets/transfer`, `GET/POST /wallets/:id/cash-requests`, `POST /cash-requests/:id/cancel`, `GET /wallets/:id/statement.csv`, `POST /wallets/:id/statement-link`                                      |
-| Invoices     | `GET/POST /invoices`, `GET /invoices/:id`, `POST /invoices/:id/pay`, `POST /invoices/:id/cancel`                                                                                                                                                                            |
-| Companies    | `GET /organizations/mine`, `GET /organizations/:slug`, `PATCH /organizations/:id`, members, wallets                                                                                                                                                                         |
-| Applications | `POST /applications`, `GET /applications/mine`, `/queue`, `/:id`, `POST /:id/review`, `/:id/withdraw`                                                                                                                                                                       |
-| Registry     | `GET /registry`, `GET /registry/:idOrNumber`                                                                                                                                                                                                                                |
-| Stock        | `GET /stock/listings`, `/stock/listings/:ticker`, `POST …/invest`, `GET /stock/portfolio`                                                                                                                                                                                   |
-| Chats        | `GET /chats`, `POST /chats/direct`, `/chats/groups`, `/chats/channels`, `GET /channels`, messages, members, read, pin                                                                                                                                                       |
-| Support      | `POST/GET /support/tickets`, `GET /support/desk`, `POST /support/tickets/:id/status`                                                                                                                                                                                        |
-| Stories      | `GET/POST /stories`, `POST /stories/:id/view`, `DELETE /stories/:id`                                                                                                                                                                                                        |
-| Developer    | `GET/POST /api-keys`, `DELETE /api-keys/:id`                                                                                                                                                                                                                                |
-| Admin        | `/admin/stats`, `/admin/users`, `/admin/organizations`, `/admin/owners`, `/admin/wallets`, `/admin/cash-operations`, `/admin/cash-requests` (+ `/:id/complete`, `/:id/decline`), `/admin/registry/:id`, `/admin/stock/listings/:id`, `/admin/audit-logs`, `/admin/api-keys` |
+| Area         | Endpoints                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Auth & me    | `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `GET/PATCH /me`, `POST /me/password`, `GET /me/sessions`, `DELETE /me/sessions/:id`, `POST /me/sessions/sign-out-others`, `GET /me/2fa`, `POST /me/2fa/{setup,enable,disable,recovery-codes}`, `POST /me/email`, `POST /me/email/verification`, `POST /auth/verify-email`, `POST /auth/password/{forgot,reset}` |
+| People       | `GET /users/search`, `GET /users/:username`, `GET/POST /contacts`, `DELETE /contacts/:userId`                                                                                                                                                                                                                                                                                          |
+| Wallets      | `GET/POST /wallets`, `GET /wallets/:id`, `/entries`, `/locks`, `POST /wallets/transfer`, `GET/POST /wallets/:id/cash-requests`, `POST /cash-requests/:id/cancel`, `GET /wallets/:id/statement.csv`, `POST /wallets/:id/statement-link`                                                                                                                                                 |
+| Invoices     | `GET/POST /invoices`, `GET /invoices/:id`, `POST /invoices/:id/pay`, `POST /invoices/:id/cancel`                                                                                                                                                                                                                                                                                       |
+| Companies    | `GET /organizations/mine`, `GET /organizations/:slug`, `PATCH /organizations/:id`, members, wallets                                                                                                                                                                                                                                                                                    |
+| Applications | `POST /applications`, `GET /applications/mine`, `/queue`, `/:id`, `POST /:id/review`, `/:id/withdraw`                                                                                                                                                                                                                                                                                  |
+| Registry     | `GET /registry`, `GET /registry/:idOrNumber`                                                                                                                                                                                                                                                                                                                                           |
+| Stock        | `GET /stock/listings`, `/stock/listings/:ticker`, `POST …/invest`, `GET /stock/portfolio`                                                                                                                                                                                                                                                                                              |
+| Chats        | `GET /chats`, `POST /chats/direct`, `/chats/groups`, `/chats/channels`, `GET /channels`, messages, members, read, pin                                                                                                                                                                                                                                                                  |
+| Support      | `POST/GET /support/tickets`, `GET /support/desk`, `POST /support/tickets/:id/status`                                                                                                                                                                                                                                                                                                   |
+| Stories      | `GET/POST /stories`, `POST /stories/:id/view`, `DELETE /stories/:id`                                                                                                                                                                                                                                                                                                                   |
+| Developer    | `GET/POST /api-keys`, `DELETE /api-keys/:id`                                                                                                                                                                                                                                                                                                                                           |
+| Admin        | `/admin/stats`, `/admin/users`, `/admin/organizations`, `/admin/owners`, `/admin/wallets`, `/admin/cash-operations`, `/admin/cash-requests` (+ `/:id/complete`, `/:id/decline`), `/admin/registry/:id`, `/admin/stock/listings/:id`, `/admin/audit-logs`, `/admin/api-keys`                                                                                                            |

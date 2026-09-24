@@ -8,3 +8,4 @@ export * from './theme';
 export * from './themes-ui';
 export * from './toast';
 export * from './two-factor';
+export * from './account';

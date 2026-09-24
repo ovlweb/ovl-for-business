@@ -5,6 +5,13 @@ const bool = z
   .transform((v) => v === 'true' || v === '1')
   .optional();
 
+/** A true/false setting with a default. */
+const flag = (fallback: boolean) =>
+  z
+    .enum(['true', 'false', '1', '0'])
+    .default(fallback ? 'true' : 'false')
+    .transform((v) => v === 'true' || v === '1');
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   HOST: z.string().default('0.0.0.0'),
@@ -40,6 +47,19 @@ const envSchema = z.object({
   STOCK_LOCK_DAYS: z.coerce.number().int().default(90),
   STOCK_LOCK_DAYS_MIN: z.coerce.number().int().default(90),
   STOCK_LOCK_DAYS_MAX: z.coerce.number().int().default(183),
+
+  /** Where people open the web client; used for links in emails. */
+  PUBLIC_WEB_URL: z.string().url().default('http://localhost:5173'),
+  /** smtp://user:pass@host:587 (or smtps://…). Without it, emails are written to the log. */
+  SMTP_URL: z.string().optional(),
+  MAIL_FROM: z.string().default('OVL For Business <no-reply@localhost>'),
+
+  /** Staff (moderators and up) must turn on two-step verification before using staff tools. */
+  REQUIRE_2FA_FOR_STAFF: flag(true),
+  /** Company owners, directors and accountants must turn it on before moving company money. */
+  REQUIRE_2FA_FOR_COMPANY_FINANCE: flag(true),
+  /** Applications (companies, licenses, roles) need a confirmed email address. */
+  REQUIRE_VERIFIED_EMAIL: flag(true),
 
   /** Requests per minute for the public registry / stock API. */
   PUBLIC_RATE_LIMIT: z.coerce.number().int().default(60),

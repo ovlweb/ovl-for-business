@@ -3,17 +3,29 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { jwtVerify, SignJWT } from 'jose';
 import { sessions, users } from '../db/schema';
-import { forbidden, unauthorized } from '../lib/errors';
+import { forbidden, HttpError, unauthorized } from '../lib/errors';
 
 export interface AuthUser {
   id: string;
   username: string;
   displayName: string;
   avatarUrl: string | null;
+  /**
+   * The role in effect. Staff who must use two-step verification but have not turned it on act
+   * as regular users until they do (their real role is in `accountRole`).
+   */
   role: Role;
+  accountRole: Role;
+  twoFactor: boolean;
+  /** Set when the account must turn on two-step verification before moving company money. */
+  companyMoneyLocked: boolean;
+  emailVerified: boolean;
   /** The signed-in session behind the access token (null for tokens issued before sessions existed). */
   sessionId: string | null;
 }
+
+export const twoFactorSetupRequired = (message = 'Turn on two-step verification to use staff tools') =>
+  new HttpError(403, 'two_factor_setup_required', message);
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -80,6 +92,8 @@ export function registerAuth(app: FastifyInstance): void {
         avatarUrl: users.avatarUrl,
         role: users.role,
         status: users.status,
+        totpEnabledAt: users.totpEnabledAt,
+        emailVerifiedAt: users.emailVerifiedAt,
         liveSession: sessions.id,
       })
       .from(users)
@@ -93,8 +107,18 @@ export function registerAuth(app: FastifyInstance): void {
     if (!user) throw unauthorized('Account no longer exists');
     if (user.status !== 'active') throw forbidden('This account is suspended');
     if (sessionId && !user.liveSession) throw unauthorized('This session was signed out');
-    const { status: _status, liveSession: _live, ...authUser } = user;
-    return { ...authUser, sessionId };
+    const { status: _status, liveSession: _live, totpEnabledAt, emailVerifiedAt, ...authUser } = user;
+    const twoFactor = totpEnabledAt !== null;
+    const staffLocked = app.config.REQUIRE_2FA_FOR_STAFF && user.role !== 'user' && !twoFactor;
+    return {
+      ...authUser,
+      role: staffLocked ? 'user' : user.role,
+      accountRole: user.role,
+      twoFactor,
+      companyMoneyLocked: app.config.REQUIRE_2FA_FOR_COMPANY_FINANCE && !twoFactor,
+      emailVerified: emailVerifiedAt !== null,
+      sessionId,
+    };
   });
 
   app.decorate('authenticate', async (req: FastifyRequest) => {
@@ -112,6 +136,9 @@ export function registerAuth(app: FastifyInstance): void {
     const token = bearer(req);
     if (!token) throw unauthorized();
     req.user = await app.resolveAccessToken(token);
-    if (!can(req.user.role, permission)) throw forbidden();
+    if (!can(req.user.role, permission)) {
+      if (can(req.user.accountRole, permission)) throw twoFactorSetupRequired();
+      throw forbidden();
+    }
   });
 }
