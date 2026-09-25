@@ -31,7 +31,8 @@ export default defineConfig({
   workers: 1,
   timeout: 60_000,
   expect: { timeout: 10_000 },
-  retries: process.env.CI ? 1 : 0,
+  // One story in order: a retry would replay it against data the first run already created.
+  retries: 0,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : [['list']],
   use: {
     baseURL: `http://localhost:${WEB_PORT}/`,

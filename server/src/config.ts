@@ -152,6 +152,9 @@ const RELAXED_IN_DEVELOPMENT = [
 ] as const;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  // docker-compose passes settings nobody set as empty strings (`OIDC_ISSUER: ${OIDC_ISSUER:-}`):
+  // they mean "not set", so defaults and optional settings apply.
+  env = Object.fromEntries(Object.entries(env).filter(([, value]) => value !== ''));
   if ((env.NODE_ENV ?? 'development') === 'development') {
     env = { ...env };
     for (const key of RELAXED_IN_DEVELOPMENT) env[key] ??= 'false';

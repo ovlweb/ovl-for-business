@@ -88,7 +88,9 @@ type Claimed = {
 };
 
 async function claim(db: Db, onlyId?: string): Promise<Claimed | null> {
-  const now = new Date();
+  // The database's clock, which also stamped next_attempt_at: a delivery created a moment ago is due
+  // now (this process's clock, a fraction of a millisecond behind, would skip it).
+  const now = sql`now()`;
   return db.transaction(async (tx) => {
     const [row] = await tx
       .select({ delivery: webhookDeliveries, endpoint: webhookEndpoints, event: webhookEvents })
@@ -109,7 +111,7 @@ async function claim(db: Db, onlyId?: string): Promise<Claimed | null> {
     if (!row) return null;
     await tx
       .update(webhookDeliveries)
-      .set({ lockedUntil: new Date(now.getTime() + HOLD_MS) })
+      .set({ lockedUntil: sql`now() + make_interval(secs => ${HOLD_MS / 1000})` })
       .where(eq(webhookDeliveries.id, row.delivery.id));
     return row;
   });
