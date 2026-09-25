@@ -97,6 +97,10 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         case 'payment_approval.updated':
           queryClient.invalidateQueries({ queryKey: ['paymentApprovals', event.organizationId] });
           break;
+        case 'stock.updated':
+          queryClient.invalidateQueries({ queryKey: ['stock'] });
+          queryClient.invalidateQueries({ queryKey: ['listings'] });
+          break;
         case 'payroll.updated':
           queryClient.invalidateQueries({ queryKey: ['payroll', event.organizationId] });
           break;

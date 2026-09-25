@@ -1,22 +1,37 @@
 import {
   formatAmount,
   holdingSchema,
+  orderBookSchema,
+  placeOrderResultSchema,
+  placeOrderSchema,
+  stockOrderSchema,
+  stockTradeSchema,
   investInputSchema,
   investmentSchema,
   parseAmount,
   stockListingDetailSchema,
   stockListingSchema,
 } from '@ovl/shared';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { investments, organizations, stockListings, stockPriceHistory } from '../../db/schema';
-import { notFound } from '../../lib/errors';
+import {
+  investments,
+  organizations,
+  shareholdings,
+  stockListings,
+  stockOrders,
+  stockPriceHistory,
+  stockTrades,
+  wallets,
+} from '../../db/schema';
+import { conflict, notFound } from '../../lib/errors';
 import { iso } from '../../lib/mappers';
 import { apiKeyGuard, publicRouteConfig } from '../../lib/public-api';
 import { currentUser } from '../../plugins/auth';
 import { walletAudience } from '../wallets/routes';
+import { cancelOrder, orderDto, placeOrder, position, tradeDto } from './market';
 import { invest, listingDtos } from './service';
 
 export async function stockRoutes(fastify: FastifyInstance) {
@@ -143,22 +158,22 @@ export async function stockRoutes(fastify: FastifyInstance) {
     },
     async (req) => {
       const me = currentUser(req);
-      const [holdings, history] = await Promise.all([
+      const [held, history, flows] = await Promise.all([
         app.db
           .select({
+            listingId: stockListings.id,
             ticker: stockListings.ticker,
             currency: stockListings.currency,
             sharePrice: stockListings.sharePrice,
             organizationName: organizations.name,
             organizationSlug: organizations.slug,
-            shares: sql<string>`sum(${investments.shares})`,
-            invested: sql<string>`sum(${investments.amount})`,
+            shares: shareholdings.shares,
           })
-          .from(investments)
-          .innerJoin(stockListings, eq(stockListings.id, investments.listingId))
+          .from(shareholdings)
+          .innerJoin(stockListings, eq(stockListings.id, shareholdings.listingId))
           .innerJoin(organizations, eq(organizations.id, stockListings.organizationId))
-          .where(eq(investments.investorId, me.id))
-          .groupBy(stockListings.id, organizations.id),
+          .where(and(eq(shareholdings.userId, me.id), sql`${shareholdings.shares} > 0`))
+          .orderBy(stockListings.ticker),
         app.db
           .select({
             i: investments,
@@ -172,16 +187,30 @@ export async function stockRoutes(fastify: FastifyInstance) {
           .where(and(eq(investments.investorId, me.id)))
           .orderBy(desc(investments.createdAt))
           .limit(200),
+        // Money put in: investments, plus purchases, minus sales on the market.
+        app.db.execute<{ listing_id: string; net: string }>(sql`
+          select listing_id, sum(net)::text as net from (
+            select listing_id, amount as net from investments where investor_id = ${me.id}
+            union all select listing_id, price * shares from stock_trades where buyer_id = ${me.id}
+            union all select listing_id, -(price * shares) from stock_trades where seller_id = ${me.id}
+          ) t group by listing_id`),
       ]);
+      const netBy = new Map([...flows].map((f) => [f.listing_id, BigInt(f.net)]));
+      const holdings = await Promise.all(
+        held.map(async (h) => ({ ...h, position: await position(app.db, h.listingId, me.id) })),
+      );
       return {
         holdings: holdings.map((h) => ({
           ticker: h.ticker,
           organizationName: h.organizationName,
           organizationSlug: h.organizationSlug,
           currency: h.currency,
-          shares: h.shares,
-          invested: formatAmount(BigInt(h.invested), h.currency),
-          currentValue: formatAmount(BigInt(h.shares) * h.sharePrice, h.currency),
+          shares: h.shares.toString(),
+          sellable: h.position.sellable.toString(),
+          locked: h.position.locked.toString(),
+          onSale: h.position.onSale.toString(),
+          invested: formatAmount(netBy.get(h.listingId) ?? 0n, h.currency),
+          currentValue: formatAmount(h.shares * h.sharePrice, h.currency),
         })),
         investments: history.map(({ i, ticker, currency, orgName }) => ({
           id: i.id,
@@ -195,6 +224,174 @@ export async function stockRoutes(fastify: FastifyInstance) {
           createdAt: iso(i.createdAt),
         })),
       };
+    },
+  );
+
+  // ----- Secondary market ------------------------------------------------------------
+
+  const loadListing = async (ticker: string) => {
+    const [listing] = await app.db
+      .select()
+      .from(stockListings)
+      .where(eq(stockListings.ticker, ticker.toUpperCase()));
+    if (!listing) throw notFound('Listing');
+    return listing;
+  };
+
+  app.get(
+    '/stock/listings/:ticker/book',
+    {
+      config: publicRouteConfig(app),
+      preHandler: guard,
+      schema: {
+        tags,
+        security,
+        description: 'The order book (open buy and sell orders by price) and the latest trades.',
+        params: z.object({ ticker: z.string().min(1).max(8) }),
+        response: { 200: orderBookSchema },
+      },
+    },
+    async (req) => {
+      const listing = await loadListing(req.params.ticker);
+      const level = (side: 'buy' | 'sell') =>
+        app.db
+          .select({
+            price: stockOrders.price,
+            shares: sql<string>`sum(${stockOrders.shares} - ${stockOrders.filled})`,
+            orders: sql<number>`count(*)::int`,
+          })
+          .from(stockOrders)
+          .where(
+            and(eq(stockOrders.listingId, listing.id), eq(stockOrders.side, side), eq(stockOrders.status, 'open')),
+          )
+          .groupBy(stockOrders.price)
+          .orderBy(side === 'buy' ? desc(stockOrders.price) : asc(stockOrders.price))
+          .limit(20);
+      const [bids, asks, trades] = await Promise.all([
+        level('buy'),
+        level('sell'),
+        app.db
+          .select()
+          .from(stockTrades)
+          .where(eq(stockTrades.listingId, listing.id))
+          .orderBy(desc(stockTrades.createdAt))
+          .limit(30),
+      ]);
+      const fmt = (l: { price: bigint; shares: string; orders: number }) => ({
+        price: formatAmount(l.price, listing.currency),
+        shares: l.shares,
+        orders: l.orders,
+      });
+      return {
+        ticker: listing.ticker,
+        currency: listing.currency,
+        bids: bids.map(fmt),
+        asks: asks.map(fmt),
+        lastPrice: formatAmount(listing.sharePrice, listing.currency),
+        trades: trades.map((t) => tradeDto(t, listing.currency)),
+      };
+    },
+  );
+
+  app.post(
+    '/stock/listings/:ticker/orders',
+    {
+      preHandler: app.authenticate,
+      config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['stock exchange'],
+        description:
+          'Place a limit order on the secondary market. It trades at once with matching orders (best price, ' +
+          'then oldest first, at the resting order\'s price) and the rest stays in the book. A buy order holds ' +
+          'its money; only shares past their lock period can be sold.',
+        params: z.object({ ticker: z.string().min(1).max(8) }),
+        body: placeOrderSchema,
+        response: { 201: placeOrderResultSchema },
+      },
+    },
+    async (req, reply) => {
+      const me = currentUser(req);
+      const { side, shares, price: decimal } = req.body;
+      const result = await app.db.transaction(async (tx) => {
+        const [listing] = await tx
+          .select()
+          .from(stockListings)
+          .where(eq(stockListings.ticker, req.params.ticker.toUpperCase()))
+          .for('update');
+        if (!listing) throw notFound('Listing');
+        if (listing.status !== 'active') throw conflict(`Trading of ${listing.ticker} is ${listing.status}`);
+        const price = parseAmount(decimal, listing.currency);
+        const placed = await placeOrder(tx, listing, { userId: me.id, side, shares: BigInt(shares), price });
+        return { ...placed, listing };
+      });
+      const touched = await app.db.select().from(wallets).where(inArray(wallets.id, result.touchedWallets));
+      for (const w of touched)
+        app.hub.sendToUsers(await walletAudience(app.db, w), { type: 'wallet.updated', walletId: w.id });
+      app.hub.broadcast({ type: 'stock.updated', ticker: result.listing.ticker });
+      return reply.status(201).send({
+        order: orderDto(result.order, result.listing),
+        trades: result.trades.map((t) => tradeDto(t, result.listing.currency)),
+      });
+    },
+  );
+
+  app.get(
+    '/stock/orders',
+    {
+      preHandler: app.authenticate,
+      schema: {
+        tags: ['stock exchange'],
+        description: 'Your orders, newest first.',
+        querystring: z.object({ status: z.enum(['open', 'filled', 'cancelled']).optional() }),
+        response: { 200: z.array(stockOrderSchema) },
+      },
+    },
+    async (req) => {
+      const rows = await app.db
+        .select({ o: stockOrders, ticker: stockListings.ticker, currency: stockListings.currency })
+        .from(stockOrders)
+        .innerJoin(stockListings, eq(stockListings.id, stockOrders.listingId))
+        .where(
+          and(
+            eq(stockOrders.userId, currentUser(req).id),
+            req.query.status ? eq(stockOrders.status, req.query.status) : undefined,
+          ),
+        )
+        .orderBy(desc(stockOrders.createdAt))
+        .limit(200);
+      return rows.map((r) => orderDto(r.o, r));
+    },
+  );
+
+  app.delete(
+    '/stock/orders/:id',
+    {
+      preHandler: app.authenticate,
+      schema: {
+        tags: ['stock exchange'],
+        description: 'Cancel what is left of an open order (a buy order releases its money).',
+        params: z.object({ id: z.uuid() }),
+        response: { 200: stockOrderSchema },
+      },
+    },
+    async (req) => {
+      const me = currentUser(req);
+      const { order, listing } = await app.db.transaction(async (tx) => {
+        const [row] = await tx
+          .select({ o: stockOrders, l: stockListings })
+          .from(stockOrders)
+          .innerJoin(stockListings, eq(stockListings.id, stockOrders.listingId))
+          .where(and(eq(stockOrders.id, req.params.id), eq(stockOrders.userId, me.id)))
+          .for('update', { of: stockOrders });
+        if (!row) throw notFound('Order');
+        await cancelOrder(tx, row.o);
+        const [fresh] = await tx.select().from(stockOrders).where(eq(stockOrders.id, row.o.id));
+        return { order: fresh!, listing: row.l };
+      });
+      const [wallet] = await app.db.select().from(wallets).where(eq(wallets.id, order.walletId));
+      if (wallet) app.hub.sendToUsers([me.id], { type: 'wallet.updated', walletId: wallet.id });
+      app.hub.broadcast({ type: 'stock.updated', ticker: listing.ticker });
+      return orderDto(order, listing);
     },
   );
 }

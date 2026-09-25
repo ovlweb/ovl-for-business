@@ -396,6 +396,23 @@ class OvlApi {
     await _post('/stock/listings/${Uri.encodeComponent(ticker)}/invest', {'amount': amount}) as Json,
   );
   Future<Portfolio> portfolio() async => Portfolio.fromJson(await _get('/stock/portfolio'));
+  Future<OrderBook> orderBook(String ticker) async => OrderBook.fromJson(await _get('/stock/listings/$ticker/book'));
+
+  /// A limit order; returns how many shares traded at once.
+  Future<({StockOrder order, int traded})> placeOrder(
+    String ticker, {
+    required String side,
+    required int shares,
+    required String price,
+  }) async {
+    final r = await _post('/stock/listings/$ticker/orders', {'side': side, 'shares': shares, 'price': price}) as Json;
+    final traded = (r['trades'] as List).fold<int>(0, (n, t) => n + int.parse((t as Json)['shares'] as String));
+    return (order: StockOrder.fromJson(r['order'] as Json), traded: traded);
+  }
+
+  Future<List<StockOrder>> myOrders({String? status}) =>
+      _getList('/stock/orders', StockOrder.fromJson, {'status': status});
+  Future<void> cancelOrder(String id) => _delete('/stock/orders/$id');
 
   // --- chats -----------------------------------------------------------------------------
 

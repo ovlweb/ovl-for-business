@@ -895,6 +895,84 @@ export const investments = pgTable(
   ],
 );
 
+/** Who holds how many shares (investments, then trades on the secondary market). */
+export const shareholdings = pgTable(
+  'shareholdings',
+  {
+    listingId: uuid('listing_id')
+      .notNull()
+      .references(() => stockListings.id),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    shares: bigint('shares', { mode: 'bigint' }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.listingId, t.userId] }),
+    check('shareholdings_non_negative', sql`${t.shares} >= 0`),
+  ],
+);
+
+export const orderSideEnum = pgEnum('order_side', ['buy', 'sell']);
+export const orderStatusEnum = pgEnum('order_status', ['open', 'filled', 'cancelled']);
+
+/** Limit orders on the secondary market; a buy order holds its money meanwhile. */
+export const stockOrders = pgTable(
+  'stock_orders',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    listingId: uuid('listing_id')
+      .notNull()
+      .references(() => stockListings.id),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    walletId: uuid('wallet_id')
+      .notNull()
+      .references(() => wallets.id),
+    side: orderSideEnum('side').notNull(),
+    price: money('price').notNull(),
+    shares: bigint('shares', { mode: 'bigint' }).notNull(),
+    filled: bigint('filled', { mode: 'bigint' }).notNull().default(sql`0`),
+    status: orderStatusEnum('status').notNull().default('open'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('stock_orders_book_idx').on(t.listingId, t.side, t.status, t.price, t.createdAt),
+    index('stock_orders_user_idx').on(t.userId, t.createdAt),
+    check('stock_orders_filled', sql`${t.filled} between 0 and ${t.shares}`),
+  ],
+);
+
+export const stockTrades = pgTable(
+  'stock_trades',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    listingId: uuid('listing_id')
+      .notNull()
+      .references(() => stockListings.id),
+    buyOrderId: uuid('buy_order_id')
+      .notNull()
+      .references(() => stockOrders.id),
+    sellOrderId: uuid('sell_order_id')
+      .notNull()
+      .references(() => stockOrders.id),
+    buyerId: uuid('buyer_id')
+      .notNull()
+      .references(() => users.id),
+    sellerId: uuid('seller_id')
+      .notNull()
+      .references(() => users.id),
+    takerSide: orderSideEnum('taker_side').notNull(),
+    price: money('price').notNull(),
+    shares: bigint('shares', { mode: 'bigint' }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('stock_trades_listing_idx').on(t.listingId, t.createdAt)],
+);
+
 // ---------------------------------------------------------------------------
 // Chats: direct, groups, news channels, tech support, council & moderation
 // ---------------------------------------------------------------------------

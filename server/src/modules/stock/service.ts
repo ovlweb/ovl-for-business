@@ -6,6 +6,7 @@ import { badRequest, conflict, notFound } from '../../lib/errors';
 import { iso } from '../../lib/mappers';
 import { emitEvent } from '../../lib/webhooks';
 import { credit, debit, getOrCreateWallet, lockWallet } from '../wallets/service';
+import { addShares } from './market';
 
 export type ListingRow = typeof stockListings.$inferSelect;
 
@@ -177,6 +178,7 @@ export async function invest(db: Db, input: { ticker: string; investorId: string
       updatedAt: new Date(),
     })
     .where(eq(stockListings.id, listing.id));
+  await addShares(db, listing.id, input.investorId, shares);
 
   return { investment: investment!, listing, org, investorWallet, companyWallet };
 }

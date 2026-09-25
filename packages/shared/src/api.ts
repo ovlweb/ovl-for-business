@@ -262,6 +262,8 @@ export const LEDGER_KINDS = [
   'payroll_out',
   'issuance',
   'redemption',
+  'trade_in',
+  'trade_out',
   'adjustment',
 ] as const;
 
@@ -1058,10 +1060,64 @@ export const holdingSchema = z.object({
   organizationSlug: z.string(),
   currency: z.string(),
   shares: z.string(),
-  invested: z.string(),
+  sellable: z.string().describe('Unlocked and not already offered for sale'),
+  locked: z.string().describe('From investments still in their lock period'),
+  onSale: z.string().describe('In open sell orders'),
+  invested: z.string().describe('Money put in (investments and purchases) minus sales'),
   currentValue: z.string(),
 });
 export type Holding = z.infer<typeof holdingSchema>;
+
+// ---------------------------------------------------------------------------
+// Secondary market (order book)
+// ---------------------------------------------------------------------------
+
+export const ORDER_SIDES = ['buy', 'sell'] as const;
+export type OrderSide = (typeof ORDER_SIDES)[number];
+export const ORDER_STATUSES = ['open', 'filled', 'cancelled'] as const;
+
+export const placeOrderSchema = z.object({
+  side: z.enum(ORDER_SIDES),
+  shares: z.coerce.number().int().min(1).max(1_000_000_000_000),
+  price: decimalAmountSchema.describe('Limit price per share, in the listing currency'),
+});
+export type PlaceOrderInput = z.input<typeof placeOrderSchema>;
+
+export const stockOrderSchema = z.object({
+  id: uuid,
+  ticker: z.string(),
+  currency: z.string(),
+  side: z.enum(ORDER_SIDES),
+  price: z.string(),
+  shares: z.string(),
+  filled: z.string(),
+  remaining: z.string(),
+  status: z.enum(ORDER_STATUSES),
+  createdAt: isoDate,
+  updatedAt: isoDate,
+});
+export type StockOrder = z.infer<typeof stockOrderSchema>;
+
+export const stockTradeSchema = z.object({
+  id: uuid,
+  price: z.string(),
+  shares: z.string(),
+  side: z.enum(ORDER_SIDES).describe('The side that took liquidity'),
+  at: isoDate,
+});
+export type StockTrade = z.infer<typeof stockTradeSchema>;
+
+const bookLevel = z.object({ price: z.string(), shares: z.string(), orders: z.number().int() });
+export const orderBookSchema = z.object({
+  ticker: z.string(),
+  currency: z.string(),
+  bids: z.array(bookLevel).describe('Buy orders, best (highest) price first'),
+  asks: z.array(bookLevel).describe('Sell orders, best (lowest) price first'),
+  lastPrice: z.string(),
+  trades: z.array(stockTradeSchema).describe('The latest trades, newest first'),
+});
+export type OrderBook = z.infer<typeof orderBookSchema>;
+export const placeOrderResultSchema = z.object({ order: stockOrderSchema, trades: z.array(stockTradeSchema) });
 
 export const updateListingSchema = z.object({
   sharePrice: decimalAmountSchema.optional(),
@@ -1275,7 +1331,8 @@ export type RealtimeEvent =
   | { type: 'invoice.updated'; invoiceId: string; status: string }
   | { type: 'identity.updated'; status: string }
   | { type: 'payment_approval.updated'; organizationId: string; approvalId: string; status: string }
-  | { type: 'payroll.updated'; organizationId: string; runId: string; status: string };
+  | { type: 'payroll.updated'; organizationId: string; runId: string; status: string }
+  | { type: 'stock.updated'; ticker: string };
 
 /** Messages a client may send over the realtime socket. */
 export type RealtimeClientMessage = { type: 'typing'; chatId: string } | { type: 'ping' };

@@ -46,6 +46,8 @@ import type {
   PayrollInput,
   PayrollRun,
   OrgMember,
+  OrderBook,
+  PlaceOrderInput,
   Preferences,
   OrgRole,
   RegisterInput,
@@ -62,6 +64,8 @@ import type {
   Role,
   StockListing,
   StockListingDetail,
+  StockOrder,
+  StockTrade,
   Story,
   TransferInput,
   UpdateMeInput,
@@ -513,6 +517,16 @@ export class OvlClient {
     invest: (ticker: string, amount: string) =>
       this.post<Investment>(`/stock/listings/${encodeURIComponent(ticker)}/invest`, { amount }),
     portfolio: () => this.get<{ holdings: Holding[]; investments: Investment[] }>('/stock/portfolio'),
+    /** Open buy and sell orders by price, and the latest trades. No token needed. */
+    book: (ticker: string) => this.get<OrderBook>(`/stock/listings/${encodeURIComponent(ticker)}/book`),
+    /** A limit order: it trades at once with matching orders and the rest stays in the book. */
+    placeOrder: (ticker: string, input: PlaceOrderInput) =>
+      this.post<{ order: StockOrder; trades: StockTrade[] }>(
+        `/stock/listings/${encodeURIComponent(ticker)}/orders`,
+        input,
+      ),
+    orders: (status?: 'open' | 'filled' | 'cancelled') => this.get<StockOrder[]>('/stock/orders', { status }),
+    cancelOrder: (id: string) => this.del<StockOrder>(`/stock/orders/${id}`),
   };
 
   chats = {

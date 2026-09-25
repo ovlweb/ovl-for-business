@@ -46,8 +46,8 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
 
 ### Stock exchange
 
-- Secondary market: order book so investors can sell shares to each other after the lock period;
-  price discovery from trades.
+- ✅ Secondary market: a limit-order book so investors trade shares with each other after the lock
+  period; the listing price follows the last trade (0.2).
 - Dividends, shareholder registry, shareholder voting.
 - Company reports (quarterly results) published on the listing page.
 - Per-investor limits and risk disclosures.

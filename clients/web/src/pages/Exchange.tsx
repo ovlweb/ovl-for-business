@@ -1,4 +1,4 @@
-import { formatAmount, parseAmount } from '@ovl/shared';
+import { formatAmount, parseAmount, type OrderSide, type StockListingDetail } from '@ovl/shared';
 import {
   Empty,
   ErrorAlert,
@@ -9,8 +9,10 @@ import {
   Money,
   PageHeader,
   AreaChart,
+  Segmented,
   Spinner,
   StatusBadge,
+  useToast,
   VerifiedBadge,
 } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -229,6 +231,197 @@ export function ListingPage() {
           </button>
         </form>
       </div>
+      <Market listing={l} />
+    </div>
+  );
+}
+
+/** The secondary market: the order book, a buy/sell form and your open orders. */
+function Market({ listing: l }: { listing: StockListingDetail }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const book = useQuery({
+    queryKey: ['stock', 'book', l.ticker],
+    queryFn: () => api.stock.book(l.ticker),
+    refetchInterval: 15_000,
+  });
+  const portfolio = useQuery({ queryKey: ['portfolio'], queryFn: api.stock.portfolio });
+  const orders = useQuery({ queryKey: ['stock', 'orders'], queryFn: () => api.stock.orders('open') });
+  const holding = portfolio.data?.holdings.find((h) => h.ticker === l.ticker);
+  const mine = orders.data?.filter((o) => o.ticker === l.ticker) ?? [];
+  const [side, setSide] = useState<OrderSide>('buy');
+  const [shares, setShares] = useState('');
+  const [price, setPrice] = useState('');
+  const refresh = () => {
+    for (const key of ['stock', 'portfolio', 'wallets', 'listings'])
+      queryClient.invalidateQueries({ queryKey: [key] });
+  };
+  const place = useMutation({
+    mutationFn: () => api.stock.placeOrder(l.ticker, { side, shares: Number(shares), price }),
+    onSuccess: ({ order, trades }) => {
+      refresh();
+      const traded = trades.reduce((n, t) => n + Number(t.shares), 0);
+      toast.success(
+        traded
+          ? `${side === 'buy' ? 'Bought' : 'Sold'} ${traded} ${l.ticker}${order.status === 'open' ? `; ${order.remaining} left in the book` : ''}`
+          : `Order placed: ${side} ${order.shares} ${l.ticker} at ${formatMoney(order.price, l.currency)}`,
+      );
+      setShares('');
+    },
+  });
+  const cancel = useMutation({ mutationFn: api.stock.cancelOrder, onSuccess: refresh });
+  let total: string | null = null;
+  try {
+    if (shares && price)
+      total = formatAmount(parseAmount(price, l.currency) * BigInt(parseInt(shares) || 0), l.currency);
+  } catch {
+    total = null;
+  }
+  const b = book.data;
+  const levels = (rows: { price: string; shares: string; orders: number }[], kind: 'bid' | 'ask') =>
+    rows.length ? (
+      rows.map((r) => (
+        <tr key={r.price} className="clickable" onClick={() => setPrice(r.price)}>
+          <td className={kind === 'bid' ? 'pos bold' : 'neg bold'}>
+            {formatMoney(r.price, l.currency, false)}
+          </td>
+          <td className="right num">{Number(r.shares).toLocaleString()}</td>
+          <td className="right small muted">{r.orders}</td>
+        </tr>
+      ))
+    ) : (
+      <tr>
+        <td colSpan={3} className="small muted">
+          No {kind === 'bid' ? 'buy' : 'sell'} orders
+        </td>
+      </tr>
+    );
+  return (
+    <div className="grid-2">
+      <div className="card stack">
+        <div className="spread">
+          <h3>Order book</h3>
+          <span className="small muted">Last trade {b ? formatMoney(b.lastPrice, l.currency) : '—'}</span>
+        </div>
+        <ErrorAlert error={book.error} />
+        <div className="grid-2" style={{ gap: 12 }}>
+          <table className="table" aria-label="Buy orders">
+            <thead>
+              <tr>
+                <th>Bid</th>
+                <th className="right">Shares</th>
+                <th className="right">Orders</th>
+              </tr>
+            </thead>
+            <tbody>{b && levels(b.bids, 'bid')}</tbody>
+          </table>
+          <table className="table" aria-label="Sell orders">
+            <thead>
+              <tr>
+                <th>Ask</th>
+                <th className="right">Shares</th>
+                <th className="right">Orders</th>
+              </tr>
+            </thead>
+            <tbody>{b && levels(b.asks, 'ask')}</tbody>
+          </table>
+        </div>
+        <h3>Latest trades</h3>
+        {b?.trades.length ? (
+          <table className="table">
+            <tbody>
+              {b.trades.slice(0, 8).map((t) => (
+                <tr key={t.id}>
+                  <td className="small nowrap">{formatDate(t.at)}</td>
+                  <td className={t.side === 'buy' ? 'pos' : 'neg'}>{formatMoney(t.price, l.currency)}</td>
+                  <td className="right num">{t.shares}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="small muted">No trades yet: shares change hands once a buy and a sell order meet.</p>
+        )}
+      </div>
+      <form
+        className="card stack"
+        onSubmit={(e) => {
+          e.preventDefault();
+          place.mutate();
+        }}
+      >
+        <h3>Trade with other investors</h3>
+        <p className="small muted" style={{ margin: 0 }}>
+          A limit order trades at once with the best matching orders, at their price; the rest waits in the
+          book until you cancel it. Shares from an investment can be sold after its {l.lockDays}-day lock.
+        </p>
+        <Segmented<OrderSide>
+          value={side}
+          onChange={setSide}
+          options={[
+            { value: 'buy', label: 'Buy' },
+            { value: 'sell', label: 'Sell' },
+          ]}
+        />
+        {holding && (
+          <div className="alert info small">
+            You hold {holding.shares} {l.ticker}: {holding.sellable} can be sold
+            {Number(holding.locked) > 0 && `, ${holding.locked} still locked`}
+            {Number(holding.onSale) > 0 && `, ${holding.onSale} already offered`}.
+          </div>
+        )}
+        <div className="grid-2" style={{ gap: 12 }}>
+          <Field label="Shares">
+            <input
+              className="input"
+              inputMode="numeric"
+              value={shares}
+              onChange={(e) => setShares(e.target.value.replace(/\D/g, ''))}
+              required
+            />
+          </Field>
+          <Field label={`Limit price (${l.currency})`}>
+            <input
+              className="input"
+              inputMode="decimal"
+              value={price}
+              placeholder={b?.lastPrice ?? l.sharePrice}
+              onChange={(e) => setPrice(e.target.value.replace(',', '.'))}
+              required
+            />
+          </Field>
+        </div>
+        {total && (
+          <div className="spread small">
+            <span className="muted">{side === 'buy' ? 'At most' : 'At least'}</span>
+            <b>{formatMoney(total, l.currency)}</b>
+          </div>
+        )}
+        <ErrorAlert error={place.error ?? cancel.error} />
+        <button
+          className={`btn ${side === 'buy' ? 'primary' : 'danger'}`}
+          disabled={place.isPending || l.status !== 'active' || !shares || !price}
+        >
+          {side === 'buy' ? 'Place buy order' : 'Place sell order'}
+        </button>
+        {mine.length > 0 && (
+          <div className="stack-sm">
+            <h3>Your open orders</h3>
+            {mine.map((o) => (
+              <div key={o.id} className="spread small">
+                <span>
+                  <b className={o.side === 'buy' ? 'pos' : 'neg'}>{o.side === 'buy' ? 'Buy' : 'Sell'}</b>{' '}
+                  {o.remaining}
+                  {o.remaining !== o.shares && ` of ${o.shares}`} at {formatMoney(o.price, l.currency)}
+                </span>
+                <button type="button" className="btn ghost sm" onClick={() => cancel.mutate(o.id)}>
+                  Cancel
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </form>
     </div>
   );
 }
@@ -255,6 +448,7 @@ export function PortfolioPage() {
               <th>Ticker</th>
               <th>Company</th>
               <th className="right">Shares</th>
+              <th className="right">Can sell</th>
               <th className="right">Invested</th>
               <th className="right">Current value</th>
             </tr>
@@ -267,6 +461,10 @@ export function PortfolioPage() {
                 </td>
                 <td>{h.organizationName}</td>
                 <td className="right num">{h.shares}</td>
+                <td className="right num">
+                  {h.sellable}
+                  {Number(h.locked) > 0 && <div className="tiny muted">{h.locked} locked</div>}
+                </td>
                 <td className="right">
                   <Money amount={h.invested} currency={h.currency} />
                 </td>

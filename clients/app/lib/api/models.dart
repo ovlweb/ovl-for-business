@@ -820,6 +820,8 @@ class Holding {
       organizationName = j['organizationName'] as String,
       currency = j['currency'] as String,
       shares = j['shares'] as String,
+      sellable = j['sellable'] as String? ?? '0',
+      locked = j['locked'] as String? ?? '0',
       invested = j['invested'] as String,
       currentValue = j['currentValue'] as String;
 
@@ -827,8 +829,63 @@ class Holding {
   final String organizationName;
   final String currency;
   final String shares;
+
+  /// Unlocked and not already offered for sale.
+  final String sellable;
+  final String locked;
   final String invested;
   final String currentValue;
+}
+
+/// One price level of the order book.
+class BookLevel {
+  BookLevel.fromJson(Json j)
+    : price = j['price'] as String,
+      shares = j['shares'] as String,
+      orders = j['orders'] as int;
+
+  final String price;
+  final String shares;
+  final int orders;
+}
+
+class OrderBook {
+  OrderBook.fromJson(Json j)
+    : lastPrice = j['lastPrice'] as String,
+      bids = [for (final l in j['bids'] as List) BookLevel.fromJson(l as Json)],
+      asks = [for (final l in j['asks'] as List) BookLevel.fromJson(l as Json)],
+      trades = [
+        for (final t in j['trades'] as List)
+          (price: (t as Json)['price'] as String, shares: t['shares'] as String, at: _date(t['at'])),
+      ];
+
+  final String lastPrice;
+  final List<BookLevel> bids;
+  final List<BookLevel> asks;
+  final List<({String price, String shares, DateTime at})> trades;
+}
+
+class StockOrder {
+  StockOrder.fromJson(Json j)
+    : id = j['id'] as String,
+      ticker = j['ticker'] as String,
+      currency = j['currency'] as String,
+      side = j['side'] as String,
+      price = j['price'] as String,
+      shares = j['shares'] as String,
+      remaining = j['remaining'] as String,
+      status = j['status'] as String;
+
+  final String id;
+  final String ticker;
+  final String currency;
+
+  /// buy or sell
+  final String side;
+  final String price;
+  final String shares;
+  final String remaining;
+  final String status;
 }
 
 class Investment {

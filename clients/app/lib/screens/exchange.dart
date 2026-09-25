@@ -268,9 +268,209 @@ class ListingScreen extends StatelessWidget {
                 const SizedBox(height: 16),
                 invest,
               ],
+              const SizedBox(height: 16),
+              _Market(listing: l),
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// The order book, your open orders and a buy/sell sheet.
+class _Market extends StatelessWidget {
+  const _Market({required this.listing});
+
+  final StockListing listing;
+
+  @override
+  Widget build(BuildContext context) {
+    final session = context.watch<Session>();
+    final c = context.c;
+    final l = listing;
+    return Query<OrderBook>(
+      client: session.queries,
+      queryKey: 'listings:${l.ticker}:book',
+      fetch: () => session.api.orderBook(l.ticker),
+      builder: (context, s) {
+        final book = s.data;
+        Widget side(String title, List<BookLevel> levels, Color color) => Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Caption(title),
+              const SizedBox(height: 6),
+              if (levels.isEmpty) Text('None', style: context.text.bodySmall),
+              for (final lv in levels.take(8))
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          money(lv.price, l.currency, code: false),
+                          style: font(body, 13.5, FontWeight.w700, color: color),
+                        ),
+                      ),
+                      Text(lv.shares, style: context.text.bodyMedium),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        );
+        return OvlCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: Text('Order book', style: context.text.titleLarge)),
+                  if (book != null) Text('Last ${money(book.lastPrice, l.currency)}', style: context.text.bodySmall),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (book == null)
+                const SkeletonList(rows: 3)
+              else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    side('Bids (buy)', book.bids, c.success),
+                    const SizedBox(width: 18),
+                    side('Asks (sell)', book.asks, c.danger),
+                  ],
+                ),
+              const SizedBox(height: 12),
+              Text(
+                'Shares from an investment can be sold after its ${l.lockDays}-day lock. Orders trade at the '
+                'best matching price; the rest waits in the book.',
+                style: context.text.bodySmall,
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                children: [
+                  FilledButton(
+                    onPressed: l.status == 'active' ? () => _orderSheet(context, 'buy', book) : null,
+                    child: const Text('Buy'),
+                  ),
+                  OutlinedButton(
+                    onPressed: l.status == 'active' ? () => _orderSheet(context, 'sell', book) : null,
+                    child: const Text('Sell'),
+                  ),
+                ],
+              ),
+              Query<List<StockOrder>>(
+                client: session.queries,
+                queryKey: 'portfolio:orders',
+                fetch: () => session.api.myOrders(status: 'open'),
+                builder: (context, o) {
+                  final mine = (o.data ?? const <StockOrder>[]).where((x) => x.ticker == l.ticker).toList();
+                  if (mine.isEmpty) return const SizedBox.shrink();
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Divider(height: 24),
+                      Text('Your open orders', style: context.text.titleSmall),
+                      for (final x in mine)
+                        ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            '${x.side == 'buy' ? 'Buy' : 'Sell'} ${x.remaining} at ${money(x.price, x.currency)}',
+                          ),
+                          trailing: TextButton(
+                            onPressed: () async {
+                              await session.api.cancelOrder(x.id);
+                              for (final k in ['portfolio', 'listings', 'wallets']) {
+                                session.queries.invalidate(k);
+                              }
+                            },
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _orderSheet(BuildContext context, String side, OrderBook? book) {
+    final session = context.read<Session>();
+    final shares = TextEditingController();
+    final price = TextEditingController(text: book?.lastPrice ?? listing.sharePrice);
+    var busy = false;
+    Object? error;
+    showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      builder: (sheet) => StatefulBuilder(
+        builder: (sheet, set) => Padding(
+          padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(sheet).bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('${side == 'buy' ? 'Buy' : 'Sell'} ${listing.ticker}', style: sheet.text.headlineSmall),
+              const SizedBox(height: 14),
+              if (error != null) ...[ErrorBox(error), const SizedBox(height: 12)],
+              LabeledField(label: 'Shares', controller: shares, icon: LucideIcons.hash, keyboard: TextInputType.number),
+              const SizedBox(height: 12),
+              LabeledField(
+                label: 'Limit price (${listing.currency})',
+                controller: price,
+                icon: LucideIcons.banknote,
+                keyboard: const TextInputType.numberWithOptions(decimal: true),
+              ),
+              const SizedBox(height: 18),
+              GradientButton(
+                label: side == 'buy' ? 'Place buy order' : 'Place sell order',
+                icon: side == 'buy' ? LucideIcons.arrowDownLeft : LucideIcons.arrowUpRight,
+                busy: busy,
+                onPressed: () async {
+                  set(() {
+                    busy = true;
+                    error = null;
+                  });
+                  try {
+                    final r = await session.api.placeOrder(
+                      listing.ticker,
+                      side: side,
+                      shares: int.tryParse(shares.text.trim()) ?? 0,
+                      price: price.text.trim().replaceAll(',', '.'),
+                    );
+                    for (final k in ['portfolio', 'listings', 'wallets']) {
+                      session.queries.invalidate(k);
+                    }
+                    if (sheet.mounted) Navigator.pop(sheet);
+                    if (context.mounted) {
+                      toast(
+                        context,
+                        r.traded > 0
+                            ? '${side == 'buy' ? 'Bought' : 'Sold'} ${r.traded} ${listing.ticker}'
+                                  '${r.order.status == 'open' ? '; ${r.order.remaining} left in the book' : ''}'
+                            : 'Order placed',
+                      );
+                    }
+                  } catch (e) {
+                    set(() {
+                      busy = false;
+                      error = e;
+                    });
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

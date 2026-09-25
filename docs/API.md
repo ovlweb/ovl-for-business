@@ -58,6 +58,19 @@ curl https://business.example.com/api/v1/stock/listings/AURA -H "X-API-Key: $KEY
 Registry query parameters: `q`, `kind` (`organization` | `license` | `virtual_country`),
 `licenseType`, `status` (default `active`), `limit` (≤ 100), `offset`.
 
+## Secondary market
+
+Holdings (`GET /stock/portfolio`) say how many shares are `sellable`: shares bought on the market
+at once, shares from an investment after its lock period, minus what is already offered.
+`POST /stock/listings/:ticker/orders {side: 'buy' | 'sell', shares, price}` places a limit order. It
+trades at once with the best opposite orders (best price first, then the oldest), at the resting
+order's price, and whatever is left waits in the book; a buy order sets its money aside
+(`stock_order` lock) until it is filled or cancelled with `DELETE /stock/orders/:id`. Nobody trades
+with their own orders. Each trade moves the money (`trade_out` / `trade_in` ledger entries) and the
+shares, and becomes the listing's price. `GET /stock/listings/:ticker/book` (public) shows price
+levels and the latest trades; `GET /stock/orders?status=open` lists yours. Everyone connected
+receives `stock.updated` with the ticker.
+
 ## Webhooks
 
 Register an endpoint with `POST /webhooks {url, events, description?}` (Settings → Developer on
@@ -315,7 +328,7 @@ team receives `payment_approval.updated` and `wallet.updated`.
 | Companies    | `GET /organizations/mine`, `GET /organizations/:slug`, `PATCH /organizations/:id`, members, wallets, `GET /organizations/:id/payment-approvals`, `POST …/:approvalId/approve`, `POST …/:approvalId/reject`                                                                                                                                                                             |
 | Applications | `POST /applications`, `GET /applications/mine`, `/queue`, `/:id`, `POST /:id/review`, `/:id/withdraw`, `/:id/resubmit`; `POST /files`, `GET/DELETE /files/:id`                                                                                                                                                                                                                         |
 | Registry     | `GET /registry`, `GET /registry/:idOrNumber`, `GET /registry/:idOrNumber/certificate.pdf`, `GET /me/licences`, `POST /registry/:id/currency`, `GET /currencies`, `GET /virtual-currencies/:code`, `POST …/issue`, `POST …/redeem`                                                                                                                                                      |
-| Stock        | `GET /stock/listings`, `/stock/listings/:ticker`, `POST …/invest`, `GET /stock/portfolio`                                                                                                                                                                                                                                                                                              |
+| Stock        | `GET /stock/listings`, `/stock/listings/:ticker`, `POST …/invest`, `GET /stock/portfolio`, `GET …/book`, `POST …/orders`, `GET /stock/orders`, `DELETE /stock/orders/:id`                                                                                                                                                                                                              |
 | Chats        | `GET /chats`, `POST /chats/direct`, `/chats/groups`, `/chats/channels`, `GET /channels`, messages, members, read, pin                                                                                                                                                                                                                                                                  |
 | Support      | `POST/GET /support/tickets`, `GET /support/desk`, `POST /support/tickets/:id/status`                                                                                                                                                                                                                                                                                                   |
 | Stories      | `GET/POST /stories`, `POST /stories/:id/view`, `DELETE /stories/:id`                                                                                                                                                                                                                                                                                                                   |

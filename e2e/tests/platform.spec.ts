@@ -237,6 +237,27 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(maria.getByText('Available: 70.00 USD')).toBeVisible();
   });
 
+  test('secondary market: a buy order rests in the book and can be cancelled', async () => {
+    await maria.goto('./#/exchange/NWS');
+    await maria.getByLabel('Shares', { exact: true }).fill('4');
+    await maria.getByLabel('Limit price (USD)').fill('4.50');
+    await expect(maria.getByText('18.00 USD')).toBeVisible();
+    await maria.getByRole('button', { name: 'Place buy order' }).click();
+    await expect(maria.getByText('Order placed: buy 4 NWS at 4.50 USD')).toBeVisible();
+    const bids = maria.getByRole('table', { name: 'Buy orders' });
+    await expect(bids.locator('tr', { hasText: '4.50' })).toContainText('4');
+    // Ivan sees the bid live, and his shares are still in their lock period.
+    await ivan.goto('./#/exchange/NWS');
+    await expect(
+      ivan.getByRole('table', { name: 'Buy orders' }).locator('tr', { hasText: '4.50' }),
+    ).toBeVisible();
+    await expect(ivan.getByText(/You hold 20 NWS: 0 can be sold, 20 still locked/)).toBeVisible();
+
+    await maria.getByRole('button', { name: 'Cancel' }).click();
+    await expect(bids.getByText('No buy orders')).toBeVisible();
+    await expect(ivan.getByRole('table', { name: 'Buy orders' }).getByText('No buy orders')).toBeVisible();
+  });
+
   test('invoices: a person bills a company, which pays from its business balance', async () => {
     await ivan.goto('./#/invoices');
     await ivan.getByRole('button', { name: 'New invoice' }).click();
