@@ -714,7 +714,7 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(ivan.getByText('1,250.00 USD')).toBeVisible();
     await ivan.getByRole('tab', { name: /Votes/ }).click();
     await ivan.getByRole('button', { name: 'Vote For' }).click();
-    await expect(ivan.getByText('Voted “For” with 20 shares')).toBeVisible();
+    await expect(ivan.getByText('Voted “For” with 20 shares', { exact: true })).toBeVisible();
     await expect(ivan.getByText('Turnout 100% of 20 shares')).toBeVisible();
     await ivan.getByRole('tab', { name: 'Dividends' }).click();
     await expect(ivan.locator('tr', { hasText: '0.10 USD' })).toContainText('Paid');

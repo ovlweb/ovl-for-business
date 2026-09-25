@@ -506,13 +506,16 @@ function ProposalCard({ proposal: p }: { proposal: Proposal }) {
         ))}
       </div>
       <div className="small muted">
-        {t('Turnout')} {p.turnoutPercent}
-        {t('% of')} {p.totalShares} {t('shares ·')}{' '}
+        {t('Turnout {0}% of {1}', p.turnoutPercent, plural(Number(p.totalShares), 'share'))} ·{' '}
         {p.status === 'open'
           ? t('closes {0}', formatDate(p.closesAt))
           : t('closed {0}', formatDate(p.closesAt))}
         {p.myVote &&
-          ` · you voted “${p.options.find((o) => o.key === p.myVote)?.label}” with ${p.myShares} shares`}
+          ` · ${t(
+            'you voted “{0}” with {1}',
+            p.options.find((o) => o.key === p.myVote)?.label ?? '',
+            plural(Number(p.myShares), 'share'),
+          )}`}
         {p.status === 'open' &&
           Number(p.myShares) === 0 &&
           ` ${t('· only shareholders at the start can vote')}`}
