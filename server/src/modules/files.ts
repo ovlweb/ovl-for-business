@@ -25,7 +25,7 @@ const INLINE = new Set([
   'text/plain',
 ]);
 
-export type FileScope = 'application' | 'chat';
+export type FileScope = 'application' | 'chat' | 'identity';
 
 export function fileDtos(app: FastifyInstance, rows: FileRow[]): FileInfo[] {
   return rows.map((f) => ({
@@ -73,6 +73,7 @@ async function canRead(db: Db, file: FileRow, user: AuthUser): Promise<boolean> 
       .where(eq(applications.id, file.scopeId));
     return row?.applicantId === user.id;
   }
+  if (file.scope === 'identity') return can(user.role, 'identity.review');
   if (file.scope === 'chat' && file.scopeId) {
     const [chat] = await db.select().from(chats).where(eq(chats.id, file.scopeId));
     return !!chat && (await chatAccess(db, chat, user)).canRead;

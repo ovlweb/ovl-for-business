@@ -7,6 +7,7 @@ import {
   type ApplicationType,
   type CreateApplicationInput,
   type FileInfo,
+  type SecurityPolicy,
 } from '@ovl/shared';
 import {
   AttachmentList,
@@ -118,12 +119,14 @@ function NewApplicationModal({
     queryFn: api.organizations.mine,
     enabled: type === 'license',
   });
+  const me = useMe();
   const meta = useQuery({
     queryKey: ['meta'],
     queryFn: api.meta,
     enabled: type === 'company',
     staleTime: Infinity,
   });
+  const identityRequired = (meta.data?.security as SecurityPolicy | undefined)?.identityForCompanies;
   const { values, setValues, bind } = useForm(
     resubmit
       ? valuesFromPayload(resubmit.payload)
@@ -302,6 +305,18 @@ function NewApplicationModal({
   return (
     <Modal title={resubmit ? `Edit: ${workflow.label}` : workflow.label} onClose={onClose} wide>
       <form className="stack" onSubmit={onSubmit}>
+        {type === 'company' && identityRequired && !me.identityVerified && (
+          <div className="alert warning small">
+            <Icon name="shield" size={16} />
+            <span className="grow">
+              Company owners pass an identity check before approval. You can apply now; reviewers approve once
+              your identity is verified.
+            </span>
+            <Link className="btn sm" to="/settings?section=identity" onClick={onClose}>
+              Verify identity
+            </Link>
+          </div>
+        )}
         {resubmit?.changesRequested ? (
           <div className="alert warning small">
             <Icon name="info" size={16} />

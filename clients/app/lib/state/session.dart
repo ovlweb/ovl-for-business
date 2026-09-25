@@ -230,6 +230,9 @@ class Session extends ChangeNotifier with WidgetsBindingObserver {
         queries.invalidate('cashRequests');
       case 'invoice.updated':
         queries.invalidate('invoices');
+      case 'identity.updated':
+        queries.invalidate('orgs');
+        reload().ignore();
     }
   }
 

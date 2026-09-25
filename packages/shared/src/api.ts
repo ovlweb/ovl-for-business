@@ -91,6 +91,7 @@ export const meSchema = userSummarySchema.extend({
   preferences: preferencesSchema,
   twoFactorEnabled: z.boolean(),
   emailVerified: z.boolean(),
+  identityVerified: z.boolean().describe('Identity documents checked by staff (KYC)'),
   createdAt: isoDate,
 });
 export type Me = z.infer<typeof meSchema>;
@@ -175,6 +176,7 @@ export const securityPolicySchema = z.object({
   twoFactorForStaff: z.boolean(),
   twoFactorForCompanyFinance: z.boolean(),
   verifiedEmailForApplications: z.boolean(),
+  identityForCompanies: z.boolean().describe('Company owners pass an identity check before approval'),
 });
 export type SecurityPolicy = z.infer<typeof securityPolicySchema>;
 
@@ -473,6 +475,7 @@ export const organizationSchema = z.object({
   owner: userSummarySchema,
   memberCount: z.number().int(),
   myRole: orgRoleSchema.nullable(),
+  verified: z.boolean().describe('Verified business: its owner passed an identity check'),
   createdAt: isoDate,
 });
 export type Organization = z.infer<typeof organizationSchema>;
@@ -517,6 +520,41 @@ export const fileSchema = z.object({
   createdAt: isoDate,
 });
 export type FileInfo = z.infer<typeof fileSchema>;
+
+// Identity verification (KYC)
+
+export const IDENTITY_STATUSES = ['pending', 'approved', 'rejected', 'revoked'] as const;
+export const IDENTITY_DOCUMENTS = ['passport', 'id_card', 'driver_license', 'residence_permit'] as const;
+
+export const identitySubmitSchema = z.object({
+  legalName: z.string().trim().min(2).max(120),
+  dateOfBirth: z.iso.date(),
+  country: z.string().trim().min(2).max(80),
+  documentType: z.enum(IDENTITY_DOCUMENTS),
+  documentNumber: z.string().trim().min(4).max(40),
+  documentFileId: uuid.describe('A photo or scan of the document (uploaded with POST /files)'),
+  selfieFileId: uuid.optional().describe('A photo of you holding the document'),
+});
+export type IdentitySubmitInput = z.infer<typeof identitySubmitSchema>;
+
+export const identityCheckSchema = z.object({
+  id: uuid,
+  user: userSummarySchema,
+  status: z.enum(IDENTITY_STATUSES),
+  legalName: z.string(),
+  dateOfBirth: z.iso.date(),
+  country: z.string(),
+  documentType: z.enum(IDENTITY_DOCUMENTS),
+  documentLast4: z.string().describe('Only the last four characters of the number are kept'),
+  files: z.array(fileSchema),
+  duplicate: z.boolean().describe('The same document number is on another verified account'),
+  rejectionReason: z.string().nullable(),
+  reviewedBy: userSummarySchema.pick({ id: true, username: true, displayName: true }).nullable(),
+  createdAt: isoDate,
+  reviewedAt: isoDate.nullable(),
+});
+export type IdentityCheck = z.infer<typeof identityCheckSchema>;
+export const identityDecisionSchema = z.object({ reason: z.string().trim().min(3).max(500) });
 
 /** Types people can upload: images, PDF, text and office documents (no SVG or HTML). */
 export const UPLOAD_TYPES = [
@@ -594,6 +632,7 @@ export const registryEntrySchema = z.object({
     id: uuid,
     name: z.string(),
     handle: z.string().describe('Username or organization slug'),
+    verified: z.boolean().describe('A verified business (organizations only)'),
   }),
   issuedAt: isoDate,
   updatedAt: isoDate,
@@ -622,6 +661,7 @@ export const stockListingSchema = z.object({
     name: z.string(),
     slug: z.string(),
     registryNumber: z.string().nullable(),
+    verified: z.boolean(),
   }),
   currency: z.string(),
   sharePrice: z.string(),
@@ -858,6 +898,7 @@ export const adminStatsSchema = z.object({
   activeListings: z.number(),
   registryEntries: z.number(),
   pendingCashRequests: z.number(),
+  pendingIdentityChecks: z.number(),
   balances: z.array(z.object({ currency: z.string(), total: z.string(), wallets: z.number() })),
   /** The last 14 days, oldest first (UTC dates). */
   activity: z.array(
@@ -881,7 +922,8 @@ export type RealtimeEvent =
   | { type: 'story.created'; storyId: string }
   | { type: 'wallet.updated'; walletId: string }
   | { type: 'cash_request.updated'; requestId: string; walletId: string; status: string }
-  | { type: 'invoice.updated'; invoiceId: string; status: string };
+  | { type: 'invoice.updated'; invoiceId: string; status: string }
+  | { type: 'identity.updated'; status: string };
 
 /** Messages a client may send over the realtime socket. */
 export type RealtimeClientMessage = { type: 'typing'; chatId: string } | { type: 'ping' };

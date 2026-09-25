@@ -51,6 +51,7 @@ import { toApiKeyDto } from './api-keys';
 import { organizationDtos } from './organizations';
 import { getRegistryEntry } from './registry';
 import { recordCashOperation } from './cash';
+import { pendingIdentityChecks } from './identity';
 import { changeRole } from './roles';
 import { revokeSessions } from './sessions';
 import { listingDtos } from './stock/service';
@@ -141,25 +142,36 @@ export async function adminRoutes(fastify: FastifyInstance) {
       schema: { tags, response: { 200: adminStatsSchema } },
     },
     async () => {
-      const [byRole, [orgs], [pending], [tickets], [listings], [registry], [cash], balances, daily] =
-        await Promise.all([
-          app.db.select({ role: users.role, n: count() }).from(users).groupBy(users.role),
-          app.db.select({ n: count() }).from(organizations),
-          app.db.select({ n: count() }).from(applications).where(eq(applications.status, 'pending')),
-          app.db
-            .select({ n: count() })
-            .from(chats)
-            .where(and(eq(chats.type, 'support'), eq(chats.supportStatus, 'open'))),
-          app.db.select({ n: count() }).from(stockListings).where(eq(stockListings.status, 'active')),
-          app.db.select({ n: count() }).from(registryEntries),
-          app.db.select({ n: count() }).from(cashRequests).where(eq(cashRequests.status, 'pending')),
-          app.db
-            .select({ currency: wallets.currency, total: sql<string>`sum(${wallets.balance})`, n: count() })
-            .from(wallets)
-            .groupBy(wallets.currency)
-            .orderBy(wallets.currency),
-          activity(app.db),
-        ]);
+      const [
+        byRole,
+        [orgs],
+        [pending],
+        [tickets],
+        [listings],
+        [registry],
+        [cash],
+        identity,
+        balances,
+        daily,
+      ] = await Promise.all([
+        app.db.select({ role: users.role, n: count() }).from(users).groupBy(users.role),
+        app.db.select({ n: count() }).from(organizations),
+        app.db.select({ n: count() }).from(applications).where(eq(applications.status, 'pending')),
+        app.db
+          .select({ n: count() })
+          .from(chats)
+          .where(and(eq(chats.type, 'support'), eq(chats.supportStatus, 'open'))),
+        app.db.select({ n: count() }).from(stockListings).where(eq(stockListings.status, 'active')),
+        app.db.select({ n: count() }).from(registryEntries),
+        app.db.select({ n: count() }).from(cashRequests).where(eq(cashRequests.status, 'pending')),
+        pendingIdentityChecks(app.db),
+        app.db
+          .select({ currency: wallets.currency, total: sql<string>`sum(${wallets.balance})`, n: count() })
+          .from(wallets)
+          .groupBy(wallets.currency)
+          .orderBy(wallets.currency),
+        activity(app.db),
+      ]);
       return {
         users: Object.fromEntries(byRole.map((r) => [r.role, r.n])),
         organizations: orgs?.n ?? 0,
@@ -168,6 +180,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         activeListings: listings?.n ?? 0,
         registryEntries: registry?.n ?? 0,
         pendingCashRequests: cash?.n ?? 0,
+        pendingIdentityChecks: identity,
         balances: balances.map((b) => ({
           currency: b.currency,
           total: formatAmount(BigInt(b.total), b.currency),

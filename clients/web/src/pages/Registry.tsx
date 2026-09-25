@@ -9,6 +9,7 @@ import {
   Spinner,
   StatusBadge,
   useDebounced,
+  VerifiedBadge,
 } from '@ovl/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -36,9 +37,12 @@ function EntryModal({ entry, onClose }: { entry: RegistryEntry; onClose: () => v
           <dt>Holder</dt>
           <dd>
             {entry.holder.type === 'organization' ? (
-              <Link to={`/companies/${entry.holder.handle}`} onClick={onClose}>
-                {entry.holder.name}
-              </Link>
+              <>
+                <Link to={`/companies/${entry.holder.handle}`} onClick={onClose}>
+                  {entry.holder.name}
+                </Link>{' '}
+                {entry.holder.verified && <VerifiedBadge />}
+              </>
             ) : (
               <Link to={`/u/${entry.holder.handle}`} onClick={onClose}>
                 {entry.holder.name} (@{entry.holder.handle})
@@ -143,7 +147,8 @@ export function RegistryPage() {
                   <span className="badge">{humanize(e.licenseType ?? e.kind)}</span>
                 </div>
                 <div className="small muted">
-                  {e.holder.name} · issued {formatDate(e.issuedAt, false)}
+                  {e.holder.name}
+                  {e.holder.verified && ' ✓ verified'} · issued {formatDate(e.issuedAt, false)}
                 </div>
               </div>
               <code className="small">{e.number}</code>

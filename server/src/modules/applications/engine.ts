@@ -12,7 +12,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Config } from '../../config';
 import type { Db } from '../../db/client';
 import { applicationReviews, applications, users } from '../../db/schema';
-import { badRequest, conflict, forbidden, isUniqueViolation, notFound } from '../../lib/errors';
+import { badRequest, conflict, forbidden, HttpError, isUniqueViolation, notFound } from '../../lib/errors';
 import { iso, isoOrNull, summaryColumns, toUserSummary } from '../../lib/mappers';
 import { getStaffChat, insertMessage, type ChatRow, type MessageRow } from '../chats/service';
 import { fileDtos, filesOf } from '../files';
@@ -205,6 +205,22 @@ export async function reviewApplication(
     throw badRequest('Give a reason for the rejection');
   if (input.decision === 'request_changes' && !input.comment?.trim())
     throw badRequest('Say what the applicant should change');
+  if (
+    input.decision === 'approve' &&
+    application.type === 'company' &&
+    config.REQUIRE_IDENTITY_FOR_COMPANIES
+  ) {
+    const [applicant] = await db
+      .select({ identityVerifiedAt: users.identityVerifiedAt })
+      .from(users)
+      .where(eq(users.id, application.applicantId));
+    if (!applicant?.identityVerifiedAt)
+      throw new HttpError(
+        409,
+        'identity_not_verified',
+        'The applicant has to pass an identity check first (Settings → Identity). Ask for changes or wait.',
+      );
+  }
 
   try {
     await db.insert(applicationReviews).values({

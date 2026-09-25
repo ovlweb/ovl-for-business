@@ -22,6 +22,7 @@ import { ApplicationsPage } from './pages/Applications';
 import { AuditPage } from './pages/Audit';
 import { CashDeskPage } from './pages/CashDesk';
 import { DashboardPage } from './pages/Dashboard';
+import { IdentityPage } from './pages/Identity';
 import { LoginPage } from './pages/Login';
 import { OrganizationsPage } from './pages/Organizations';
 import { RegistryPage } from './pages/Registry';
@@ -31,7 +32,7 @@ import { SupportPage } from './pages/Support';
 import { UsersPage } from './pages/Users';
 import { useAdminTheme } from './theme';
 
-type CountKey = 'pendingApplications' | 'openTickets' | 'pendingCashRequests';
+type CountKey = 'pendingApplications' | 'openTickets' | 'pendingCashRequests' | 'pendingIdentityChecks';
 
 interface Section {
   path: string;
@@ -68,6 +69,15 @@ export const SECTIONS: Section[] = [
     permission: 'wallet.view_all',
     element: <CashDeskPage />,
     count: 'pendingCashRequests',
+  },
+  {
+    path: 'identity',
+    label: 'Identity checks',
+    icon: 'shield',
+    group: 'People & money',
+    permission: 'identity.review',
+    element: <IdentityPage />,
+    count: 'pendingIdentityChecks',
   },
   {
     path: 'applications',

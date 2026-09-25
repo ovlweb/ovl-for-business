@@ -369,7 +369,7 @@ class StatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.c;
     final (fg, bg) = switch (status) {
-      'active' || 'approved' || 'completed' || 'paid' || 'confirmed' => (c.success, c.successSoft),
+      'active' || 'approved' || 'completed' || 'paid' || 'confirmed' || 'verified' => (c.success, c.successSoft),
       'open' => (c.accent, c.accentSoft),
       'pending' || 'halted' || 'not confirmed' || 'changes_requested' => (c.warning, c.warningSoft),
       'rejected' || 'revoked' || 'suspended' || 'delisted' || 'declined' || 'overdue' => (c.danger, c.dangerSoft),
@@ -392,6 +392,36 @@ class StatusPill extends StatelessWidget {
             style: font(body, 10, FontWeight.w800, letterSpacing: 0.6, color: fg),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// "Verified business": the company's owner passed an identity check.
+class VerifiedBadge extends StatelessWidget {
+  const VerifiedBadge({super.key, this.compact = false});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Tooltip(
+      message: 'Verified business: the owner passed an identity check',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(color: c.successSoft, borderRadius: BorderRadius.circular(999)),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(LucideIcons.shieldCheck, size: 12, color: c.success),
+            const SizedBox(width: 4),
+            Text(
+              compact ? 'VERIFIED' : 'VERIFIED BUSINESS',
+              style: font(body, 10, FontWeight.w800, letterSpacing: 0.6, color: c.success),
+            ),
+          ],
+        ),
       ),
     );
   }

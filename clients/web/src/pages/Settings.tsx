@@ -1,4 +1,4 @@
-import { getTheme, ROLE_LABELS, type Session } from '@ovl/shared';
+import { getTheme, IDENTITY_DOCUMENTS, ROLE_LABELS, type FileInfo, type Session } from '@ovl/shared';
 import {
   applyTheme,
   Avatar,
@@ -13,6 +13,7 @@ import {
   PageHeader,
   plural,
   addPasskey,
+  AttachmentPicker,
   passkeyCancelled,
   passkeysSupported,
   RecoveryCodes,
@@ -39,7 +40,8 @@ import {
   notificationsSupported,
 } from '../notifications';
 
-type Section = 'profile' | 'appearance' | 'notifications' | 'accounts' | 'security' | 'developer';
+type Section =
+  'profile' | 'appearance' | 'notifications' | 'accounts' | 'security' | 'identity' | 'developer';
 
 const SECTIONS: { id: Section; label: string; icon: IconName; hint: string }[] = [
   { id: 'profile', label: 'Profile', icon: 'user', hint: 'Name, bio and avatar' },
@@ -47,6 +49,7 @@ const SECTIONS: { id: Section; label: string; icon: IconName; hint: string }[] =
   { id: 'notifications', label: 'Notifications', icon: 'bell', hint: 'Background alerts' },
   { id: 'accounts', label: 'Accounts', icon: 'users', hint: 'Switch or add accounts' },
   { id: 'security', label: 'Security', icon: 'lock', hint: 'Password and sessions' },
+  { id: 'identity', label: 'Identity', icon: 'shield', hint: 'Verification for company owners' },
   { id: 'developer', label: 'Developer', icon: 'key', hint: 'API keys' },
 ];
 
@@ -707,6 +710,185 @@ function TwoFactorCard() {
   );
 }
 
+const DOCUMENT_LABELS: Record<(typeof IDENTITY_DOCUMENTS)[number], string> = {
+  passport: 'Passport',
+  id_card: 'National ID card',
+  driver_license: 'Driving licence',
+  residence_permit: 'Residence permit',
+};
+
+function IdentitySection() {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const { reload } = useAuth();
+  const check = useQuery({ queryKey: ['identity'], queryFn: api.me.identity });
+  const [form, setForm] = useState({
+    legalName: '',
+    dateOfBirth: '',
+    country: '',
+    documentType: 'passport' as (typeof IDENTITY_DOCUMENTS)[number],
+    documentNumber: '',
+  });
+  const [document, setDocument] = useState<FileInfo[]>([]);
+  const [selfie, setSelfie] = useState<FileInfo[]>([]);
+  const submit = useMutation({
+    mutationFn: () =>
+      api.me.submitIdentity({ ...form, documentFileId: document[0]!.id, selfieFileId: selfie[0]?.id }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['identity'] });
+      void reload();
+      toast.success('Sent — staff check it by hand, usually within a day');
+    },
+  });
+  const c = check.data;
+  const canSend = !c || c.status === 'rejected' || c.status === 'revoked';
+  return (
+    <div className="stack-lg">
+      <div className="card stack">
+        <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
+          <span className="kpi-icon" style={{ width: 42, height: 42 }}>
+            <Icon name="shield" size={19} />
+          </span>
+          <div className="grow">
+            <h3>Identity verification</h3>
+            <p className="small muted" style={{ margin: '2px 0 0' }}>
+              Company owners pass a one-time identity check before their company is approved; their companies
+              then show the “Verified business” badge. Staff compare your details with a photo of your
+              document. Only the last four characters of the document number are kept.
+            </p>
+          </div>
+          {c && <StatusBadge status={c.status === 'approved' ? 'verified' : c.status} />}
+        </div>
+        {check.isLoading && <SkeletonList rows={2} avatar={false} />}
+        {c?.status === 'pending' && (
+          <div className="alert info small">
+            <Icon name="clock" size={16} />
+            <span>
+              Sent {timeAgo(c.createdAt)} — {DOCUMENT_LABELS[c.documentType]} ending in {c.documentLast4}. You
+              get an email when it is checked.
+            </span>
+          </div>
+        )}
+        {c?.status === 'approved' && (
+          <div className="alert success small">
+            <Icon name="check" size={16} />
+            <span>
+              Verified {c.reviewedAt ? formatDate(c.reviewedAt, false) : ''} as <b>{c.legalName}</b>.
+            </span>
+          </div>
+        )}
+        {(c?.status === 'rejected' || c?.status === 'revoked') && (
+          <div className="alert error small">
+            <Icon name="info" size={16} />
+            <span>
+              {c.status === 'rejected' ? 'Not accepted' : 'Verification removed'}: {c.rejectionReason}. You
+              can send a new check below.
+            </span>
+          </div>
+        )}
+      </div>
+      {canSend && !check.isLoading && (
+        <form
+          className="card stack"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit.mutate();
+          }}
+        >
+          <h3>Send your details</h3>
+          <div className="grid-2">
+            <Field label="Full legal name" hint="As written in the document.">
+              <input
+                className="input"
+                value={form.legalName}
+                onChange={(e) => setForm({ ...form, legalName: e.target.value })}
+                required
+                maxLength={120}
+              />
+            </Field>
+            <Field label="Date of birth">
+              <input
+                className="input"
+                type="date"
+                value={form.dateOfBirth}
+                onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })}
+                required
+              />
+            </Field>
+            <Field label="Country or virtual country">
+              <input
+                className="input"
+                value={form.country}
+                onChange={(e) => setForm({ ...form, country: e.target.value })}
+                required
+                maxLength={80}
+              />
+            </Field>
+            <Field label="Document">
+              <select
+                className="select"
+                value={form.documentType}
+                onChange={(e) =>
+                  setForm({ ...form, documentType: e.target.value as (typeof IDENTITY_DOCUMENTS)[number] })
+                }
+              >
+                {IDENTITY_DOCUMENTS.map((d) => (
+                  <option key={d} value={d}>
+                    {DOCUMENT_LABELS[d]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Document number">
+              <input
+                className="input"
+                value={form.documentNumber}
+                onChange={(e) => setForm({ ...form, documentNumber: e.target.value })}
+                required
+                minLength={4}
+                maxLength={40}
+                autoComplete="off"
+              />
+            </Field>
+          </div>
+          <Field label="Photo or scan of the document">
+            <AttachmentPicker
+              value={document}
+              onChange={setDocument}
+              upload={(file) => api.files.upload(file, file.name)}
+              remove={(file) => api.files.remove(file.id)}
+              href={api.files.url}
+              max={1}
+              accept="image/*,.pdf"
+              label="Add the document"
+            />
+          </Field>
+          <Field label="A photo of you holding it (optional, speeds up the check)">
+            <AttachmentPicker
+              value={selfie}
+              onChange={setSelfie}
+              upload={(file) => api.files.upload(file, file.name)}
+              remove={(file) => api.files.remove(file.id)}
+              href={api.files.url}
+              max={1}
+              accept="image/*"
+              label="Add a photo"
+            />
+          </Field>
+          <ErrorAlert error={submit.error} />
+          <button
+            className="btn primary"
+            style={{ alignSelf: 'flex-start' }}
+            disabled={submit.isPending || !document.length}
+          >
+            Send for checking
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
 function SecuritySection() {
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -904,6 +1086,7 @@ export function SettingsPage() {
             {section === 'notifications' && <NotificationsSection />}
             {section === 'accounts' && <AccountsSection />}
             {section === 'security' && <SecuritySection />}
+            {section === 'identity' && <IdentitySection />}
             {section === 'developer' && <DeveloperSection />}
           </motion.div>
         </AnimatePresence>

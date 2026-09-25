@@ -39,7 +39,13 @@ export async function listingDtos(db: Db, rows: ListingRow[]): Promise<StockList
     return {
       id: l.id,
       ticker: l.ticker,
-      organization: { id: org.id, name: org.name, slug: org.slug, registryNumber: org.registryNumber },
+      organization: {
+        id: org.id,
+        name: org.name,
+        slug: org.slug,
+        registryNumber: org.registryNumber,
+        verified: org.verifiedAt !== null && org.status === 'active',
+      },
       currency: l.currency,
       sharePrice: formatAmount(l.sharePrice, l.currency),
       totalShares: l.totalShares.toString(),

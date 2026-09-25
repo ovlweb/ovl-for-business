@@ -19,6 +19,8 @@ import type {
   FileInfo,
   FundLock,
   Holding,
+  IdentityCheck,
+  IdentitySubmitInput,
   Investment,
   Invoice,
   InvoiceStatus,
@@ -285,6 +287,9 @@ export class OvlClient {
     /** Change the email address; the new one must be confirmed through the emailed link. */
     changeEmail: (email: string, password: string) => this.post<Me>('/me/email', { email, password }),
     resendVerification: () => this.post<void>('/me/email/verification'),
+    /** Your latest identity check (KYC), or null. */
+    identity: () => this.get<IdentityCheck | null>('/me/identity'),
+    submitIdentity: (input: IdentitySubmitInput) => this.post<IdentityCheck>('/me/identity', input),
     passkeys: {
       list: () => this.get<Passkey[]>('/me/passkeys'),
       options: () =>
@@ -475,6 +480,10 @@ export class OvlClient {
       this.get<Page<CashOperation>>('/admin/cash-operations', query),
     cashOperation: (input: CashOperationInput) => this.post<CashOperation>('/admin/cash-operations', input),
     cashRequests: (status?: CashRequestStatus) => this.get<CashRequest[]>('/admin/cash-requests', { status }),
+    identityChecks: (status?: 'pending' | 'approved' | 'rejected' | 'revoked') =>
+      this.get<IdentityCheck[]>('/admin/identity-checks', { status }),
+    decideIdentity: (id: string, action: 'approve' | 'reject' | 'revoke', reason?: string) =>
+      this.post<IdentityCheck>(`/admin/identity-checks/${id}/${action}`, reason ? { reason } : {}),
     completeCashRequest: (id: string, input: { reference: string; note?: string }) =>
       this.post<CashRequest>(`/admin/cash-requests/${id}/complete`, input),
     declineCashRequest: (id: string, reason: string) =>

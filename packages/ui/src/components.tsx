@@ -408,6 +408,7 @@ const STATUS_TONES: Record<string, string> = {
   approved: 'ok',
   completed: 'ok',
   confirmed: 'ok',
+  verified: 'ok',
   paid: 'ok',
   open: 'info',
   pending: 'warn',
@@ -427,6 +428,16 @@ const DECISIONS: Record<string, [string, string]> = {
   reject: ['bad', 'Rejected'],
   request_changes: ['warn', 'Changes requested'],
 };
+
+/** "Verified business": the company's owner passed an identity check. */
+export function VerifiedBadge({ compact }: { compact?: boolean }) {
+  return (
+    <span className="badge verified" title="Verified business: the owner passed an identity check">
+      <Icon name="shield" size={12} />
+      {compact ? 'Verified' : 'Verified business'}
+    </span>
+  );
+}
 
 /** A reviewer's decision on an application stage. */
 export function DecisionBadge({ decision }: { decision: string }) {

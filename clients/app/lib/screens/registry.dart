@@ -178,6 +178,7 @@ class _RegistryScreenState extends State<RegistryScreen> {
               'Holder: ${e.holder.name} (${e.holder.type == 'user' ? '@' : ''}${e.holder.handle})',
               style: sheet.text.bodyMedium,
             ),
+            if (e.holder.verified) ...[const SizedBox(height: 6), const VerifiedBadge()],
             Text('Issued ${date(e.issuedAt)}', style: sheet.text.bodyMedium),
             if (e.website != null) ...[
               const SizedBox(height: 12),

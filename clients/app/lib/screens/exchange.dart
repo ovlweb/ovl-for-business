@@ -212,6 +212,7 @@ class ListingScreen extends StatelessWidget {
                             '${l.registryNumber ?? ''} · listed ${date(l.listedAt)}',
                             style: context.text.bodyMedium,
                           ),
+                          if (l.verified) ...[const SizedBox(height: 6), const VerifiedBadge()],
                         ],
                       ),
                     ),

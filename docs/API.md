@@ -123,6 +123,17 @@ password and an authenticator code.
 - company owners, directors and accountants need it to move company money (same error);
 - applications need a confirmed email (`403 email_not_verified`).
 
+## Identity checks and verified businesses
+
+`POST /me/identity` sends legal name, date of birth, country, document type and number, and the id
+of an uploaded document photo (optionally a selfie). Only the number's last four characters and a
+keyed hash are kept; the hash flags a document already used by another verified account.
+Staff with `identity.review` work through `GET /admin/identity-checks?status=pending` and
+`POST /admin/identity-checks/:id/{approve,reject,revoke}` (reasons for the last two; nobody decides
+their own). With `REQUIRE_IDENTITY_FOR_COMPANIES` (default on) a company application cannot be
+approved until the applicant is verified (`409 identity_not_verified`). Companies whose owner is
+verified carry `verified: true` in organizations, registry holders and stock listings.
+
 ## Files and applications
 
 Upload with `POST /files?name=plan.pdf`, sending the file's bytes as the body with its own

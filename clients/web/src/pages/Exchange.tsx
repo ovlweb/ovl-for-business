@@ -11,6 +11,7 @@ import {
   AreaChart,
   Spinner,
   StatusBadge,
+  VerifiedBadge,
 } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -52,7 +53,12 @@ export function ExchangePage() {
             {listings.data?.map((l) => (
               <tr key={l.id} className="clickable" onClick={() => navigate(`/exchange/${l.ticker}`)}>
                 <td className="bold">{l.ticker}</td>
-                <td>{l.organization.name}</td>
+                <td>
+                  <span className="row" style={{ gap: 6 }}>
+                    {l.organization.name}
+                    {l.organization.verified && <VerifiedBadge compact />}
+                  </span>
+                </td>
                 <td className="right">
                   <Money amount={l.sharePrice} currency={l.currency} />
                 </td>
@@ -128,6 +134,11 @@ export function ListingPage() {
         title={`${l.ticker} · ${l.organization.name}`}
         subtitle={
           <>
+            {l.organization.verified && (
+              <>
+                <VerifiedBadge />{' '}
+              </>
+            )}
             Registry number <code>{l.organization.registryNumber}</code> · listed{' '}
             {formatDate(l.listedAt, false)} ·{' '}
             <Link to={`/companies/${l.organization.slug}`}>company profile</Link>

@@ -20,6 +20,7 @@ const serverEnv = {
   REQUIRE_2FA_FOR_STAFF: 'false',
   REQUIRE_2FA_FOR_COMPANY_FINANCE: 'false',
   REQUIRE_VERIFIED_EMAIL: 'false',
+  REQUIRE_IDENTITY_FOR_COMPANIES: 'false',
 };
 
 export default defineConfig({

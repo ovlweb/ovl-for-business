@@ -27,6 +27,7 @@ import { authRoutes } from './modules/auth';
 import { emailRoutes } from './modules/email';
 import { passkeyRoutes } from './modules/passkeys';
 import { fileRoutes } from './modules/files';
+import { identityRoutes } from './modules/identity';
 import { cashRoutes } from './modules/cash';
 import { invoiceRoutes } from './modules/invoices';
 import { sessionRoutes } from './modules/sessions';
@@ -185,6 +186,7 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
       await api.register(emailRoutes);
       await api.register(passkeyRoutes);
       await api.register(fileRoutes);
+      await api.register(identityRoutes);
       await api.register(sessionRoutes);
       await api.register(twoFactorRoutes);
       await api.register(userRoutes);

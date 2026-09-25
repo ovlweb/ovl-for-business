@@ -50,7 +50,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     'about' => const _About(),
     _ => const Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [_Profile(), SizedBox(height: 16), _Email()],
+      children: [_Profile(), SizedBox(height: 16), _Email(), SizedBox(height: 16), _Identity()],
     ),
   };
 
@@ -222,6 +222,38 @@ class _ProfileState extends State<_Profile> {
               child: const Text('Save profile'),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Identity verification status; documents are sent from the web app, which can upload photos.
+class _Identity extends StatelessWidget {
+  const _Identity();
+
+  @override
+  Widget build(BuildContext context) {
+    final me = context.watch<Session>().me!;
+    return OvlCard(
+      child: Row(
+        children: [
+          IconTile(LucideIcons.shieldCheck, size: 42, color: me.identityVerified ? context.c.success : null),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Identity', style: context.text.titleMedium),
+                const SizedBox(height: 2),
+                Text(
+                  me.identityVerified ? 'Verified. Companies you own show the verified business badge.' : 'Company owners pass a one-time identity check. Send your document from the web app: Settings → Identity.',
+                  style: context.text.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          StatusPill(me.identityVerified ? 'verified' : 'not verified'),
         ],
       ),
     );

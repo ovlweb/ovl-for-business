@@ -43,6 +43,7 @@ export function toMe(u: UserRow): Me {
     preferences: preferencesSchema.catch({}).parse(u.preferences),
     twoFactorEnabled: u.totpEnabledAt !== null,
     emailVerified: u.emailVerifiedAt !== null,
+    identityVerified: u.identityVerifiedAt !== null,
     createdAt: iso(u.createdAt),
   };
 }

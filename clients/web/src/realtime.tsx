@@ -86,6 +86,11 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             queryClient.invalidateQueries({ queryKey: [key] });
           }
           break;
+        case 'identity.updated':
+          queryClient.invalidateQueries({ queryKey: ['identity'] });
+          queryClient.invalidateQueries({ queryKey: ['orgs'] });
+          void reload();
+          break;
         case 'invoice.updated':
           queryClient.invalidateQueries({ queryKey: ['invoices'] });
           break;

@@ -265,6 +265,34 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(ivan.getByText('Invoice INV-', { exact: false }).first()).toBeVisible();
   });
 
+  test('identity: the owner is verified and the company shows the verified business badge', async () => {
+    await maria.goto('./#/settings?section=identity');
+    await maria.getByLabel(/^Full legal name/).fill('Maria Petrova');
+    await maria.getByLabel('Date of birth').fill('1991-03-02');
+    await maria.getByLabel('Country or virtual country').fill('Estonia');
+    await maria.getByLabel('Document number').fill('EE 1234 5678');
+    await maria
+      .locator('input[type=file]')
+      .first()
+      .setInputFiles({ name: 'passport.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('jpeg passport') });
+    await expect(maria.getByText('passport.jpg')).toBeVisible();
+    await maria.getByRole('button', { name: 'Send for checking' }).click();
+    await expect(maria.getByText(/Passport ending in 5678/)).toBeVisible();
+
+    await admin
+      .getByRole('navigation', { name: 'Admin' })
+      .getByRole('link', { name: /Identity checks/ })
+      .click();
+    const check = admin.locator('.identity-check', { hasText: 'Maria Petrova' });
+    await expect(check.getByText('@maria')).toBeVisible();
+    await check.getByRole('button', { name: 'Verify' }).click();
+    await expect(admin.getByText('Maria Petrova is verified')).toBeVisible();
+
+    await expect(maria.getByText('Verified', { exact: false }).first()).toBeVisible();
+    await maria.goto('./#/companies/northwind-studio');
+    await expect(maria.getByText('Verified business')).toBeVisible();
+  });
+
   test('tech support: the owner answers with the owner badge', async () => {
     await ivan.goto('./#/support');
     await ivan.getByRole('button', { name: 'Ticket' }).click();

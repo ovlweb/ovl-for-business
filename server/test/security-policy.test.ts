@@ -36,6 +36,7 @@ describe('security policy', () => {
       twoFactorForStaff: true,
       twoFactorForCompanyFinance: true,
       verifiedEmailForApplications: true,
+      identityForCompanies: false,
     });
   });
 

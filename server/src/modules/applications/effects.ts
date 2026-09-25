@@ -45,6 +45,10 @@ export async function applyApprovedApplication(
     case 'company': {
       const p = companyApplicationSchema.parse(application.payload);
       const slug = await uniqueSlug(db, p.name);
+      const [founder] = await db
+        .select({ identityVerifiedAt: users.identityVerifiedAt })
+        .from(users)
+        .where(eq(users.id, application.applicantId));
       const [org] = await db
         .insert(organizations)
         .values({
@@ -56,6 +60,8 @@ export async function applyApprovedApplication(
           baseCurrency: p.baseCurrency,
           ownerId: application.applicantId,
           applicationId: application.id,
+          // A verified business from day one when its owner already passed an identity check.
+          verifiedAt: founder?.identityVerifiedAt ? new Date() : null,
         })
         .returning();
       await db

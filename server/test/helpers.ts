@@ -25,6 +25,7 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
     REQUIRE_2FA_FOR_STAFF: 'false',
     REQUIRE_2FA_FOR_COMPANY_FINANCE: 'false',
     REQUIRE_VERIFIED_EMAIL: 'false',
+    REQUIRE_IDENTITY_FOR_COMPANIES: 'false',
     STORAGE_DIR: join(tmpdir(), 'ovl-test-uploads'),
     ...overrides,
   });

@@ -3,6 +3,7 @@ import {
   APPLICATION_TYPES,
   CASH_METHODS,
   CASH_REQUEST_STATUSES,
+  IDENTITY_STATUSES,
   INVOICE_STATUSES,
   CHAT_TYPES,
   LEDGER_KINDS,
@@ -76,6 +77,8 @@ export const users = pgTable('users', {
   /** Last accepted time step: a code cannot be used twice. */
   totpLastStep: integer('totp_last_step'),
   emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
+  /** Identity documents checked by staff (KYC). */
+  identityVerifiedAt: timestamp('identity_verified_at', { withTimezone: true }),
   createdAt: createdAt(),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
 });
@@ -108,6 +111,32 @@ export const webauthnChallenges = pgTable('webauthn_challenges', {
   challenge: text('challenge').notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 });
+
+export const identityStatusEnum = pgEnum('identity_status', IDENTITY_STATUSES);
+
+/** Identity checks (KYC). The document number itself is not kept: only its last four characters
+ * and a keyed hash, so staff can spot one document used by several accounts. */
+export const identityChecks = pgTable(
+  'identity_checks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    status: identityStatusEnum('status').notNull().default('pending'),
+    legalName: varchar('legal_name', { length: 120 }).notNull(),
+    dateOfBirth: date('date_of_birth').notNull(),
+    country: varchar('country', { length: 80 }).notNull(),
+    documentType: varchar('document_type', { length: 24 }).notNull(),
+    documentLast4: varchar('document_last4', { length: 4 }).notNull(),
+    documentHash: varchar('document_hash', { length: 64 }).notNull(),
+    rejectionReason: text('rejection_reason'),
+    reviewedBy: uuid('reviewed_by').references(() => users.id),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('identity_checks_user_idx').on(t.userId), index('identity_checks_status_idx').on(t.status)],
+);
 
 export const emailTokenPurposeEnum = pgEnum('email_token_purpose', ['verify_email', 'reset_password']);
 
@@ -211,6 +240,8 @@ export const organizations = pgTable('organizations', {
     .references(() => users.id),
   registryNumber: varchar('registry_number', { length: 32 }),
   applicationId: uuid('application_id'),
+  /** Verified business: set while the owner's identity is verified. */
+  verifiedAt: timestamp('verified_at', { withTimezone: true }),
   createdAt: createdAt(),
 });
 

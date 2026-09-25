@@ -13,6 +13,7 @@ import {
   Spinner,
   StatusBadge,
   UserName,
+  VerifiedBadge,
 } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -57,7 +58,10 @@ export function CompaniesPage() {
             <div className="row">
               <Avatar name={o.name} size={44} />
               <div className="grow">
-                <h3>{o.name}</h3>
+                <div className="row" style={{ gap: 6 }}>
+                  <h3>{o.name}</h3>
+                  {o.verified && <VerifiedBadge compact />}
+                </div>
                 <div className="small muted">{o.registryNumber}</div>
               </div>
               <StatusBadge status={o.status} />
@@ -274,6 +278,7 @@ export function CompanyPage() {
             <div className="row-wrap">
               <h1>{o.name}</h1>
               <StatusBadge status={o.status} />
+              {o.verified && <VerifiedBadge />}
               {o.ticker && (
                 <Link to={`/exchange/${o.ticker}`} className="badge info">
                   {o.ticker} on the exchange

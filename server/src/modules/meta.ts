@@ -35,6 +35,7 @@ export async function metaRoutes(app: FastifyInstance) {
       twoFactorForStaff: app.config.REQUIRE_2FA_FOR_STAFF,
       twoFactorForCompanyFinance: app.config.REQUIRE_2FA_FOR_COMPANY_FINANCE,
       verifiedEmailForApplications: app.config.REQUIRE_VERIFIED_EMAIL,
+      identityForCompanies: app.config.REQUIRE_IDENTITY_FOR_COMPANIES,
     },
   }));
 }

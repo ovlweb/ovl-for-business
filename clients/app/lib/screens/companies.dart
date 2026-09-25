@@ -107,6 +107,7 @@ class _CompanyCard extends StatelessWidget {
                     Expanded(
                       child: Text(org.name, style: context.text.titleLarge, overflow: TextOverflow.ellipsis),
                     ),
+                    if (org.verified) ...[const VerifiedBadge(compact: true), const SizedBox(width: 6)],
                     StatusPill(org.status),
                   ],
                 ),
@@ -167,6 +168,7 @@ class CompanyScreen extends StatelessWidget {
                             '${o.registryNumber ?? ''} · owner @${o.owner.username}',
                             style: context.text.bodyMedium,
                           ),
+                          if (o.verified) ...[const SizedBox(height: 6), const VerifiedBadge()],
                         ],
                       ),
                     ),

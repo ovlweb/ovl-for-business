@@ -118,6 +118,7 @@ class Me extends UserSummary {
       preferences = Preferences.fromJson(j['preferences'] as Json?),
       twoFactorEnabled = j['twoFactorEnabled'] as bool? ?? false,
       emailVerified = j['emailVerified'] as bool? ?? true,
+      identityVerified = j['identityVerified'] as bool? ?? false,
       createdAt = _date(j['createdAt']),
       super(
         id: j['id'] as String,
@@ -135,6 +136,7 @@ class Me extends UserSummary {
   final Preferences preferences;
   final bool twoFactorEnabled;
   final bool emailVerified;
+  final bool identityVerified;
   final DateTime createdAt;
 
   bool can(String permission) => permissions.contains(permission);
@@ -379,8 +381,11 @@ class Organization {
       owner = UserSummary.fromJson(j['owner'] as Json),
       memberCount = j['memberCount'] as int,
       myRole = j['myRole'] as String?,
+      verified = j['verified'] as bool? ?? false,
       createdAt = _date(j['createdAt']);
 
+  /// Verified business: its owner passed an identity check.
+  final bool verified;
   final String id;
   final String name;
   final String slug;
@@ -484,11 +489,13 @@ class RegistryHolder {
   RegistryHolder.fromJson(Json j)
     : type = j['type'] as String,
       name = j['name'] as String,
-      handle = j['handle'] as String;
+      handle = j['handle'] as String,
+      verified = j['verified'] as bool? ?? false;
 
   final String type;
   final String name;
   final String handle;
+  final bool verified;
 }
 
 class RegistryEntry {
@@ -529,6 +536,7 @@ class StockListing {
       organizationName = (j['organization'] as Json)['name'] as String,
       organizationSlug = (j['organization'] as Json)['slug'] as String,
       registryNumber = (j['organization'] as Json)['registryNumber'] as String?,
+      verified = (j['organization'] as Json)['verified'] as bool? ?? false,
       currency = j['currency'] as String,
       sharePrice = j['sharePrice'] as String,
       totalShares = j['totalShares'] as String,
@@ -546,6 +554,9 @@ class StockListing {
 
   final String id;
   final String ticker;
+
+  /// The issuer is a verified business.
+  final bool verified;
   final String organizationName;
   final String organizationSlug;
   final String? registryNumber;

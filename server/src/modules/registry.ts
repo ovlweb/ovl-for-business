@@ -66,6 +66,8 @@ const registrySelect = {
   username: users.username,
   orgName: organizations.name,
   orgSlug: organizations.slug,
+  orgVerifiedAt: organizations.verifiedAt,
+  orgStatus: organizations.status,
 };
 
 type RegistryRow = {
@@ -74,6 +76,8 @@ type RegistryRow = {
   username: string | null;
   orgName: string | null;
   orgSlug: string | null;
+  orgVerifiedAt: Date | null;
+  orgStatus: 'active' | 'suspended' | null;
 };
 
 export function toRegistryDto(row: RegistryRow): RegistryEntry {
@@ -94,8 +98,15 @@ export function toRegistryDto(row: RegistryRow): RegistryEntry {
           id: entry.holderOrganizationId!,
           name: row.orgName ?? '',
           handle: row.orgSlug ?? '',
+          verified: row.orgVerifiedAt !== null && row.orgStatus === 'active',
         }
-      : { type: 'user', id: entry.holderUserId!, name: row.userName ?? '', handle: row.username ?? '' },
+      : {
+          type: 'user',
+          id: entry.holderUserId!,
+          name: row.userName ?? '',
+          handle: row.username ?? '',
+          verified: false,
+        },
     issuedAt: iso(entry.issuedAt),
     updatedAt: iso(entry.updatedAt),
   };

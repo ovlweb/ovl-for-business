@@ -1432,3 +1432,10 @@ code,
   min-width: 0;
   font-size: 13px;
 }
+
+.badge.verified {
+  gap: 4px;
+  color: var(--success);
+  background: var(--success-soft);
+  border-color: color-mix(in srgb, var(--success) 30%, transparent);
+}

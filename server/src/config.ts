@@ -64,6 +64,8 @@ const envSchema = z.object({
   REQUIRE_2FA_FOR_STAFF: flag(true),
   /** Company owners, directors and accountants must turn it on before moving company money. */
   REQUIRE_2FA_FOR_COMPANY_FINANCE: flag(true),
+  /** Company owners pass an identity check (KYC) before a company can be approved. */
+  REQUIRE_IDENTITY_FOR_COMPANIES: flag(true),
   /** Applications (companies, licenses, roles) need a confirmed email address. */
   REQUIRE_VERIFIED_EMAIL: flag(true),
 

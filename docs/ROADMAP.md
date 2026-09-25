@@ -25,7 +25,8 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
 - ✅ Passkeys (WebAuthn) for the web client and the admin panel (0.2). Next: passkeys in the native
   apps (platform credential managers with associated domains).
 - ✅ Email confirmation, email change and password reset by emailed links (SMTP) (0.2).
-- Identity verification (KYC) for company owners before approval; "verified business" badge.
+- ✅ Identity verification (KYC) for company owners before approval; "verified business" badge on
+  companies, the registry and the exchange (0.2).
 - Admin panel behind SSO / IP allow-list; four-eyes approval for large cash operations.
 
 ### Money

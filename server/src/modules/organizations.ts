@@ -73,6 +73,7 @@ export async function organizationDtos(db: Db, rows: OrgRow[], viewerId?: string
     owner: toUserSummary(ownerById.get(o.ownerId)!),
     memberCount: countById.get(o.id) ?? 0,
     myRole: roleById.get(o.id) ?? null,
+    verified: o.verifiedAt !== null && o.status === 'active',
     createdAt: iso(o.createdAt),
   }));
 }
