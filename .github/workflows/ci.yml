@@ -37,14 +37,16 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
+      - name: Server setup and app builder scripts
+        run: shellcheck setup.sh build-clients.sh && bash setup.sh --help > /dev/null && node scripts/build-clients.mjs --list
       - run: pnpm typecheck
       - name: Every text has a Russian translation and the catalogs are up to date
         run: pnpm i18n --strict && git diff --exit-code -- scripts/i18n/keys.json packages/shared/src/locales clients/app/lib/i18n
       - run: pnpm --filter @ovl/shared test
       - run: pnpm --filter @ovl/server test
       - run: pnpm --filter @ovl/server build
-      - run: pnpm --filter @ovl/web build
-      - run: pnpm --filter @ovl/admin build
+      - name: Web client and admin panel, built and packed by the app builder
+        run: node scripts/build-clients.mjs web admin --api-url https://business.example.com --yes
 
   e2e:
     name: End-to-end (browser)
