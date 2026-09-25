@@ -352,6 +352,9 @@ class OvlApi {
   Future<List<Application>> reviewQueue() => _getList('/applications/queue', Application.fromJson);
   Future<Application> application(String id) async => Application.fromJson(await _get('/applications/$id'));
 
+  /// Every currency balances can hold: ISO 4217 and those issued by virtual countries.
+  Future<List<CurrencyInfo>> currencies() => _getList('/currencies', CurrencyInfo.fromJson);
+
   /// Licences you hold (or your companies do), with expiry dates and waiting renewals.
   Future<List<RegistryEntry>> myLicences() => _getList('/me/licences', RegistryEntry.fromJson);
 

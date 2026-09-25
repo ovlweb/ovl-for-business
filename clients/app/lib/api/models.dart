@@ -446,6 +446,22 @@ class Invoice {
       : status;
 }
 
+/// A currency balances can hold; `virtual` ones are issued by a virtual country.
+class CurrencyInfo {
+  CurrencyInfo.fromJson(Json j)
+    : code = j['code'] as String,
+      name = j['name'] as String,
+      decimals = j['decimals'] as int,
+      virtual = j['virtual'] as bool? ?? false,
+      country = (j['issuer'] as Json?)?['country'] as String?;
+
+  final String code;
+  final String name;
+  final int decimals;
+  final bool virtual;
+  final String? country;
+}
+
 /// One calendar month of a balance.
 class MonthlyStatement {
   MonthlyStatement.fromJson(Json j)
@@ -696,7 +712,11 @@ class RegistryEntry {
       holder = RegistryHolder.fromJson(j['holder'] as Json),
       issuedAt = _date(j['issuedAt']),
       expiresAt = _dateOrNull(j['expiresAt']),
+      currency = j['currency'] as String?,
       renewalApplicationId = j['renewalApplicationId'] as String?;
+
+  /// The currency a virtual country issues.
+  final String? currency;
 
   final String id;
   final String number;

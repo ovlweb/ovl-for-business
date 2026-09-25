@@ -21,6 +21,8 @@ import type {
   CreateApplicationInput,
   CreateInvoiceInput,
   CreateInvoiceScheduleInput,
+  CreateVirtualCurrencyInput,
+  CurrencyInfo,
   CreateStoryInput,
   FileInfo,
   FundLock,
@@ -63,6 +65,7 @@ import type {
   UpdateMeInput,
   UserProfile,
   UserSummary,
+  VirtualCurrency,
   Wallet,
 } from '@ovl/shared';
 import { RealtimeConnection } from './realtime';
@@ -421,6 +424,22 @@ export class OvlClient {
       this.post<PaymentApproval>(`/organizations/${id}/payment-approvals/${approvalId}/reject`, { reason }),
   };
 
+  /** Every currency balances can hold (ISO 4217 and virtual-country currencies). No token needed. */
+  currencies = () => this.get<CurrencyInfo[]>('/currencies');
+
+  virtualCurrencies = {
+    get: (code: string) => this.get<VirtualCurrency>(`/virtual-currencies/${code}`),
+    /** Issue a currency for a virtual country you hold (one per country). */
+    create: (registryEntryId: string, input: CreateVirtualCurrencyInput) =>
+      this.post<VirtualCurrency>(`/registry/${registryEntryId}/currency`, input),
+    /** Put new money into circulation on the holder's balance. */
+    issue: (code: string, amount: string, note?: string) =>
+      this.post<VirtualCurrency>(`/virtual-currencies/${code}/issue`, { amount, note }),
+    /** Take money out of circulation from the holder's balance. */
+    redeem: (code: string, amount: string, note?: string) =>
+      this.post<VirtualCurrency>(`/virtual-currencies/${code}/redeem`, { amount, note }),
+  };
+
   exchange = {
     info: () => this.get<ExchangeInfo>('/exchange'),
     quote: (input: ExchangeInput) => this.post<ExchangeQuote>('/exchange/quote', input),
@@ -565,6 +584,8 @@ export class OvlClient {
       this.post<CashRequest>(`/admin/cash-requests/${id}/decline`, { reason }),
     setRegistryStatus: (id: string, status: RegistryEntry['status'], reason?: string) =>
       this.patch<RegistryEntry>(`/admin/registry/${id}`, { status, reason }),
+    setCurrencyStatus: (code: string, status: 'active' | 'suspended') =>
+      this.patch<VirtualCurrency>(`/admin/virtual-currencies/${code}`, { status }),
     /** Move a licence's expiry date (ISO date-time), or null for no expiry. */
     setRegistryExpiry: (id: string, expiresAt: string | null) =>
       this.patch<RegistryEntry>(`/admin/registry/${id}`, { expiresAt }),

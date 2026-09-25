@@ -60,7 +60,9 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
   reminders 30 and 7 days before, and renew through a one-step moderation (0.2).
 - ✅ "Request changes" step in every workflow, and documents attached to applications, stored on
   disk or in S3 / MinIO (0.2).
-- Virtual-country currencies issued under a virtual-country license.
+- ✅ Virtual-country currencies: the holder of a virtual country issues one currency (a three-letter
+  code outside ISO 4217) and controls its supply; balances anywhere can hold, send and invoice in it
+  (0.2).
 - Webhooks for API consumers (new / changed registry entries, listing changes).
 
 ### Messaging

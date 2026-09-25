@@ -38,6 +38,11 @@ import { exchangeRoutes } from './modules/exchange';
 import { orgPaymentRoutes } from './modules/org-payments';
 import { invoiceScheduleRoutes } from './modules/invoice-schedules';
 import { payrollRoutes } from './modules/payroll';
+import {
+  loadVirtualCurrencies,
+  refreshVirtualCurrencies,
+  virtualCurrencyRoutes,
+} from './modules/virtual-currencies';
 import { sessionRoutes } from './modules/sessions';
 import { twoFactorRoutes } from './modules/two-factor';
 import { chatRoutes } from './modules/chats/routes';
@@ -104,6 +109,9 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
   app.decorate('scheduler', new Scheduler(app.log));
 
   if (config.SCHEDULER_ENABLED) app.addHook('onReady', async () => app.scheduler.start());
+  // Virtual-country currencies live in the database; every instance keeps its table fresh.
+  app.addHook('onReady', async () => loadVirtualCurrencies(db));
+  app.addHook('onRequest', async () => refreshVirtualCurrencies(db));
   app.addHook('onClose', async () => {
     await app.scheduler.stop();
     app.hub.closeAll();
@@ -222,6 +230,7 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
       await api.register(orgPaymentRoutes);
       await api.register(invoiceScheduleRoutes);
       await api.register(payrollRoutes);
+      await api.register(virtualCurrencyRoutes);
       await api.register(organizationRoutes);
       await api.register(applicationRoutes);
       await api.register(registryRoutes);

@@ -1,6 +1,7 @@
 import {
   canRenew,
   CURRENCIES,
+  registerCurrencies,
   LICENSE_TYPE_LABELS,
   LICENSE_TYPES,
   WORKFLOWS,
@@ -19,12 +20,14 @@ import {
   ErrorAlert,
   Field,
   formatDate,
+  formatMoney,
   Icon,
   Modal,
   PageHeader,
   PayloadView,
   Spinner,
   StatusBadge,
+  useToast,
   WorkflowStepper,
 } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -383,8 +386,183 @@ function NewApplicationModal({
 
 const DAY = 86_400_000;
 
+/** Create a virtual country's currency, then issue and redeem it. */
+function CurrencyModal({ licence, onClose }: { licence: MyLicence; onClose: () => void }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const code = licence.currency;
+  const info = useQuery({
+    queryKey: ['virtualCurrency', code],
+    queryFn: () => api.virtualCurrencies.get(code!),
+    enabled: !!code,
+  });
+  const [form, setForm] = useState({ code: '', name: '', decimals: '2' });
+  const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
+  const create = useMutation({
+    mutationFn: () =>
+      api.virtualCurrencies.create(licence.id, {
+        code: form.code,
+        name: form.name,
+        decimals: Number(form.decimals),
+      }),
+    onSuccess: (c) => {
+      registerCurrencies([{ code: c.code, name: c.name, decimals: c.decimals, virtual: true }]);
+      for (const key of ['licences', 'wallets', 'virtualCurrency'])
+        queryClient.invalidateQueries({ queryKey: [key] });
+      toast.success(`${c.code} is ready: issue some to put it into circulation`);
+    },
+  });
+  const change = useMutation({
+    mutationFn: (action: 'issue' | 'redeem') =>
+      action === 'issue'
+        ? api.virtualCurrencies.issue(code!, amount, note || undefined)
+        : api.virtualCurrencies.redeem(code!, amount, note || undefined),
+    onSuccess: (c, action) => {
+      queryClient.setQueryData(['virtualCurrency', code], c);
+      for (const key of ['wallets', 'orgWallets', 'entries'])
+        queryClient.invalidateQueries({ queryKey: [key] });
+      toast.success(`${action === 'issue' ? 'Issued' : 'Redeemed'} ${amount} ${code}`);
+      setAmount('');
+      setNote('');
+    },
+  });
+  const c = info.data;
+  return (
+    <Modal title={code ? `${code} · ${licence.title}` : `A currency for ${licence.title}`} onClose={onClose}>
+      {!code ? (
+        <form
+          className="stack"
+          onSubmit={(e) => {
+            e.preventDefault();
+            create.mutate();
+          }}
+        >
+          <p className="small muted" style={{ margin: 0 }}>
+            A virtual country can issue one currency. Anyone can hold it, send it and be invoiced in it; you
+            decide how much is in circulation.
+          </p>
+          <div className="grid-2">
+            <Field label="Code" hint="Three letters that are not a real-world currency">
+              <input
+                className="input mono"
+                value={form.code}
+                maxLength={3}
+                required
+                pattern="[A-Za-z]{3}"
+                onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
+              />
+            </Field>
+            <Field label="Decimals">
+              <select
+                className="select"
+                value={form.decimals}
+                onChange={(e) => setForm({ ...form, decimals: e.target.value })}
+              >
+                {[0, 1, 2, 3, 4].map((d) => (
+                  <option key={d} value={d}>
+                    {d === 0 ? 'Whole units' : `${d} (${(1 / 10 ** d).toFixed(d)})`}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <Field label="Name">
+            <input
+              className="input"
+              value={form.name}
+              minLength={2}
+              maxLength={64}
+              required
+              placeholder="Helios lira"
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+            />
+          </Field>
+          <ErrorAlert error={create.error} />
+          <button className="btn primary" disabled={create.isPending}>
+            Create currency
+          </button>
+        </form>
+      ) : (
+        <div className="stack">
+          <ErrorAlert error={info.error} />
+          {c && (
+            <>
+              <div className="row-wrap">
+                <StatusBadge status={c.status} />
+                <span className="small muted">
+                  {c.name} · issued by {c.country} ({c.registryNumber})
+                </span>
+              </div>
+              <div className="grid-2">
+                <div className="card flat kpi">
+                  <span className="kpi-label">In circulation</span>
+                  <span className="kpi-value compact">{formatMoney(c.supply, c.code)}</span>
+                </div>
+                <div className="card flat kpi">
+                  <span className="kpi-label">Balances holding it</span>
+                  <span className="kpi-value compact">{c.holders}</span>
+                </div>
+              </div>
+            </>
+          )}
+          <form className="stack" onSubmit={(e) => e.preventDefault()}>
+            <div className="grid-2">
+              <Field label={`Amount (${code})`}>
+                <input
+                  className="input"
+                  inputMode="decimal"
+                  value={amount}
+                  placeholder="0.00"
+                  onChange={(e) => setAmount(e.target.value.replace(',', '.'))}
+                />
+              </Field>
+              <Field label="Note (optional)">
+                <input
+                  className="input"
+                  value={note}
+                  maxLength={200}
+                  onChange={(e) => setNote(e.target.value)}
+                />
+              </Field>
+            </div>
+            <p className="tiny muted" style={{ margin: 0 }}>
+              Issued money lands on the{' '}
+              {licence.holder.type === 'organization' ? `${licence.holder.name} ` : ''}
+              {code} balance; redeeming takes it back out of circulation from there.
+            </p>
+            <ErrorAlert error={change.error} />
+            <div className="row-wrap">
+              <button
+                className="btn primary"
+                disabled={
+                  change.isPending ||
+                  !(Number(amount) > 0) ||
+                  c?.status !== 'active' ||
+                  licence.status !== 'active'
+                }
+                onClick={() => change.mutate('issue')}
+              >
+                Issue
+              </button>
+              <button
+                className="btn"
+                disabled={change.isPending || !(Number(amount) > 0)}
+                onClick={() => change.mutate('redeem')}
+              >
+                Redeem
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 /** Licences you hold, with their expiry and a way to renew. */
 function Licences({ licences, onRenew }: { licences: MyLicence[]; onRenew: (l: MyLicence) => void }) {
+  const [currencyFor, setCurrencyFor] = useState<MyLicence | null>(null);
   return (
     <div className="stack">
       <h2>Your licences</h2>
@@ -430,6 +608,11 @@ function Licences({ licences, onRenew }: { licences: MyLicence[]; onRenew: (l: M
                     >
                       Certificate
                     </a>
+                    {l.kind === 'virtual_country' && (l.currency || l.status === 'active') && (
+                      <button className="btn ghost sm" onClick={() => setCurrencyFor(l)}>
+                        {l.currency ?? 'Issue a currency'}
+                      </button>
+                    )}
                     {!l.renewalApplicationId && canRenew(l) && (
                       <button className="btn primary sm" onClick={() => onRenew(l)}>
                         Renew
@@ -442,6 +625,7 @@ function Licences({ licences, onRenew }: { licences: MyLicence[]; onRenew: (l: M
           </tbody>
         </table>
       </div>
+      {currencyFor && <CurrencyModal licence={currencyFor} onClose={() => setCurrencyFor(null)} />}
     </div>
   );
 }

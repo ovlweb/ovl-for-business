@@ -340,6 +340,25 @@ async function main() {
     const app = await u(l.who).client.applications.submit({ type: 'license', payload: l });
     await approveAll(app, reviewers, { moderation: LICENSE_CHECKS });
   }
+  // The Republic of Helios issues its own currency and pays Maria in it.
+  const country = (await u('amara').client.me.licences()).find((l) => l.kind === 'virtual_country');
+  if (country && !country.currency) {
+    await u('amara').client.virtualCurrencies.create(country.id, {
+      code: 'HEL',
+      name: 'Helios crown',
+      decimals: 2,
+    });
+    await u('amara').client.virtualCurrencies.issue('HEL', '50000', 'Founding issue');
+    const hel = (await u('amara').client.wallets.list()).find((w) => w.currency === 'HEL');
+    if (hel)
+      await u('amara').client.wallets.transfer({
+        fromWalletId: hel.id,
+        to: { type: 'user', username: 'maria' },
+        amount: '1200',
+        note: 'District 4 media rights',
+      });
+  }
+
   // One application still waiting for the council, for the review queue.
   const pending = await u('ivan').client.applications.mine();
   if (!pending.some((a) => a.status === 'pending')) {

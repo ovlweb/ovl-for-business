@@ -736,6 +736,26 @@ export const registryEntries = pgTable(
   ],
 );
 
+/** A currency issued by a virtual country (one per country); its holder issues and redeems it. */
+export const virtualCurrencies = pgTable('virtual_currencies', {
+  code: char('code', { length: 3 }).primaryKey(),
+  name: varchar('name', { length: 64 }).notNull(),
+  decimals: integer('decimals').notNull(),
+  registryEntryId: uuid('registry_entry_id')
+    .notNull()
+    .unique()
+    .references(() => registryEntries.id),
+  status: varchar('status', { length: 16 }).$type<'active' | 'suspended'>().notNull().default('active'),
+  /** Issued minus redeemed, in minor units. */
+  supply: money('supply')
+    .notNull()
+    .default(sql`0`),
+  createdBy: uuid('created_by')
+    .notNull()
+    .references(() => users.id),
+  createdAt: createdAt(),
+});
+
 // ---------------------------------------------------------------------------
 // Developer API keys (public registry / stock API)
 // ---------------------------------------------------------------------------

@@ -72,7 +72,8 @@ Android, iOS, macOS and Windows.
   license is rolled out into the public registry with a registry number.
 - **Public registry** — licenses, organizations and virtual countries; searchable in the app and via
   the public API (`X-API-Key` developer keys for other services). Every entry has a PDF certificate
-  whose QR code opens a public verification page.
+  whose QR code opens a public verification page. Licences expire after a term and are renewed
+  through moderation; virtual countries can issue their own currency.
 - **Service stories** — short-lived announcements that council members, admins and the owner publish
   from any client; every client shows them in a stories bar.
 - **Stock exchange** — a company application is reviewed by a moderator who must confirm a checklist

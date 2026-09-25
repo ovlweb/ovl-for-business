@@ -21,6 +21,7 @@ import {
   registryCounters,
   registryEntries,
   users,
+  virtualCurrencies,
 } from '../db/schema';
 import { notFound } from '../lib/errors';
 import { iso, isoOrNull } from '../lib/mappers';
@@ -92,6 +93,7 @@ const registrySelect = {
   orgSlug: organizations.slug,
   orgVerifiedAt: organizations.verifiedAt,
   orgStatus: organizations.status,
+  currencyCode: virtualCurrencies.code,
 };
 
 type RegistryRow = {
@@ -102,6 +104,7 @@ type RegistryRow = {
   orgSlug: string | null;
   orgVerifiedAt: Date | null;
   orgStatus: 'active' | 'suspended' | null;
+  currencyCode: string | null;
 };
 
 export function toRegistryDto(row: RegistryRow): RegistryEntry {
@@ -133,6 +136,7 @@ export function toRegistryDto(row: RegistryRow): RegistryEntry {
         },
     issuedAt: iso(entry.issuedAt),
     expiresAt: isoOrNull(entry.expiresAt),
+    currency: row.currencyCode ?? null,
     updatedAt: iso(entry.updatedAt),
   };
 }
@@ -142,7 +146,8 @@ export function registryQuery(db: Db) {
     .select(registrySelect)
     .from(registryEntries)
     .leftJoin(users, eq(users.id, registryEntries.holderUserId))
-    .leftJoin(organizations, eq(organizations.id, registryEntries.holderOrganizationId));
+    .leftJoin(organizations, eq(organizations.id, registryEntries.holderOrganizationId))
+    .leftJoin(virtualCurrencies, eq(virtualCurrencies.registryEntryId, registryEntries.id));
 }
 
 export async function getRegistryEntry(db: Db, idOrNumber: string): Promise<RegistryEntry | null> {

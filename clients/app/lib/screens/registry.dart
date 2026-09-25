@@ -183,6 +183,7 @@ class _RegistryScreenState extends State<RegistryScreen> {
               [
                 'Issued ${date(e.issuedAt)}',
                 if (e.expiresAt != null) '${e.status == 'expired' ? 'expired' : 'valid until'} ${date(e.expiresAt!)}',
+                if (e.currency != null) 'currency ${e.currency}',
               ].join(' · '),
               style: sheet.text.bodyMedium,
             ),

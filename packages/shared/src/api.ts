@@ -260,6 +260,8 @@ export const LEDGER_KINDS = [
   'exchange_out',
   'payroll_in',
   'payroll_out',
+  'issuance',
+  'redemption',
   'adjustment',
 ] as const;
 
@@ -871,9 +873,56 @@ export const registryEntrySchema = z.object({
   }),
   issuedAt: isoDate,
   expiresAt: isoDate.nullable().describe('Licences run for a term and are renewed; companies do not expire'),
+  currency: z.string().nullable().describe('The currency a virtual country issues'),
   updatedAt: isoDate,
 });
 export type RegistryEntry = z.infer<typeof registryEntrySchema>;
+
+// ---------------------------------------------------------------------------
+// Virtual-country currencies
+// ---------------------------------------------------------------------------
+
+export const currencyInfoSchema = z.object({
+  code: z.string(),
+  name: z.string(),
+  decimals: z.number().int(),
+  virtual: z.boolean(),
+  issuer: z
+    .object({ registryNumber: z.string(), country: z.string(), status: z.string() })
+    .nullable()
+    .describe('The virtual country that issues it'),
+});
+export type CurrencyInfo = z.infer<typeof currencyInfoSchema>;
+
+export const createVirtualCurrencySchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z]{3}$/, 'Three letters, e.g. "HLX"'),
+  name: z.string().trim().min(2).max(64),
+  decimals: z.number().int().min(0).max(4).default(2),
+});
+export type CreateVirtualCurrencyInput = z.input<typeof createVirtualCurrencySchema>;
+
+export const virtualCurrencySchema = z.object({
+  code: z.string(),
+  name: z.string(),
+  decimals: z.number().int(),
+  status: z.enum(['active', 'suspended']),
+  registryEntryId: uuid,
+  registryNumber: z.string(),
+  country: z.string(),
+  supply: z.string().describe('Issued minus redeemed'),
+  holders: z.number().int().describe('Balances that hold some'),
+  issuerWalletId: uuid.nullable(),
+  createdAt: isoDate,
+});
+export type VirtualCurrency = z.infer<typeof virtualCurrencySchema>;
+export const issueCurrencySchema = z.object({
+  amount: decimalAmountSchema,
+  note: z.string().trim().max(200).optional(),
+});
 
 /** A licence you hold (yourself or through a company you own or direct). */
 export const myLicenceSchema = registryEntrySchema.extend({

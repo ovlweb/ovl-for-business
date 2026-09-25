@@ -164,17 +164,39 @@ export interface Currency {
   code: string;
   decimals: number;
   name: string;
+  /** Issued by a virtual country in the registry (not ISO 4217). */
+  virtual?: boolean;
 }
 
-export const CURRENCIES: readonly Currency[] = TABLE.map(([code, decimals, name]) => ({
-  code,
-  decimals,
-  name,
-}));
+const LIST: Currency[] = TABLE.map(([code, decimals, name]) => ({ code, decimals, name }));
+const CODES: string[] = LIST.map((c) => c.code);
+const BY_CODE = new Map(LIST.map((c) => [c.code, c]));
 
-const BY_CODE = new Map(CURRENCIES.map((c) => [c.code, c]));
+/** Every currency the platform knows: ISO 4217, then virtual currencies once registered. */
+export const CURRENCIES: readonly Currency[] = LIST;
+export const CURRENCY_CODES: readonly string[] = CODES;
+export const ISO_CURRENCY_CODES: ReadonlySet<string> = new Set(CODES);
 
-export const CURRENCY_CODES: readonly string[] = CURRENCIES.map((c) => c.code);
+/**
+ * Add (or update) currencies that are not in ISO 4217: virtual-country currencies. Clients call
+ * this with GET /currencies at start-up; the server with its own table.
+ */
+export function registerCurrencies(list: readonly Currency[]) {
+  for (const c of list) {
+    if (ISO_CURRENCY_CODES.has(c.code)) continue;
+    const known = BY_CODE.get(c.code);
+    if (known) Object.assign(known, c);
+    else {
+      const added = { ...c, virtual: true };
+      LIST.push(added);
+      CODES.push(c.code);
+      BY_CODE.set(c.code, added);
+    }
+  }
+}
+
+/** Three letters that are not an ISO 4217 code. */
+export const VIRTUAL_CURRENCY_CODE = /^[A-Z]{3}$/;
 
 export function isCurrency(code: string): boolean {
   return BY_CODE.has(code);

@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/client.dart';
+import '../api/currencies.g.dart';
 import '../api/models.dart';
 import '../api/realtime.dart';
 import '../theme/theme_controller.dart';
@@ -73,9 +74,21 @@ class Session extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  /// Virtual-country currencies are not in the generated list; learn them from the server.
+  Future<void> _loadCurrencies() async {
+    try {
+      for (final c in await api.currencies()) {
+        if (c.virtual) currencies[c.code] = (c.name, c.decimals);
+      }
+    } catch (e) {
+      debugPrint('Could not load currencies: $e');
+    }
+  }
+
   Future<void> _loadMe() async {
     loading = true;
     notifyListeners();
+    unawaited(_loadCurrencies());
     if (accounts.active == null) {
       me = null;
     } else {

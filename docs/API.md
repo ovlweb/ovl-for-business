@@ -204,6 +204,18 @@ expiry until 90 days after it. One moderator approves it; the new term starts at
 date (or today, if it had already expired). Staff can also move an expiry date with
 `PATCH /admin/registry/:id {expiresAt}`.
 
+## Virtual-country currencies
+
+The holder of an active virtual country (or its company's owner or a director) creates its currency
+once with `POST /registry/:id/currency {code, name, decimals}`: three letters that are not an ISO
+4217 code. `POST /virtual-currencies/:code/issue {amount, note?}` puts new money on the holder's
+balance (an `issuance` ledger entry) and `/redeem` takes it back out (`redemption`); the
+`supply` is public at `GET /virtual-currencies/:code`. From then on the code works everywhere a
+currency does: balances, transfers, invoices, payroll, and exchange once staff publish a rate.
+`GET /currencies` lists ISO and virtual currencies (clients load it at start-up so they know the
+new codes' decimals). Staff with `registry.manage` can suspend new issuance with
+`PATCH /admin/virtual-currencies/:code {status}`; an expired or revoked country cannot issue either.
+
 ## Registry certificates
 
 `GET /registry/:idOrNumber/certificate.pdf` (public, no token) renders a certificate for a company
@@ -282,7 +294,7 @@ team receives `payment_approval.updated` and `wallet.updated`.
 | Invoices     | `GET/POST /invoices`, `GET /invoices/:id`, `POST /invoices/:id/pay`, `POST /invoices/:id/cancel`, `GET/POST /invoice-schedules`, `PATCH /invoice-schedules/:id`                                                                                                                                                                                                                        |
 | Companies    | `GET /organizations/mine`, `GET /organizations/:slug`, `PATCH /organizations/:id`, members, wallets, `GET /organizations/:id/payment-approvals`, `POST …/:approvalId/approve`, `POST …/:approvalId/reject`                                                                                                                                                                             |
 | Applications | `POST /applications`, `GET /applications/mine`, `/queue`, `/:id`, `POST /:id/review`, `/:id/withdraw`, `/:id/resubmit`; `POST /files`, `GET/DELETE /files/:id`                                                                                                                                                                                                                         |
-| Registry     | `GET /registry`, `GET /registry/:idOrNumber`, `GET /registry/:idOrNumber/certificate.pdf`                                                                                                                                                                                                                                                                                              |
+| Registry     | `GET /registry`, `GET /registry/:idOrNumber`, `GET /registry/:idOrNumber/certificate.pdf`, `GET /me/licences`, `POST /registry/:id/currency`, `GET /currencies`, `GET /virtual-currencies/:code`, `POST …/issue`, `POST …/redeem`                                                                                                                                                      |
 | Stock        | `GET /stock/listings`, `/stock/listings/:ticker`, `POST …/invest`, `GET /stock/portfolio`                                                                                                                                                                                                                                                                                              |
 | Chats        | `GET /chats`, `POST /chats/direct`, `/chats/groups`, `/chats/channels`, `GET /channels`, messages, members, read, pin                                                                                                                                                                                                                                                                  |
 | Support      | `POST/GET /support/tickets`, `GET /support/desk`, `POST /support/tickets/:id/status`                                                                                                                                                                                                                                                                                                   |

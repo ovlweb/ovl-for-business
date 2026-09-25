@@ -62,6 +62,14 @@ function EntryModal({ entry, onClose }: { entry: RegistryEntry; onClose: () => v
           )}
           <dt>Issued</dt>
           <dd>{formatDate(entry.issuedAt)}</dd>
+          {entry.currency && (
+            <>
+              <dt>Currency</dt>
+              <dd>
+                <code>{entry.currency}</code>
+              </dd>
+            </>
+          )}
           {entry.expiresAt && (
             <>
               <dt>Valid until</dt>
