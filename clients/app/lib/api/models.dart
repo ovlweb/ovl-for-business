@@ -694,11 +694,28 @@ class RegistryEntry {
       website = j['website'] as String?,
       status = j['status'] as String,
       holder = RegistryHolder.fromJson(j['holder'] as Json),
-      issuedAt = _date(j['issuedAt']);
+      issuedAt = _date(j['issuedAt']),
+      expiresAt = _dateOrNull(j['expiresAt']),
+      renewalApplicationId = j['renewalApplicationId'] as String?;
 
   final String id;
   final String number;
   final String kind;
+
+  /// Licences run for a term and are renewed; companies never expire.
+  final DateTime? expiresAt;
+
+  /// A renewal waiting for moderation (only on /me/licences).
+  final String? renewalApplicationId;
+
+  /// Renewals open 60 days before expiry and close 90 days after it.
+  bool get canRenew {
+    final e = expiresAt;
+    if (e == null || (status != 'active' && status != 'expired') || renewalApplicationId != null) return false;
+    final now = DateTime.now();
+    return now.isAfter(e.subtract(const Duration(days: 60))) && now.isBefore(e.add(const Duration(days: 90)));
+  }
+
   final String? licenseType;
   final String title;
   final String description;
@@ -1016,6 +1033,21 @@ const workflows = <String, Workflow>{
   'news_channel': Workflow('News channel', 'News channels can only be created through moderation.', [
     WorkflowStage('moderation', 'Moderation', 'A moderator approves the channel.'),
   ]),
+  'renewal': Workflow(
+    'Licence renewal',
+    'Extends a licence or virtual country for another term. A moderator checks it is still in use.',
+    [
+      WorkflowStage(
+        'moderation',
+        'Moderation',
+        'A moderator confirms the holder still uses the licence as registered.',
+        checklist: [
+          ChecklistItem('holder', 'The holder is unchanged and in good standing'),
+          ChecklistItem('activity', 'The licence is still used as described in the registry'),
+        ],
+      ),
+    ],
+  ),
 };
 
 // ---------------------------------------------------------------------------

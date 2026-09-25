@@ -1,4 +1,5 @@
 import {
+  canRenew,
   CURRENCIES,
   LICENSE_TYPE_LABELS,
   LICENSE_TYPES,
@@ -7,6 +8,7 @@ import {
   type ApplicationType,
   type CreateApplicationInput,
   type FileInfo,
+  type MyLicence,
   type SecurityPolicy,
 } from '@ovl/shared';
 import {
@@ -88,6 +90,8 @@ function buildInput(type: ApplicationType, v: Values): CreateApplicationInput {
         type,
         payload: { title: String(v.title), handle: String(v.handle), description: String(v.description) },
       };
+    case 'renewal':
+      return { type, payload: { registryEntryId: String(v.registryEntryId), note: opt(v.note) } };
   }
 }
 
@@ -107,11 +111,14 @@ function NewApplicationModal({
   type,
   onClose,
   resubmit,
+  licence,
 }: {
   type: ApplicationType;
   onClose: () => void;
   /** Edit this application and send it again (after a reviewer asked for changes). */
   resubmit?: Application;
+  /** The licence to renew (type "renewal"). */
+  licence?: MyLicence;
 }) {
   const queryClient = useQueryClient();
   const orgs = useQuery({
@@ -136,6 +143,7 @@ function NewApplicationModal({
           listOnExchange: false,
           totalShares: '1000000',
           sharePrice: '1.00',
+          registryEntryId: licence?.id ?? '',
         },
   );
   const [files, setFiles] = useState<FileInfo[]>([]);
@@ -149,6 +157,7 @@ function NewApplicationModal({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['applications'] });
+      queryClient.invalidateQueries({ queryKey: ['licences'] });
       onClose();
     },
   });
@@ -289,6 +298,27 @@ function NewApplicationModal({
         </Field>
       </>
     );
+  } else if (type === 'renewal') {
+    const title = licence?.title ?? String(resubmit?.payload.title ?? '');
+    const number = licence?.number ?? String(resubmit?.payload.registryNumber ?? '');
+    fields = (
+      <>
+        <div className="card flat stack-sm">
+          <b>{title}</b>
+          <span className="small muted">
+            <code>{number}</code>
+            {licence?.expiresAt &&
+              ` · ${licence.status === 'expired' ? 'expired' : 'expires'} ${formatDate(licence.expiresAt, false)}`}
+          </span>
+        </div>
+        <Field
+          label="Note for the moderator (optional)"
+          hint="What changed since the last term, links to recent activity…"
+        >
+          <textarea className="textarea" {...bind('note')} maxLength={2000} />
+        </Field>
+      </>
+    );
   } else {
     fields = (
       <>
@@ -344,10 +374,75 @@ function NewApplicationModal({
         </Field>
         <ErrorAlert error={submit.error} />
         <button className="btn primary" disabled={submit.isPending}>
-          {resubmit ? 'Send the changes' : 'Submit application'}
+          {resubmit ? 'Send the changes' : type === 'renewal' ? 'Ask for a renewal' : 'Submit application'}
         </button>
       </form>
     </Modal>
+  );
+}
+
+const DAY = 86_400_000;
+
+/** Licences you hold, with their expiry and a way to renew. */
+function Licences({ licences, onRenew }: { licences: MyLicence[]; onRenew: (l: MyLicence) => void }) {
+  return (
+    <div className="stack">
+      <h2>Your licences</h2>
+      <div className="card pad-0 table-wrap">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Licence</th>
+              <th>Holder</th>
+              <th>Valid until</th>
+              <th>Status</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {licences.map((l) => {
+              const days = l.expiresAt
+                ? Math.ceil((new Date(l.expiresAt).getTime() - Date.now()) / DAY)
+                : null;
+              return (
+                <tr key={l.id}>
+                  <td>
+                    <b>{l.title}</b>
+                    <div className="small muted">
+                      <code>{l.number}</code> ·{' '}
+                      {l.licenseType ? LICENSE_TYPE_LABELS[l.licenseType] : 'Licence'}
+                    </div>
+                  </td>
+                  <td className="small">{l.holder.type === 'organization' ? l.holder.name : 'You'}</td>
+                  <td className={`small nowrap${days !== null && days <= 30 ? ' neg' : ''}`}>
+                    {l.expiresAt ? formatDate(l.expiresAt, false) : 'No expiry'}
+                    {days !== null && days > 0 && days <= 60 && <div>in {days} days</div>}
+                  </td>
+                  <td>
+                    <StatusBadge status={l.renewalApplicationId ? 'renewal_pending' : l.status} />
+                  </td>
+                  <td className="right nowrap">
+                    <a
+                      className="btn ghost sm"
+                      href={api.registry.certificateUrl(l.number)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Certificate
+                    </a>
+                    {!l.renewalApplicationId && canRenew(l) && (
+                      <button className="btn primary sm" onClick={() => onRenew(l)}>
+                        Renew
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
@@ -363,6 +458,7 @@ function ResultLinks({ application }: { application: Application }) {
       )}
       {typeof r.registryNumber === 'string' && <code>{r.registryNumber}</code>}
       {typeof r.licenseNumber === 'string' && <code>{r.licenseNumber}</code>}
+      {typeof r.expiresAt === 'string' && <span>Valid until {formatDate(r.expiresAt, false)}</span>}
       {typeof r.chatId === 'string' && <Link to={`/chats/${r.chatId}`}>Open channel</Link>}
     </div>
   );
@@ -399,6 +495,8 @@ export function ApplicationsPage() {
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
   const creating = params.get('new') as ApplicationType | null;
+  const licences = useQuery({ queryKey: ['licences'], queryFn: api.me.licences });
+  const renewing = licences.data?.find((l) => l.id === params.get('renew'));
   const [open, setOpen] = useState<Application | null>(null);
   const [editing, setEditing] = useState<Application | null>(null);
   const mine = useQuery({ queryKey: ['applications', 'mine'], queryFn: api.applications.mine });
@@ -435,6 +533,10 @@ export function ApplicationsPage() {
           </button>
         ))}
       </div>
+
+      {!!licences.data?.length && (
+        <Licences licences={licences.data} onRenew={(l) => setParams({ renew: l.id })} />
+      )}
 
       <div className="stack">
         <h2>Your applications</h2>
@@ -479,9 +581,10 @@ export function ApplicationsPage() {
         ))}
       </div>
 
-      {creating && WORKFLOWS[creating] && (
+      {creating && WORKFLOWS[creating] && creating !== 'renewal' && (
         <NewApplicationModal type={creating} onClose={() => setParams({})} />
       )}
+      {renewing && <NewApplicationModal type="renewal" licence={renewing} onClose={() => setParams({})} />}
       {editing && (
         <NewApplicationModal type={editing.type} resubmit={editing} onClose={() => setEditing(null)} />
       )}

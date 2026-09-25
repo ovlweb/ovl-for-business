@@ -23,6 +23,15 @@ export function RegistryPage() {
       api.admin.setRegistryStatus(id, next),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['registry'] }),
   });
+  /** Staff renewal: one more year from today or from the current expiry, whichever is later. */
+  const extend = useMutation({
+    mutationFn: (e: RegistryEntry) => {
+      const from = e.expiresAt && new Date(e.expiresAt) > new Date() ? new Date(e.expiresAt) : new Date();
+      from.setUTCFullYear(from.getUTCFullYear() + 1);
+      return api.admin.setRegistryExpiry(e.id, from.toISOString());
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['registry'] }),
+  });
 
   return (
     <div className="page">
@@ -56,7 +65,7 @@ export function RegistryPage() {
           ))}
         </select>
       </div>
-      <ErrorAlert error={entries.error ?? update.error} />
+      <ErrorAlert error={entries.error ?? update.error ?? extend.error} />
       <div className="card pad-0 table-wrap">
         {entries.isLoading && <Spinner center />}
         <table className="table">
@@ -67,6 +76,7 @@ export function RegistryPage() {
               <th>Type</th>
               <th>Holder</th>
               <th>Issued</th>
+              <th>Valid until</th>
               <th>Status</th>
               {can('registry.manage') && <th>Change status</th>}
             </tr>
@@ -88,6 +98,20 @@ export function RegistryPage() {
                 <td className="small">{humanize(e.licenseType ?? e.kind)}</td>
                 <td className="small">{e.holder.name}</td>
                 <td className="small">{formatDate(e.issuedAt, false)}</td>
+                <td className="small nowrap">
+                  {e.expiresAt ? formatDate(e.expiresAt, false) : '—'}
+                  {e.expiresAt && can('registry.manage') && (
+                    <button
+                      className="btn ghost sm"
+                      style={{ marginLeft: 6 }}
+                      title="Extend by one year"
+                      disabled={extend.isPending}
+                      onClick={() => extend.mutate(e)}
+                    >
+                      +1 year
+                    </button>
+                  )}
+                </td>
                 <td>
                   <StatusBadge status={e.status} />
                 </td>

@@ -167,6 +167,7 @@ class ApplicationsScreen extends StatelessWidget {
                   );
                 },
               ),
+              const _Licences(),
               const SizedBox(height: 24),
               Text('Your applications', style: context.text.titleLarge),
               const SizedBox(height: 10),
@@ -188,6 +189,92 @@ class ApplicationsScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Licences you hold, with their expiry and a renewal request.
+class _Licences extends StatelessWidget {
+  const _Licences();
+
+  @override
+  Widget build(BuildContext context) {
+    final session = context.watch<Session>();
+    final c = context.c;
+    return Query<List<RegistryEntry>>(
+      client: session.queries,
+      queryKey: 'applications:licences',
+      fetch: session.api.myLicences,
+      builder: (context, s) {
+        final list = s.data ?? const <RegistryEntry>[];
+        if (list.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 24),
+            Text('Your licences', style: context.text.titleLarge),
+            const SizedBox(height: 10),
+            OvlCard(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Column(
+                children: [
+                  for (final l in list)
+                    ListTile(
+                      leading: IconTile(
+                        LucideIcons.award,
+                        size: 40,
+                        color: l.status == 'expired' ? c.danger : c.accent,
+                      ),
+                      title: Text(l.title, style: context.text.titleSmall, overflow: TextOverflow.ellipsis),
+                      subtitle: Text(
+                        [
+                          l.number,
+                          l.expiresAt == null
+                              ? 'no expiry'
+                              : '${l.status == 'expired' ? 'expired' : 'valid until'} ${date(l.expiresAt!)}',
+                        ].join(' · '),
+                      ),
+                      trailing: l.canRenew
+                          ? FilledButton(onPressed: () => _renew(context, l), child: const Text('Renew'))
+                          : StatusPill(l.renewalApplicationId != null ? 'renewal_pending' : l.status),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _renew(BuildContext context, RegistryEntry l) async {
+    final session = context.read<Session>();
+    final note = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: Text('Renew ${l.title}?'),
+        content: TextField(
+          controller: note,
+          maxLines: 3,
+          decoration: const InputDecoration(hintText: 'Note for the moderator (optional)'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('Ask for a renewal')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await session.api.submitApplication('renewal', {
+        'registryEntryId': l.id,
+        if (note.text.trim().isNotEmpty) 'note': note.text.trim(),
+      });
+      session.queries.invalidate('applications');
+      if (context.mounted) toast(context, 'Renewal sent to moderation');
+    } catch (e) {
+      if (context.mounted) toast(context, errorText(e), error: true);
+    }
   }
 }
 

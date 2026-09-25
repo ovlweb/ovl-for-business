@@ -1,21 +1,33 @@
 import {
   LICENSE_TYPE_LABELS,
+  myLicenceSchema,
   pageOf,
+  RENEWAL_GRACE_DAYS,
   registryEntrySchema,
   registrySearchQuery,
   type LicenseType,
   type RegistryEntry,
 } from '@ovl/shared';
-import { and, count, desc, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, ilike, inArray, isNotNull, lt, lte, ne, or, sql, type SQL } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import type { Config } from '../config';
 import type { Db } from '../db/client';
-import { organizations, registryCounters, registryEntries, users } from '../db/schema';
+import {
+  applications,
+  organizationMembers,
+  organizations,
+  registryCounters,
+  registryEntries,
+  users,
+} from '../db/schema';
 import { notFound } from '../lib/errors';
-import { iso } from '../lib/mappers';
-import { certificatePdf } from '../lib/pdf';
+import { iso, isoOrNull } from '../lib/mappers';
+import { actionEmail } from '../lib/mailer';
+import { certificatePdf, pdfDate } from '../lib/pdf';
 import { apiKeyGuard, publicRouteConfig } from '../lib/public-api';
+import { currentUser } from '../plugins/auth';
 
 type RegistryKind = (typeof registryEntries.$inferInsert)['kind'];
 
@@ -39,6 +51,15 @@ export interface IssueRegistryEntry {
   holder: { type: 'user' | 'organization'; id: string };
   applicationId?: string;
   data?: Record<string, unknown>;
+  expiresAt?: Date | null;
+}
+
+/** When a licence issued (or renewed) at `from` expires, or null when licences do not expire. */
+export function licenceExpiry(config: Config, from = new Date()): Date | null {
+  if (!config.LICENSE_TERM_MONTHS) return null;
+  const d = new Date(from);
+  d.setUTCMonth(d.getUTCMonth() + config.LICENSE_TERM_MONTHS);
+  return d;
 }
 
 /** Roll an approved entry out into the public registry. */
@@ -57,6 +78,7 @@ export async function issueRegistryEntry(db: Db, input: IssueRegistryEntry) {
       holderOrganizationId: input.holder.type === 'organization' ? input.holder.id : null,
       applicationId: input.applicationId ?? null,
       data: input.data ?? {},
+      expiresAt: input.expiresAt ?? null,
     })
     .returning();
   return entry!;
@@ -110,6 +132,7 @@ export function toRegistryDto(row: RegistryRow): RegistryEntry {
           verified: false,
         },
     issuedAt: iso(entry.issuedAt),
+    expiresAt: isoOrNull(entry.expiresAt),
     updatedAt: iso(entry.updatedAt),
   };
 }
@@ -128,6 +151,100 @@ export async function getRegistryEntry(db: Db, idOrNumber: string): Promise<Regi
     isUuid ? eq(registryEntries.id, idOrNumber) : eq(registryEntries.number, idOrNumber.toUpperCase()),
   );
   return row ? toRegistryDto(row) : null;
+}
+
+type EntryRow = typeof registryEntries.$inferSelect;
+
+/** Who hears about a licence: the person, or the company's owner. */
+async function holderContact(db: Db, entry: EntryRow) {
+  const [row] = entry.holderUserId
+    ? await db
+        .select({ id: users.id, email: users.email, name: users.displayName })
+        .from(users)
+        .where(eq(users.id, entry.holderUserId))
+    : await db
+        .select({ id: users.id, email: users.email, name: users.displayName })
+        .from(organizations)
+        .innerJoin(users, eq(users.id, organizations.ownerId))
+        .where(eq(organizations.id, entry.holderOrganizationId!));
+  return row ?? null;
+}
+
+/**
+ * Remind holders 30 and 7 days before a licence expires, and mark expired licences. Claimed row
+ * by row with SKIP LOCKED, so several instances never send the same reminder twice.
+ */
+export async function runLicenceExpiry(app: FastifyInstance, now = new Date()) {
+  const day = 86_400_000;
+  const web = app.config.PUBLIC_WEB_URL.replace(/\/+$/, '');
+  const done = { reminded: 0, expired: 0 };
+  for (let i = 0; i < 500; i++) {
+    const outcome = await app.db.transaction(async (tx) => {
+      const [entry] = await tx
+        .select()
+        .from(registryEntries)
+        .where(
+          and(
+            eq(registryEntries.status, 'active'),
+            isNotNull(registryEntries.expiresAt),
+            or(
+              lte(registryEntries.expiresAt, now),
+              and(
+                lte(registryEntries.expiresAt, new Date(now.getTime() + 30 * day)),
+                lt(registryEntries.reminderStage, 1),
+              ),
+              and(
+                lte(registryEntries.expiresAt, new Date(now.getTime() + 7 * day)),
+                lt(registryEntries.reminderStage, 2),
+              ),
+            ),
+          ),
+        )
+        .orderBy(registryEntries.expiresAt)
+        .limit(1)
+        .for('update', { skipLocked: true });
+      if (!entry) return null;
+      if (entry.expiresAt! <= now) {
+        await tx
+          .update(registryEntries)
+          .set({ status: 'expired', updatedAt: now })
+          .where(eq(registryEntries.id, entry.id));
+        return { entry, kind: 'expired' as const };
+      }
+      const stage = entry.expiresAt!.getTime() - now.getTime() <= 7 * day ? 2 : 1;
+      await tx.update(registryEntries).set({ reminderStage: stage }).where(eq(registryEntries.id, entry.id));
+      return { entry, kind: 'reminder' as const };
+    });
+    if (!outcome) break;
+    const { entry } = outcome;
+    const person = await holderContact(app.db, entry);
+    const when = pdfDate(entry.expiresAt!);
+    if (outcome.kind === 'expired') done.expired++;
+    else done.reminded++;
+    if (!person) continue;
+    await app.mailer
+      .send(
+        actionEmail({
+          to: person.email,
+          subject:
+            outcome.kind === 'expired' ? `${entry.title} has expired` : `${entry.title} expires on ${when}`,
+          greeting: `Hello ${person.name},`,
+          lines:
+            outcome.kind === 'expired'
+              ? [
+                  `The licence ${entry.title} (${entry.number}) expired on ${when} and now shows as expired in the public registry.`,
+                  `You can still renew it for ${RENEWAL_GRACE_DAYS} days after the expiry date.`,
+                ]
+              : [
+                  `The licence ${entry.title} (${entry.number}) expires on ${when}.`,
+                  'Ask for a renewal now: a moderator checks it and the licence runs for another term.',
+                ],
+          action: { label: 'Renew the licence', url: `${web}/#/applications?renew=${entry.id}` },
+        }),
+      )
+      .catch((err) => app.log.error({ err }, 'licence expiry email failed'));
+  }
+  return done;
 }
 
 export async function registryRoutes(fastify: FastifyInstance) {
@@ -207,6 +324,66 @@ export async function registryRoutes(fastify: FastifyInstance) {
     },
   );
 
+  app.scheduler.add({ name: 'licence-expiry', everySeconds: 3600, run: () => runLicenceExpiry(app) });
+
+  app.get(
+    '/me/licences',
+    {
+      preHandler: app.authenticate,
+      schema: {
+        tags: ['me'],
+        description:
+          'Licences and virtual countries you hold, personally or through companies you own or direct, ' +
+          'with their expiry dates and any renewal waiting for moderation.',
+        response: { 200: z.array(myLicenceSchema) },
+      },
+    },
+    async (req) => {
+      const me = currentUser(req);
+      const orgIds = (
+        await app.db
+          .select({ id: organizationMembers.organizationId })
+          .from(organizationMembers)
+          .where(
+            and(
+              eq(organizationMembers.userId, me.id),
+              inArray(organizationMembers.role, ['owner', 'director']),
+            ),
+          )
+      ).map((r) => r.id);
+      const rows = await registryQuery(app.db)
+        .where(
+          and(
+            ne(registryEntries.kind, 'organization'),
+            or(
+              eq(registryEntries.holderUserId, me.id),
+              orgIds.length ? inArray(registryEntries.holderOrganizationId, orgIds) : sql`false`,
+            ),
+          ),
+        )
+        .orderBy(registryEntries.expiresAt)
+        .limit(200);
+      const renewals = rows.length
+        ? await app.db
+            .select({
+              id: applications.id,
+              entryId: sql<string>`${applications.payload} ->> 'registryEntryId'`,
+            })
+            .from(applications)
+            .where(
+              and(
+                eq(applications.type, 'renewal'),
+                inArray(applications.status, ['pending', 'changes_requested']),
+              ),
+            )
+        : [];
+      return rows.map((row) => ({
+        ...toRegistryDto(row),
+        renewalApplicationId: renewals.find((r) => r.entryId === row.entry.id)?.id ?? null,
+      }));
+    },
+  );
+
   app.get(
     '/registry/:idOrNumber/certificate.pdf',
     {
@@ -243,6 +420,7 @@ export async function registryRoutes(fastify: FastifyInstance) {
         website: entry.website,
         status: entry.status,
         issuedAt: new Date(entry.issuedAt),
+        expiresAt: entry.expiresAt ? new Date(entry.expiresAt) : null,
         verifyUrl: `${app.config.PUBLIC_WEB_URL.replace(/\/+$/, '')}/#/verify/${entry.number}`,
       });
       return reply

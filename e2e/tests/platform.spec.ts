@@ -507,6 +507,12 @@ test.describe.serial('OVL For Business end to end', () => {
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
     await expect(maria.getByRole('heading', { name: 'Monthly statements' })).toBeVisible();
 
+    // Licences held through a company are listed with their validity.
+    await maria.goto('./#/applications');
+    const licence = maria.locator('tr', { hasText: 'Northwind Studio — business license' });
+    await expect(licence).toContainText('No expiry');
+    await expect(licence.getByRole('link', { name: 'Certificate' })).toBeVisible();
+
     // The registry links each entry to its certificate and verification page.
     await maria.goto('./#/registry');
     await maria.getByText('Northwind Studio').first().click();

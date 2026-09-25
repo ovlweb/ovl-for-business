@@ -85,6 +85,12 @@ export function VerifyPage() {
               </dd>
               <dt>Issued</dt>
               <dd>{formatDate(e.issuedAt, false)}</dd>
+              {e.expiresAt && (
+                <>
+                  <dt>Valid until</dt>
+                  <dd>{formatDate(e.expiresAt, false)}</dd>
+                </>
+              )}
               <dt>Last change</dt>
               <dd>{formatDate(e.updatedAt)}</dd>
             </dl>

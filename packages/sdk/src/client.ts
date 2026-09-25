@@ -35,6 +35,7 @@ import type {
   LoginInput,
   Me,
   Message,
+  MyLicence,
   Organization,
   Passkey,
   PaymentApproval,
@@ -302,6 +303,8 @@ export class OvlClient {
     get: () => this.get<Me>('/me'),
     update: (input: UpdateMeInput) => this.patch<Me>('/me', input),
     updatePreferences: (input: Preferences) => this.patch<Me>('/me/preferences', input),
+    /** Licences you hold (or your companies do), with expiry dates and waiting renewals. */
+    licences: () => this.get<MyLicence[]>('/me/licences'),
     changePassword: (currentPassword: string, newPassword: string) =>
       this.post<void>('/me/password', { currentPassword, newPassword }),
     /** Change the email address; the new one must be confirmed through the emailed link. */
@@ -560,8 +563,11 @@ export class OvlClient {
       this.post<CashRequest>(`/admin/cash-requests/${id}/complete`, input),
     declineCashRequest: (id: string, reason: string) =>
       this.post<CashRequest>(`/admin/cash-requests/${id}/decline`, { reason }),
-    setRegistryStatus: (id: string, status: 'active' | 'suspended' | 'revoked', reason?: string) =>
+    setRegistryStatus: (id: string, status: RegistryEntry['status'], reason?: string) =>
       this.patch<RegistryEntry>(`/admin/registry/${id}`, { status, reason }),
+    /** Move a licence's expiry date (ISO date-time), or null for no expiry. */
+    setRegistryExpiry: (id: string, expiresAt: string | null) =>
+      this.patch<RegistryEntry>(`/admin/registry/${id}`, { expiresAt }),
     updateListing: (
       id: string,
       input: {

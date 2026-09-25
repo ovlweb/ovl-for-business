@@ -62,6 +62,12 @@ function EntryModal({ entry, onClose }: { entry: RegistryEntry; onClose: () => v
           )}
           <dt>Issued</dt>
           <dd>{formatDate(entry.issuedAt)}</dd>
+          {entry.expiresAt && (
+            <>
+              <dt>Valid until</dt>
+              <dd>{formatDate(entry.expiresAt, false)}</dd>
+            </>
+          )}
           <dt>Updated</dt>
           <dd>{formatDate(entry.updatedAt)}</dd>
         </dl>

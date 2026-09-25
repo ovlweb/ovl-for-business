@@ -192,6 +192,18 @@ money in and out, number of operations) for one-click monthly PDFs. People who t
 `preferences.statementEmails` (and have a confirmed email) get an email early each month with a
 7-day PDF link for every balance they can see that moved the month before.
 
+## Licence expiry and renewals
+
+Licences and virtual countries run for `LICENSE_TERM_MONTHS` (12 by default; `0` turns expiry off)
+and carry `expiresAt` in the registry; company registrations and business licences never expire.
+The holder (or a company owner or director) gets emails 30 and 7 days before, and the entry turns
+`expired` on the day. `GET /me/licences` lists what you hold with `renewalApplicationId` for a
+renewal in progress. Renewing is an application:
+`POST /applications {type: 'renewal', payload: {registryEntryId, note?}}`, open from 60 days before
+expiry until 90 days after it. One moderator approves it; the new term starts at the old expiry
+date (or today, if it had already expired). Staff can also move an expiry date with
+`PATCH /admin/registry/:id {expiresAt}`.
+
 ## Registry certificates
 
 `GET /registry/:idOrNumber/certificate.pdf` (public, no token) renders a certificate for a company

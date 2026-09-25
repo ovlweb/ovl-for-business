@@ -415,6 +415,8 @@ const STATUS_TONES: Record<string, string> = {
   changes_requested: 'warn',
   awaiting_approval: 'warn',
   waiting_for_approval: 'warn',
+  renewal_pending: 'info',
+  expired: 'bad',
   partly_paid: 'info',
   paused: 'warn',
   ended: '',

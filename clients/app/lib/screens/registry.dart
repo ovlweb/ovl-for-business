@@ -179,7 +179,13 @@ class _RegistryScreenState extends State<RegistryScreen> {
               style: sheet.text.bodyMedium,
             ),
             if (e.holder.verified) ...[const SizedBox(height: 6), const VerifiedBadge()],
-            Text('Issued ${date(e.issuedAt)}', style: sheet.text.bodyMedium),
+            Text(
+              [
+                'Issued ${date(e.issuedAt)}',
+                if (e.expiresAt != null) '${e.status == 'expired' ? 'expired' : 'valid until'} ${date(e.expiresAt!)}',
+              ].join(' · '),
+              style: sheet.text.bodyMedium,
+            ),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,

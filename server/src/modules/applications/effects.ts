@@ -3,16 +3,24 @@ import {
   licenseApplicationSchema,
   newsChannelApplicationSchema,
   parseAmount,
+  renewalApplicationSchema,
   type Role,
 } from '@ovl/shared';
 import { eq, like } from 'drizzle-orm';
 import type { Config } from '../../config';
 import type { Db } from '../../db/client';
-import { applications, chats, organizationMembers, organizations, users } from '../../db/schema';
+import {
+  applications,
+  chats,
+  organizationMembers,
+  organizations,
+  registryEntries,
+  users,
+} from '../../db/schema';
 import { conflict } from '../../lib/errors';
 import { slugify } from '../../lib/slug';
 import { createChannel } from '../chats/service';
-import { issueRegistryEntry } from '../registry';
+import { issueRegistryEntry, licenceExpiry } from '../registry';
 import { changeRole } from '../roles';
 import { createListing } from '../stock/service';
 import { getOrCreateWallet } from '../wallets/service';
@@ -118,6 +126,7 @@ export async function applyApprovedApplication(
     case 'license': {
       const p = licenseApplicationSchema.parse(application.payload);
       const entry = await issueRegistryEntry(db, {
+        expiresAt: licenceExpiry(config),
         kind: p.licenseType === 'virtual_country' ? 'virtual_country' : 'license',
         licenseType: p.licenseType,
         title: p.title,
@@ -145,6 +154,32 @@ export async function applyApprovedApplication(
       return {
         result: { role: application.type },
         roleChanges: [{ userId: user.id, role: application.type }],
+      };
+    }
+
+    case 'renewal': {
+      const p = renewalApplicationSchema.parse(application.payload);
+      const [entry] = await db
+        .select()
+        .from(registryEntries)
+        .where(eq(registryEntries.id, p.registryEntryId))
+        .for('update');
+      if (!entry || (entry.status !== 'active' && entry.status !== 'expired'))
+        throw conflict(`This licence is ${entry?.status ?? 'gone'}; reject the renewal instead`);
+      // A new term from the old expiry date (renewed early) or from today (renewed late).
+      const base = entry.expiresAt && entry.expiresAt > new Date() ? entry.expiresAt : new Date();
+      const expiresAt = licenceExpiry(config, base);
+      await db
+        .update(registryEntries)
+        .set({ status: 'active', expiresAt, reminderStage: 0, updatedAt: new Date() })
+        .where(eq(registryEntries.id, entry.id));
+      return {
+        result: {
+          registryNumber: entry.number,
+          registryEntryId: entry.id,
+          expiresAt: expiresAt?.toISOString() ?? null,
+        },
+        roleChanges: [],
       };
     }
 

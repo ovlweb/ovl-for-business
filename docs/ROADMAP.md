@@ -56,7 +56,8 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
 
 - ✅ Certificates for every registry entry (PDF with a QR code that opens a public verification
   page; revoked entries print as not valid) (0.2).
-- Expiry dates and renewals.
+- ✅ Expiry dates and renewals: licences run for a term (`LICENSE_TERM_MONTHS`), holders get
+  reminders 30 and 7 days before, and renew through a one-step moderation (0.2).
 - ✅ "Request changes" step in every workflow, and documents attached to applications, stored on
   disk or in S3 / MinIO (0.2).
 - Virtual-country currencies issued under a virtual-country license.

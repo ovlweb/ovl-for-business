@@ -351,6 +351,10 @@ class OvlApi {
   Future<List<Application>> myApplications() => _getList('/applications/mine', Application.fromJson);
   Future<List<Application>> reviewQueue() => _getList('/applications/queue', Application.fromJson);
   Future<Application> application(String id) async => Application.fromJson(await _get('/applications/$id'));
+
+  /// Licences you hold (or your companies do), with expiry dates and waiting renewals.
+  Future<List<RegistryEntry>> myLicences() => _getList('/me/licences', RegistryEntry.fromJson);
+
   Future<Application> submitApplication(String type, Json payload) async =>
       Application.fromJson(await _post('/applications', {'type': type, 'payload': payload}) as Json);
   Future<Application> review(String id, {required String decision, String? comment, List<String>? checklist}) async =>

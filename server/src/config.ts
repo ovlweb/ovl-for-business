@@ -93,6 +93,9 @@ const envSchema = z.object({
   S3_FORCE_PATH_STYLE: flag(true),
   MAX_UPLOAD_MB: z.coerce.number().min(1).max(100).default(10),
 
+  /** Licences and virtual countries run this many months, then need a renewal. 0: they never expire. */
+  LICENSE_TERM_MONTHS: z.coerce.number().int().min(0).max(120).default(12),
+
   /** Background jobs (recurring invoices…). Every instance may run them; they share the work. */
   SCHEDULER_ENABLED: flag(true),
 

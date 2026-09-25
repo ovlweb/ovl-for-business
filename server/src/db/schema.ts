@@ -723,10 +723,15 @@ export const registryEntries = pgTable(
     applicationId: uuid('application_id'),
     data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
     issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Licences run for a term (LICENSE_TERM_MONTHS); null never expires. */
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    /** Expiry reminders sent for the current term: 0 none, 1 the 30-day one, 2 the 7-day one. */
+    reminderStage: integer('reminder_stage').notNull().default(0),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('registry_kind_idx').on(t.kind, t.status),
+    index('registry_expiry_idx').on(t.status, t.expiresAt),
     index('registry_title_idx').on(sql`lower(${t.title})`),
   ],
 );

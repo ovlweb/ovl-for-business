@@ -12,7 +12,14 @@ import type { Role } from './roles';
  * capped by the number of active council members so a small council can still
  * work. The owner may always act on any stage as an override (single vote).
  */
-export const APPLICATION_TYPES = ['company', 'license', 'moderator', 'council', 'news_channel'] as const;
+export const APPLICATION_TYPES = [
+  'company',
+  'license',
+  'moderator',
+  'council',
+  'news_channel',
+  'renewal',
+] as const;
 export type ApplicationType = (typeof APPLICATION_TYPES)[number];
 
 export const APPLICATION_STATUSES = [
@@ -159,6 +166,23 @@ export const WORKFLOWS: Record<ApplicationType, Workflow> = {
       },
     ],
   },
+  renewal: {
+    label: 'Licence renewal',
+    description:
+      'Extends a licence or virtual country for another term. A moderator checks it is still in use.',
+    stages: [
+      {
+        key: 'moderation',
+        label: 'Moderation',
+        description: 'A moderator confirms the holder still uses the licence as registered.',
+        approvers: [moderationGroup],
+        checklist: [
+          { key: 'holder', label: 'The holder is unchanged and in good standing' },
+          { key: 'activity', label: 'The licence is still used as described in the registry' },
+        ],
+      },
+    ],
+  },
 };
 
 export const LICENSE_TYPES = [
@@ -261,12 +285,35 @@ export const newsChannelApplicationSchema = z.object({
   description: text(10, 2000),
 });
 
+export const renewalApplicationSchema = z.object({
+  registryEntryId: z.uuid(),
+  /** Copied for reviewers; the server checks them against the registry. */
+  registryNumber: text(1, 32).optional(),
+  title: text(1, 200).optional(),
+  note: text(0, 2000).optional(),
+});
+
+/** Renewals open this many days before a licence expires and stay open this long after. */
+export const RENEWAL_OPENS_DAYS = 60;
+export const RENEWAL_GRACE_DAYS = 90;
+
+/** Whether a licence (with its status and expiry) can be renewed now. */
+export function canRenew(entry: { status: string; expiresAt: string | null }, now = new Date()): boolean {
+  if (!entry.expiresAt || (entry.status !== 'active' && entry.status !== 'expired')) return false;
+  const expires = new Date(entry.expiresAt).getTime();
+  const day = 86_400_000;
+  return (
+    now.getTime() >= expires - RENEWAL_OPENS_DAYS * day && now.getTime() <= expires + RENEWAL_GRACE_DAYS * day
+  );
+}
+
 export const applicationPayloadSchemas = {
   company: companyApplicationSchema,
   license: licenseApplicationSchema,
   moderator: staffApplicationSchema,
   council: staffApplicationSchema,
   news_channel: newsChannelApplicationSchema,
+  renewal: renewalApplicationSchema,
 } as const satisfies Record<ApplicationType, z.ZodType>;
 
 export const createApplicationSchema = z.discriminatedUnion('type', [
@@ -275,6 +322,7 @@ export const createApplicationSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('moderator'), payload: staffApplicationSchema }),
   z.object({ type: z.literal('council'), payload: staffApplicationSchema }),
   z.object({ type: z.literal('news_channel'), payload: newsChannelApplicationSchema }),
+  z.object({ type: z.literal('renewal'), payload: renewalApplicationSchema }),
 ]);
 export type CreateApplicationInput = z.input<typeof createApplicationSchema>;
 
@@ -282,6 +330,7 @@ export type CompanyApplication = z.infer<typeof companyApplicationSchema>;
 export type LicenseApplication = z.infer<typeof licenseApplicationSchema>;
 export type StaffApplication = z.infer<typeof staffApplicationSchema>;
 export type NewsChannelApplication = z.infer<typeof newsChannelApplicationSchema>;
+export type RenewalApplication = z.infer<typeof renewalApplicationSchema>;
 
 /** Resolve the numeric quorum of an approver group. */
 export function resolveQuorum(

@@ -851,7 +851,7 @@ export const resubmitApplicationSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export const REGISTRY_KINDS = ['organization', 'license', 'virtual_country'] as const;
-export const REGISTRY_STATUSES = ['active', 'suspended', 'revoked'] as const;
+export const REGISTRY_STATUSES = ['active', 'suspended', 'revoked', 'expired'] as const;
 
 export const registryEntrySchema = z.object({
   id: uuid,
@@ -870,9 +870,16 @@ export const registryEntrySchema = z.object({
     verified: z.boolean().describe('A verified business (organizations only)'),
   }),
   issuedAt: isoDate,
+  expiresAt: isoDate.nullable().describe('Licences run for a term and are renewed; companies do not expire'),
   updatedAt: isoDate,
 });
 export type RegistryEntry = z.infer<typeof registryEntrySchema>;
+
+/** A licence you hold (yourself or through a company you own or direct). */
+export const myLicenceSchema = registryEntrySchema.extend({
+  renewalApplicationId: uuid.nullable().describe('A renewal waiting for moderation'),
+});
+export type MyLicence = z.infer<typeof myLicenceSchema>;
 
 export const registrySearchQuery = paginationQuery.extend({
   q: z.string().trim().max(200).optional(),

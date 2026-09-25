@@ -1,4 +1,7 @@
 import {
+  canRenew,
+  RENEWAL_GRACE_DAYS,
+  RENEWAL_OPENS_DAYS,
   APPLICATION_STATUSES,
   APPLICATION_TYPES,
   applicationSchema,
@@ -12,11 +15,18 @@ import {
   attachmentIdsSchema,
   resubmitApplicationSchema,
 } from '@ovl/shared';
-import { and, count, desc, eq, inArray, ne } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { applicationReviews, applications, chats, organizationMembers, stockListings } from '../../db/schema';
+import {
+  applicationReviews,
+  applications,
+  chats,
+  organizationMembers,
+  registryEntries,
+  stockListings,
+} from '../../db/schema';
 import { audit } from '../../lib/audit';
 import { badRequest, conflict, forbidden, HttpError, notFound } from '../../lib/errors';
 import { currentUser, twoFactorSetupRequired, type AuthUser } from '../../plugins/auth';
@@ -95,6 +105,48 @@ export async function applicationRoutes(fastify: FastifyInstance) {
       if (member?.role !== 'owner' && member?.role !== 'director') {
         throw forbidden('Only the owner or a director can request a license for a company');
       }
+    }
+    if (input.type === 'renewal') {
+      const [entry] = await app.db
+        .select()
+        .from(registryEntries)
+        .where(eq(registryEntries.id, input.payload.registryEntryId));
+      if (!entry || entry.kind === 'organization') throw notFound('Licence');
+      if (entry.holderUserId !== me.id) {
+        const [member] = entry.holderOrganizationId
+          ? await app.db
+              .select({ role: organizationMembers.role })
+              .from(organizationMembers)
+              .where(
+                and(
+                  eq(organizationMembers.organizationId, entry.holderOrganizationId),
+                  eq(organizationMembers.userId, me.id),
+                ),
+              )
+          : [];
+        if (member?.role !== 'owner' && member?.role !== 'director')
+          throw forbidden('Only the holder (or the company owner or a director) can renew a licence');
+      }
+      if (!canRenew({ status: entry.status, expiresAt: entry.expiresAt?.toISOString() ?? null }))
+        throw badRequest(
+          entry.expiresAt
+            ? `Renewals open ${RENEWAL_OPENS_DAYS} days before expiry and close ${RENEWAL_GRACE_DAYS} days after it`
+            : 'This licence does not expire',
+        );
+      const [pending] = await app.db
+        .select({ id: applications.id })
+        .from(applications)
+        .where(
+          and(
+            eq(applications.type, 'renewal'),
+            inArray(applications.status, ['pending', 'changes_requested']),
+            sql`${applications.payload} ->> 'registryEntryId' = ${entry.id}`,
+          ),
+        );
+      if (pending) throw conflict('A renewal of this licence is already waiting for moderation');
+      // Reviewers see what is being renewed.
+      input.payload.registryNumber = entry.number;
+      input.payload.title = entry.title;
     }
     if (input.type === 'news_channel') {
       const [taken] = await app.db

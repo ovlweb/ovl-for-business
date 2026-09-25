@@ -546,15 +546,29 @@ export async function adminRoutes(fastify: FastifyInstance) {
       schema: {
         tags,
         params: z.object({ id: z.uuid() }),
-        body: z.object({ status: z.enum(REGISTRY_STATUSES), reason: z.string().trim().max(1000).optional() }),
+        description: 'Change the status of an entry, or move its expiry date (null: it never expires).',
+        body: z
+          .object({
+            status: z.enum(REGISTRY_STATUSES).optional(),
+            expiresAt: z.iso.datetime({ offset: true }).nullable().optional(),
+            reason: z.string().trim().max(1000).optional(),
+          })
+          .refine((b) => b.status !== undefined || b.expiresAt !== undefined, 'Nothing to change'),
         response: { 200: registryEntrySchema },
       },
     },
     async (req) => {
       const me = currentUser(req);
+      const { status, expiresAt } = req.body;
       const [entry] = await app.db
         .update(registryEntries)
-        .set({ status: req.body.status, updatedAt: new Date() })
+        .set({
+          ...(status ? { status } : {}),
+          ...(expiresAt !== undefined
+            ? { expiresAt: expiresAt ? new Date(expiresAt) : null, reminderStage: 0 }
+            : {}),
+          updatedAt: new Date(),
+        })
         .where(eq(registryEntries.id, req.params.id))
         .returning();
       if (!entry) throw notFound('Registry entry');

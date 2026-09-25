@@ -357,6 +357,7 @@ export interface CertificateData {
   website: string | null;
   status: string;
   issuedAt: Date;
+  expiresAt: Date | null;
   verifyUrl: string;
 }
 
@@ -432,6 +433,7 @@ export async function certificatePdf(data: CertificateData): Promise<Buffer> {
     ['Registry number', data.number],
     ['Type', data.kind],
     ['Issued', pdfDate(data.issuedAt)],
+    ...(data.expiresAt ? [['Valid until', pdfDate(data.expiresAt)] as [string, string]] : []),
     ['Status', humanize(data.status)],
   ];
   const factWidth = (width - qrSize - 30) / facts.length;
