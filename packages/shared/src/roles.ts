@@ -40,6 +40,10 @@ export const PERMISSIONS = {
   'stories.publish': ['council', 'admin', 'owner'],
   /** Create news channels directly (everyone else applies through moderation). */
   'channels.create': ['moderator', 'admin', 'owner'],
+  /** Set exchange rates and the exchange fee. */
+  'exchange.manage': ['manager', 'admin', 'owner'],
+  /** Check people's identity documents (KYC) and grant or revoke "verified". */
+  'identity.review': ['moderator', 'admin', 'owner'],
   /** See every application, not only the ones waiting for you. */
   'applications.view_all': ['moderator', 'council', 'admin', 'owner'],
   /** Suspend / revoke registry entries. */
@@ -52,6 +56,10 @@ export const PERMISSIONS = {
   'audit.view': ['admin', 'owner'],
   /** Revoke any developer API key. */
   'apikeys.manage': ['admin', 'owner'],
+  /** Council voting rules and term length. */
+  'governance.manage': ['owner'],
+  /** Publish transparency reports. */
+  'transparency.publish': ['admin', 'owner'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

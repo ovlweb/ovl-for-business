@@ -2,7 +2,7 @@ import type { RealtimeClientMessage } from '@ovl/shared';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { chatMembers, users } from '../db/schema';
-import { chatAudience, loadChat } from '../modules/chats/service';
+import { loadChat, sendToChat } from '../modules/chats/service';
 
 /**
  * WebSocket endpoint: GET /api/v1/realtime?token=<accessToken>
@@ -21,7 +21,7 @@ export async function realtimeRoutes(app: FastifyInstance) {
       return;
     }
 
-    app.hub.add(user.id, user.role, socket);
+    app.hub.add(user.id, user.role, socket, user.sessionId);
     await app.db.update(users).set({ lastSeenAt: new Date() }).where(eq(users.id, user.id));
     socket.send(JSON.stringify({ type: 'ready', userId: user.id }));
 
@@ -50,8 +50,7 @@ export async function realtimeRoutes(app: FastifyInstance) {
             .where(and(eq(chatMembers.chatId, message.chatId), eq(chatMembers.userId, user.id)));
           if (!member) return;
           const chat = await loadChat(app.db, message.chatId);
-          const audience = (await chatAudience(app, chat)).filter((id) => id !== user.id);
-          app.hub.sendToUsers(audience, { type: 'typing', chatId: chat.id, userId: user.id });
+          await sendToChat(app, chat, { type: 'typing', chatId: chat.id, userId: user.id }, [user.id]);
         } catch (error) {
           req.log.debug({ err: error }, 'typing event failed');
         }
@@ -60,7 +59,7 @@ export async function realtimeRoutes(app: FastifyInstance) {
 
     socket.on('close', () => {
       clearInterval(heartbeat);
-      app.hub.remove(user.id, socket);
+      app.hub.remove(user.id, socket, user.sessionId);
     });
   });
 }

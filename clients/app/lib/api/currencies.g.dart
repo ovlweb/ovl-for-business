@@ -1,8 +1,9 @@
 // GENERATED FILE — do not edit. Run `pnpm gen:dart` after changing
 // packages/shared/src/currencies.ts.
 
-/// Every supported currency: ISO code → (name, minor-unit decimals).
-const currencies = <String, (String, int)>{
+/// Every supported currency: ISO code → (name, minor-unit decimals). Virtual-country currencies
+/// are added at start-up from GET /currencies (see Session).
+final currencies = <String, (String, int)>{
   'AED': ('United Arab Emirates Dirham', 2),
   'AFN': ('Afghan Afghani', 2),
   'ALL': ('Albanian Lek', 2),

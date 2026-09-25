@@ -7,10 +7,13 @@ import {
   Modal,
   PageHeader,
   PayloadView,
+  AttachmentList,
+  DecisionBadge,
   Spinner,
   StatusBadge,
   UserName,
   WorkflowStepper,
+  t,
 } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -26,7 +29,7 @@ function ApplicationModal({ application, onClose }: { application: Application; 
   const stage =
     application.status === 'pending' ? WORKFLOWS[application.type].stages[application.stageIndex] : undefined;
   const review = useMutation({
-    mutationFn: (decision: 'approve' | 'reject') =>
+    mutationFn: (decision: 'approve' | 'reject' | 'request_changes') =>
       api.applications.review(application.id, {
         decision,
         comment: comment || undefined,
@@ -38,7 +41,11 @@ function ApplicationModal({ application, onClose }: { application: Application; 
       onClose();
     },
   });
-  const voted = stage && application.reviews.some((r) => r.stageKey === stage.key && r.reviewer.id === me.id);
+  const voted =
+    stage &&
+    application.reviews.some(
+      (r) => r.stageKey === stage.key && r.round === application.round && r.reviewer.id === me.id,
+    );
   const canAct =
     stage &&
     !voted &&
@@ -47,7 +54,7 @@ function ApplicationModal({ application, onClose }: { application: Application; 
   const allChecked = !stage?.checklist || stage.checklist.every((c) => checked.includes(c.key));
 
   return (
-    <Modal title={WORKFLOWS[application.type].label} onClose={onClose} wide>
+    <Modal title={t(WORKFLOWS[application.type].label)} onClose={onClose} wide>
       <div className="stack">
         <div className="spread">
           <UserName user={application.applicant} showHandle />
@@ -55,21 +62,27 @@ function ApplicationModal({ application, onClose }: { application: Application; 
         </div>
         <WorkflowStepper application={application} />
         <PayloadView payload={application.payload} />
+        {application.attachments.length > 0 && (
+          <div className="stack-sm">
+            <div className="label">{t('Documents')}</div>
+            <AttachmentList files={application.attachments} href={api.files.url} />
+          </div>
+        )}
         {application.result && (
           <div className="alert success small">
-            Result: <PayloadView payload={application.result} />
+            {t('Result:')} <PayloadView payload={application.result} />
           </div>
         )}
         {application.rejectionReason && (
-          <div className="alert error small">Rejected: {application.rejectionReason}</div>
+          <div className="alert error small">{t('Rejected: {0}', application.rejectionReason)}</div>
         )}
         {application.reviews.length > 0 && (
           <div className="stack-sm">
-            <h3>Decisions</h3>
+            <h3>{t('Decisions')}</h3>
             {application.reviews.map((r) => (
               <div key={r.id} className="small">
-                <span className={`badge ${r.decision === 'approve' ? 'ok' : 'bad'}`}>{r.decision}</span>{' '}
-                {r.reviewer.displayName} ({r.reviewerRole}) · {r.stageKey} · {formatDate(r.createdAt)}
+                <DecisionBadge decision={r.decision} /> {r.reviewer.displayName} ({r.reviewerRole}) ·{' '}
+                {r.stageKey} · {formatDate(r.createdAt)}
                 {r.comment && <div className="muted">“{r.comment}”</div>}
               </div>
             ))}
@@ -77,9 +90,9 @@ function ApplicationModal({ application, onClose }: { application: Application; 
         )}
         {stage && (
           <div className="card flat stack">
-            <h3>Stage: {stage.label}</h3>
-            <p className="small muted">{stage.description}</p>
-            {voted && <div className="alert info">You already voted at this stage.</div>}
+            <h3>{t('Stage: {0}', stage.label)}</h3>
+            <p className="small muted">{t(stage.description)}</p>
+            {voted && <div className="alert info">{t('You already voted at this stage.')}</div>}
             {canAct && (
               <>
                 {stage.checklist?.map((item) => (
@@ -93,10 +106,10 @@ function ApplicationModal({ application, onClose }: { application: Application; 
                         )
                       }
                     />
-                    {item.label}
+                    {t(item.label)}
                   </label>
                 ))}
-                <Field label="Comment" hint="Required when rejecting.">
+                <Field label={t('Comment')} hint={t('Required when rejecting or asking for changes.')}>
                   <textarea
                     className="textarea"
                     value={comment}
@@ -110,20 +123,27 @@ function ApplicationModal({ application, onClose }: { application: Application; 
                     disabled={!allChecked || review.isPending}
                     onClick={() => review.mutate('approve')}
                   >
-                    Approve
+                    {t('Approve')}
                   </button>
                   <button
                     className="btn danger"
                     disabled={!comment.trim() || review.isPending}
                     onClick={() => review.mutate('reject')}
                   >
-                    Reject
+                    {t('Reject')}
+                  </button>
+                  <button
+                    className="btn"
+                    disabled={!comment.trim() || review.isPending}
+                    onClick={() => review.mutate('request_changes')}
+                  >
+                    {t('Request changes')}
                   </button>
                 </div>
               </>
             )}
             {!canAct && !voted && (
-              <div className="alert warning small">Your role does not act at this stage.</div>
+              <div className="alert warning small">{t('Your role does not act at this stage.')}</div>
             )}
           </div>
         )}
@@ -148,8 +168,8 @@ export function ApplicationsPage() {
     <div className="page">
       <PageHeader
         icon="review"
-        title="Applications"
-        subtitle="Companies, licenses, staff and channel applications with their approval stages."
+        title={t('Applications')}
+        subtitle={t('Companies, licenses, staff and channel applications with their approval stages.')}
       />
       <div className="filters">
         <select
@@ -160,7 +180,7 @@ export function ApplicationsPage() {
             setOffset(0);
           }}
         >
-          <option value="">Any status</option>
+          <option value="">{t('Any status')}</option>
           {APPLICATION_STATUSES.map((s) => (
             <option key={s} value={s}>
               {humanize(s)}
@@ -175,10 +195,10 @@ export function ApplicationsPage() {
             setOffset(0);
           }}
         >
-          <option value="">Any type</option>
-          {APPLICATION_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {WORKFLOWS[t].label}
+          <option value="">{t('Any type')}</option>
+          {APPLICATION_TYPES.map((kind) => (
+            <option key={kind} value={kind}>
+              {t(WORKFLOWS[kind].label)}
             </option>
           ))}
         </select>
@@ -189,11 +209,11 @@ export function ApplicationsPage() {
         <table className="table">
           <thead>
             <tr>
-              <th>Application</th>
-              <th>Applicant</th>
-              <th>Stage</th>
-              <th>Submitted</th>
-              <th>Status</th>
+              <th>{t('Application')}</th>
+              <th>{t('Applicant')}</th>
+              <th>{t('Stage')}</th>
+              <th>{t('Submitted')}</th>
+              <th>{t('Status')}</th>
             </tr>
           </thead>
           <tbody>
@@ -201,7 +221,7 @@ export function ApplicationsPage() {
               <tr key={a.id} className="clickable" onClick={() => setOpen(a)}>
                 <td>
                   <b>{String(a.payload.name ?? a.payload.title ?? WORKFLOWS[a.type].label)}</b>
-                  <div className="small muted">{WORKFLOWS[a.type].label}</div>
+                  <div className="small muted">{t(WORKFLOWS[a.type].label)}</div>
                 </td>
                 <td>@{a.applicant.username}</td>
                 <td className="small">

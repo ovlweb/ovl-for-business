@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:http/http.dart' as http;
 
+import '../i18n/i18n.dart';
 import 'models.dart';
 
 class Tokens {
@@ -37,6 +39,10 @@ class ApiException implements Exception {
 
 /// HTTP client for /api/v1 with transparent access-token refresh
 /// (concurrent requests share one refresh, like the TypeScript SDK).
+/// Identifies the native app in the account's device list ("OVL Business app on Android").
+final String userAgent =
+    'OVLBusiness/0.1.0 (${Platform.operatingSystem} ${Platform.operatingSystemVersion.split(' ').first})';
+
 class OvlApi {
   OvlApi({required this.baseUrl, required this.tokens, this.onSignedOut});
 
@@ -65,6 +71,8 @@ class OvlApi {
     final current = tokens.tokens;
     final headers = <String, String>{
       'accept': 'application/json',
+      'user-agent': userAgent,
+      'accept-language': currentLocale,
       if (current != null) 'authorization': 'Bearer ${current.accessToken}',
       if (body != null) 'content-type': 'application/json',
     };
@@ -75,16 +83,16 @@ class OvlApi {
     try {
       res = await http.Response.fromStream(await _http.send(req).timeout(const Duration(seconds: 20)));
     } on TimeoutException {
-      throw ApiException(0, 'timeout', 'The server took too long to answer.');
+      throw ApiException(0, 'timeout', tr('The server took too long to answer.'));
     } catch (_) {
-      throw ApiException(0, 'network', 'Cannot reach the server. Check your connection or the server address.');
+      throw ApiException(0, 'network', tr('Cannot reach the server. Check your connection or the server address.'));
     }
 
     if (res.statusCode == 401 && retry && current != null && !path.startsWith('/auth/')) {
       if (await refresh()) return request(method, path, body: body, query: query, retry: false);
     }
     if (res.statusCode == 204 || res.body.isEmpty) {
-      if (res.statusCode >= 400) throw ApiException(res.statusCode, 'error', res.reasonPhrase ?? 'Request failed');
+      if (res.statusCode >= 400) throw ApiException(res.statusCode, 'error', res.reasonPhrase ?? tr('Request failed'));
       return null;
     }
     final data = jsonDecode(utf8.decode(res.bodyBytes));
@@ -93,7 +101,7 @@ class OvlApi {
       throw ApiException(
         res.statusCode,
         (j['error'] ?? 'error') as String,
-        (j['message'] ?? 'Request failed') as String,
+        (j['message'] ?? tr('Request failed')) as String,
       );
     }
     return data;
@@ -131,8 +139,9 @@ class OvlApi {
 
   // --- auth & profile ---------------------------------------------------------------------
 
-  Future<AuthResult> login(String login, String password) async =>
-      AuthResult.fromJson(await _post('/auth/login', {'login': login, 'password': password}) as Json);
+  /// Throws [ApiException] with code `two_factor_required` when the account needs a [code].
+  Future<AuthResult> login(String login, String password, {String? code}) async =>
+      AuthResult.fromJson(await _post('/auth/login', {'login': login, 'password': password, 'code': ?code}) as Json);
 
   Future<AuthResult> register({
     required String username,
@@ -166,8 +175,28 @@ class OvlApi {
         }) as Json,
       );
   Future<Me> updatePreferences(Json patch) async => Me.fromJson(await _patch('/me/preferences', patch) as Json);
+
+  /// Emails a reset link; always succeeds so it never reveals whether an address is registered.
+  Future<void> forgotPassword(String email) => _post('/auth/password/forgot', {'email': email});
+  Future<void> resendVerification() => _post('/me/email/verification');
+  Future<Me> changeEmail(String email, String password) async =>
+      Me.fromJson(await _post('/me/email', {'email': email, 'password': password}) as Json);
   Future<void> changePassword(String current, String next) =>
       _post('/me/password', {'currentPassword': current, 'newPassword': next});
+
+  Future<TwoFactorStatus> twoFactorStatus() async => TwoFactorStatus.fromJson(await _get('/me/2fa'));
+  Future<Json> twoFactorSetup() async => await _post('/me/2fa/setup') as Json;
+  Future<List<String>> enableTwoFactor(String code) async =>
+      List<String>.from(((await _post('/me/2fa/enable', {'code': code})) as Json)['recoveryCodes'] as List);
+  Future<void> disableTwoFactor(String password, String code) =>
+      _post('/me/2fa/disable', {'password': password, 'code': code});
+  Future<List<String>> newRecoveryCodes(String code) async =>
+      List<String>.from(((await _post('/me/2fa/recovery-codes', {'code': code})) as Json)['recoveryCodes'] as List);
+
+  Future<List<SessionInfo>> sessions() => _getList('/me/sessions', SessionInfo.fromJson);
+  Future<void> signOutSession(String id) => _delete('/me/sessions/$id');
+  Future<int> signOutOtherSessions() async =>
+      ((await _post('/me/sessions/sign-out-others')) as Json)['signedOut'] as int;
 
   // --- people -------------------------------------------------------------------------------
 
@@ -187,17 +216,120 @@ class OvlApi {
     await _get('/wallets/$walletId/entries', {'limit': limit, 'offset': offset}),
     LedgerEntry.fromJson,
   );
-  Future<void> transfer({
+
+  /// Null when the money moved; a company payment of at least the approval limit comes back
+  /// waiting for a second finance member.
+  Future<PaymentApproval?> transfer({
     required String fromWalletId,
     required String username,
     required String amount,
     String? note,
-  }) => _post('/wallets/transfer', {
-    'fromWalletId': fromWalletId,
-    'to': {'type': 'user', 'username': username},
-    'amount': amount,
-    if (note != null && note.isNotEmpty) 'note': note,
-  });
+  }) async {
+    final r = await _post('/wallets/transfer', {
+      'fromWalletId': fromWalletId,
+      'to': {'type': 'user', 'username': username},
+      'amount': amount,
+      if (note != null && note.isNotEmpty) 'note': note,
+    });
+    return PaymentApproval.matches(r) ? PaymentApproval.fromJson(r as Json) : null;
+  }
+
+  // --- currency exchange -------------------------------------------------------------------
+
+  Future<ExchangeInfo> exchangeInfo() async => ExchangeInfo.fromJson(await _get('/exchange'));
+  Future<ExchangeQuote> exchangeQuote(String fromWalletId, String toCurrency, String amount) async =>
+      ExchangeQuote.fromJson(
+        await _post('/exchange/quote', {'fromWalletId': fromWalletId, 'toCurrency': toCurrency, 'amount': amount})
+            as Json,
+      );
+
+  /// The finished exchange, or (for large company amounts) the payment waiting for approval.
+  Future<(ExchangeQuote?, PaymentApproval?)> exchange(String fromWalletId, String toCurrency, String amount) async {
+    final r = await _post('/exchange', {'fromWalletId': fromWalletId, 'toCurrency': toCurrency, 'amount': amount});
+    return PaymentApproval.matches(r)
+        ? (null, PaymentApproval.fromJson(r as Json))
+        : (ExchangeQuote.fromJson(r as Json), null);
+  }
+
+  Future<List<CashRequest>> cashRequests(String walletId) =>
+      _getList('/wallets/$walletId/cash-requests', CashRequest.fromJson);
+
+  /// Ask a finance manager for a deposit or a payout (a payout holds the amount meanwhile).
+  Future<CashRequest> requestCash(
+    String walletId, {
+    required String type,
+    required String method,
+    required String amount,
+    String? note,
+  }) async => CashRequest.fromJson(
+    await _post('/wallets/$walletId/cash-requests', {
+      'type': type,
+      'method': method,
+      'amount': amount,
+      if (note != null && note.isNotEmpty) 'note': note,
+    }) as Json,
+  );
+  Future<void> cancelCashRequest(String id) => _post('/cash-requests/$id/cancel');
+
+  /// A 5-minute link to the statement (`csv` or `pdf`) that needs no token, for the system browser.
+  Future<Uri> statementLink(String walletId, {String? from, String? to, String format = 'csv'}) async {
+    final r = await _post('/wallets/$walletId/statement-link', {'from': ?from, 'to': ?to, 'format': format}) as Json;
+    return Uri.parse('${baseUrl.replaceAll(RegExp(r'/+$'), '')}${r['path']}');
+  }
+
+  /// Calendar months with activity, newest first.
+  Future<List<MonthlyStatement>> monthlyStatements(String walletId) =>
+      _getList('/wallets/$walletId/statements', MonthlyStatement.fromJson);
+
+  /// The public certificate PDF of a registry entry.
+  Uri certificateUrl(String number) => Uri.parse(
+    '${baseUrl.replaceAll(RegExp(r'/+$'), '')}/api/v1/registry/${Uri.encodeComponent(number)}/certificate.pdf',
+  );
+
+  // --- invoices ------------------------------------------------------------------------
+
+  Future<List<Invoice>> invoices({String? direction, String? status}) =>
+      _getList('/invoices', Invoice.fromJson, {'direction': direction, 'status': status});
+  Future<Invoice> invoice(String id) async => Invoice.fromJson(await _get('/invoices/$id'));
+
+  /// [from] is null for a personal invoice, or a company id; [to] is `{'type': 'user', 'username': …}`
+  /// or `{'type': 'organization', 'slug': …}`.
+  Future<Invoice> createInvoice({
+    String? from,
+    required Json to,
+    required String currency,
+    required String dueDate,
+    required List<Json> items,
+    String? note,
+  }) async => Invoice.fromJson(
+    await _post('/invoices', {
+      'from': from == null ? {'type': 'user'} : {'type': 'organization', 'organizationId': from},
+      'to': to,
+      'currency': currency,
+      'dueDate': dueDate,
+      'items': items,
+      if (note != null && note.isNotEmpty) 'note': note,
+    }) as Json,
+  );
+
+  /// The paid invoice, or (above a company's approval limit) the payment waiting for approval.
+  /// Without [amount] everything still due is paid.
+  Future<(Invoice?, PaymentApproval?)> payInvoice(String id, String walletId, {String? amount}) async {
+    final r = await _post('/invoices/$id/pay', {'walletId': walletId, 'amount': ?amount});
+    return PaymentApproval.matches(r)
+        ? (null, PaymentApproval.fromJson(r as Json))
+        : (Invoice.fromJson(r as Json), null);
+  }
+
+  Future<Invoice> cancelInvoice(String id, {String? reason}) async => Invoice.fromJson(
+    await _post('/invoices/$id/cancel', {if (reason != null && reason.isNotEmpty) 'reason': reason}) as Json,
+  );
+
+  Future<List<InvoiceSchedule>> invoiceSchedules() => _getList('/invoice-schedules', InvoiceSchedule.fromJson);
+
+  /// active, paused or ended.
+  Future<InvoiceSchedule> setInvoiceScheduleStatus(String id, String status) async =>
+      InvoiceSchedule.fromJson(await _patch('/invoice-schedules/$id', {'status': status}) as Json);
 
   // --- organizations ---------------------------------------------------------------------
 
@@ -205,12 +337,29 @@ class OvlApi {
   Future<Organization> organization(String slug) async =>
       Organization.fromJson(await _get('/organizations/${Uri.encodeComponent(slug)}'));
   Future<List<Wallet>> organizationWallets(String id) => _getList('/organizations/$id/wallets', Wallet.fromJson);
+  Future<List<PayrollRun>> payrollRuns(String orgId) => _getList('/organizations/$orgId/payroll', PayrollRun.fromJson);
+  Future<List<PaymentApproval>> paymentApprovals(String orgId, {String? status}) =>
+      _getList('/organizations/$orgId/payment-approvals', PaymentApproval.fromJson, {'status': status});
+  Future<PaymentApproval> approvePayment(String orgId, String id) async =>
+      PaymentApproval.fromJson(await _post('/organizations/$orgId/payment-approvals/$id/approve') as Json);
+
+  /// Decline a waiting payment, or withdraw your own.
+  Future<PaymentApproval> rejectPayment(String orgId, String id, String reason) async => PaymentApproval.fromJson(
+    await _post('/organizations/$orgId/payment-approvals/$id/reject', {'reason': reason}) as Json,
+  );
 
   // --- applications ----------------------------------------------------------------------
 
   Future<List<Application>> myApplications() => _getList('/applications/mine', Application.fromJson);
   Future<List<Application>> reviewQueue() => _getList('/applications/queue', Application.fromJson);
   Future<Application> application(String id) async => Application.fromJson(await _get('/applications/$id'));
+
+  /// Every currency balances can hold: ISO 4217 and those issued by virtual countries.
+  Future<List<CurrencyInfo>> currencies() => _getList('/currencies', CurrencyInfo.fromJson);
+
+  /// Licences you hold (or your companies do), with expiry dates and waiting renewals.
+  Future<List<RegistryEntry>> myLicences() => _getList('/me/licences', RegistryEntry.fromJson);
+
   Future<Application> submitApplication(String type, Json payload) async =>
       Application.fromJson(await _post('/applications', {'type': type, 'payload': payload}) as Json);
   Future<Application> review(String id, {required String decision, String? comment, List<String>? checklist}) async =>
@@ -221,6 +370,14 @@ class OvlApi {
           'checklist': ?checklist,
         }) as Json,
       );
+
+  /// Send a corrected application after a reviewer asked for changes.
+  Future<Application> resubmitApplication(String id, Json payload) async =>
+      Application.fromJson(await _post('/applications/$id/resubmit', {'payload': payload}) as Json);
+
+  /// A full URL for a file path from the API (signed links open without a token).
+  Uri fileUrl(String path) => Uri.parse('${baseUrl.replaceAll(RegExp(r'/+$'), '')}$path');
+
   Future<Application> withdraw(String id) async =>
       Application.fromJson(await _post('/applications/$id/withdraw') as Json);
 
@@ -242,6 +399,35 @@ class OvlApi {
   );
   Future<Portfolio> portfolio() async => Portfolio.fromJson(await _get('/stock/portfolio'));
 
+  /// The risk disclosure; investing and buying fail with `risk_disclosure_required` until it is accepted.
+  Future<RiskDisclosure> riskDisclosure() async => RiskDisclosure.fromJson(await _get('/stock/risk'));
+  Future<RiskDisclosure> acceptRisk(String version) async =>
+      RiskDisclosure.fromJson(await _post('/stock/risk/accept', {'version': version}) as Json);
+  Future<OrderBook> orderBook(String ticker) async => OrderBook.fromJson(await _get('/stock/listings/$ticker/book'));
+
+  /// A limit order; returns how many shares traded at once.
+  Future<({StockOrder order, int traded})> placeOrder(
+    String ticker, {
+    required String side,
+    required int shares,
+    required String price,
+  }) async {
+    final r = await _post('/stock/listings/$ticker/orders', {'side': side, 'shares': shares, 'price': price}) as Json;
+    final traded = (r['trades'] as List).fold<int>(0, (n, t) => n + int.parse((t as Json)['shares'] as String));
+    return (order: StockOrder.fromJson(r['order'] as Json), traded: traded);
+  }
+
+  Future<List<StockOrder>> myOrders({String? status}) =>
+      _getList('/stock/orders', StockOrder.fromJson, {'status': status});
+  Future<void> cancelOrder(String id) => _delete('/stock/orders/$id');
+  Future<List<CompanyReport>> companyReports(String ticker) =>
+      _getList('/stock/listings/$ticker/reports', CompanyReport.fromJson);
+  Future<List<Proposal>> proposals(String ticker) => _getList('/stock/listings/$ticker/proposals', Proposal.fromJson);
+
+  /// Vote once with the shares you held when the vote opened.
+  Future<Proposal> vote(String proposalId, String option) async =>
+      Proposal.fromJson(await _post('/stock/proposals/$proposalId/vote', {'option': option}) as Json);
+
   // --- chats -----------------------------------------------------------------------------
 
   Future<List<Chat>> chats() => _getList('/chats', Chat.fromJson);
@@ -255,11 +441,51 @@ class OvlApi {
       _getList('/chats/$chatId/messages', Message.fromJson, {'before': before, 'limit': limit});
   Future<Message> send(String chatId, String body, {int? replyToId}) async =>
       Message.fromJson(await _post('/chats/$chatId/messages', {'body': body, 'replyToId': ?replyToId}) as Json);
+
+  /// Search messages in your chats (every word as a prefix), newest first.
+  Future<List<MessageSearchResult>> searchMessages(String q) =>
+      _getList('/chats/search', MessageSearchResult.fromJson, {'q': q});
+  Future<Message> react(String chatId, int messageId, String emoji) async =>
+      Message.fromJson(await _post('/chats/$chatId/messages/$messageId/reactions', {'emoji': emoji}) as Json);
+  Future<Message> unreact(String chatId, int messageId, String emoji) async => Message.fromJson(
+    await request('DELETE', '/chats/$chatId/messages/$messageId/reactions', query: {'emoji': emoji}) as Json,
+  );
+
+  /// Comments under a channel post, newest first.
+  Future<List<Message>> comments(String chatId, int postId, {int? before}) =>
+      _getList('/chats/$chatId/messages/$postId/comments', Message.fromJson, {'before': before, 'limit': 50});
+  Future<Message> comment(String chatId, int postId, String body) async =>
+      Message.fromJson(await _post('/chats/$chatId/messages/$postId/comments', {'body': body}) as Json);
   Future<Message> editMessage(String chatId, int id, String body) async =>
       Message.fromJson(await _patch('/chats/$chatId/messages/$id', {'body': body}) as Json);
   Future<void> deleteMessage(String chatId, int id) => _delete('/chats/$chatId/messages/$id');
   Future<void> markRead(String chatId, int messageId) => _post('/chats/$chatId/read', {'messageId': messageId});
   Future<void> leave(String chatId, String myId) => _delete('/chats/$chatId/members/$myId');
+
+  // --- governance --------------------------------------------------------------------------
+
+  Future<GovernanceInfo> governance() async => GovernanceInfo.fromJson(await _get('/governance'));
+  Future<List<TransparencyReport>> transparencyReports() => _getList('/transparency', TransparencyReport.fromJson);
+
+  // --- notification center ----------------------------------------------------------------
+
+  Future<NotificationPage> notifications({DateTime? before, bool unreadOnly = false, int limit = 30}) async =>
+      NotificationPage.fromJson(
+        await _get('/notifications', {
+          'before': before?.toUtc().toIso8601String(),
+          'unread': unreadOnly ? 'true' : null,
+          'limit': limit,
+        }),
+      );
+
+  /// Mark these (or, without ids, all) notifications as read; returns what is still unread.
+  Future<int> readNotifications([List<String>? ids]) async =>
+      ((await _post('/notifications/read', {'ids': ?ids})) as Json)['unreadCount'] as int;
+  Future<void> deleteNotification(String id) => _delete('/notifications/$id');
+
+  /// Register an FCM or APNs device token for push notifications.
+  Future<void> addPushDevice({required String kind, required String token, String? label}) =>
+      _post('/me/push-subscriptions', {'kind': kind, 'token': token, 'label': ?label});
 
   // --- support -----------------------------------------------------------------------------
 

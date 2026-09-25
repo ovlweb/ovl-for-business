@@ -8,13 +8,17 @@ import {
   type WorkflowStage,
 } from '@ovl/shared';
 import { and, count, eq, inArray } from 'drizzle-orm';
+import type { FastifyInstance } from 'fastify';
 import type { Config } from '../../config';
 import type { Db } from '../../db/client';
 import { applicationReviews, applications, users } from '../../db/schema';
-import { badRequest, conflict, forbidden, isUniqueViolation, notFound } from '../../lib/errors';
+import { badRequest, conflict, forbidden, HttpError, isUniqueViolation, notFound } from '../../lib/errors';
 import { iso, isoOrNull, summaryColumns, toUserSummary } from '../../lib/mappers';
-import { getStaffChat, insertMessage, type ChatRow, type MessageRow } from '../chats/service';
+import { getStaffChat, insertMessage, systemText, type ChatRow, type MessageRow } from '../chats/service';
+import { fileDtos, filesOf } from '../files';
 import { applyApprovedApplication, type EffectResult } from './effects';
+import { loadGovernance } from '../../lib/governance';
+import { label, text } from '../../lib/i18n';
 
 export type ApplicationRow = typeof applications.$inferSelect;
 type ReviewRow = typeof applicationReviews.$inferSelect;
@@ -49,8 +53,14 @@ export async function activeCouncilSize(db: Db): Promise<number> {
 // DTOs
 // ---------------------------------------------------------------------------
 
-export async function applicationDtos(db: Db, rows: ApplicationRow[]): Promise<Application[]> {
+export async function applicationDtos(app: FastifyInstance, rows: ApplicationRow[]): Promise<Application[]> {
   if (!rows.length) return [];
+  const db = app.db;
+  const attachments = await filesOf(
+    db,
+    'application',
+    rows.map((a) => a.id),
+  );
   const reviews = await db
     .select({ review: applicationReviews, reviewer: summaryColumns(users) })
     .from(applicationReviews)
@@ -82,6 +92,17 @@ export async function applicationDtos(db: Db, rows: ApplicationRow[]): Promise<A
     payload: a.payload,
     result: a.result,
     rejectionReason: a.rejectionReason,
+    changesRequested:
+      a.status === 'changes_requested'
+        ? (reviews
+            .filter((r) => r.review.applicationId === a.id && r.review.decision === 'request_changes')
+            .at(-1)?.review.comment ?? '')
+        : null,
+    round: a.round,
+    attachments: fileDtos(
+      app,
+      attachments.filter((f) => f.scopeId === a.id),
+    ),
     reviews: reviews
       .filter((r) => r.review.applicationId === a.id)
       .map(({ review, reviewer }) => ({
@@ -92,6 +113,7 @@ export async function applicationDtos(db: Db, rows: ApplicationRow[]): Promise<A
         decision: review.decision,
         comment: review.comment,
         checklist: review.checklist,
+        round: review.round,
         createdAt: iso(review.createdAt),
       })),
     createdAt: iso(a.createdAt),
@@ -109,10 +131,9 @@ export interface Announcement {
   message: MessageRow;
 }
 
-function summarize(application: ApplicationRow): string {
+function nameOf(application: ApplicationRow): string {
   const p = application.payload as Record<string, unknown>;
-  const name = (p.name ?? p.title ?? '') as string;
-  return name ? `"${name}"` : '';
+  return (p.name ?? p.title ?? '') as string;
 }
 
 /** Post a card into the council / moderation chat when an application reaches a stage. */
@@ -127,15 +148,23 @@ export async function announceStage(db: Db, application: ApplicationRow, applica
   const announcements: Announcement[] = [];
   for (const type of targets) {
     const chat = await getStaffChat(db, type);
+    const name = nameOf(application);
+    const line = systemText(
+      name
+        ? text`${label(workflow.label)} "${name}" by @${applicantUsername} is waiting for: ${label(stage.label)}`
+        : text`${label(workflow.label)} by @${applicantUsername} is waiting for: ${label(stage.label)}`,
+    );
     const message = await insertMessage(db, {
       chatId: chat.id,
       senderId: null,
       kind: 'system',
-      body: `${workflow.label} ${summarize(application)} by @${applicantUsername} is waiting for: ${stage.label}`.replace(
-        /\s+/g,
-        ' ',
-      ),
-      meta: { applicationId: application.id, applicationType: application.type, stage: stage.key },
+      body: line.body,
+      meta: {
+        ...line.meta,
+        applicationId: application.id,
+        applicationType: application.type,
+        stage: stage.key,
+      },
     });
     announcements.push({ chat, message });
   }
@@ -167,10 +196,10 @@ export async function reviewApplication(
 ): Promise<ReviewOutcome> {
   const application = await lockApplication(db, applicationId);
   const stage = currentStage(application);
-  if (!stage) throw conflict(`This application is already ${application.status}`);
+  if (!stage) throw conflict(text`This application is already ${application.status}`);
   if (application.applicantId === reviewer.id) throw forbidden('You cannot review your own application');
   if (!canReviewStage(stage, reviewer.role))
-    throw forbidden(`Your role cannot review the "${stage.label}" stage`);
+    throw forbidden(text`Your role cannot review the "${stage.label}" stage`);
 
   const checklist = input.checklist ?? [];
   if (input.decision === 'approve' && stage.checklist) {
@@ -183,6 +212,24 @@ export async function reviewApplication(
   }
   if (input.decision === 'reject' && !input.comment?.trim())
     throw badRequest('Give a reason for the rejection');
+  if (input.decision === 'request_changes' && !input.comment?.trim())
+    throw badRequest('Say what the applicant should change');
+  if (
+    input.decision === 'approve' &&
+    application.type === 'company' &&
+    config.REQUIRE_IDENTITY_FOR_COMPANIES
+  ) {
+    const [applicant] = await db
+      .select({ identityVerifiedAt: users.identityVerifiedAt })
+      .from(users)
+      .where(eq(users.id, application.applicantId));
+    if (!applicant?.identityVerifiedAt)
+      throw new HttpError(
+        409,
+        'identity_not_verified',
+        'The applicant has to pass an identity check first (Settings → Identity). Ask for changes or wait.',
+      );
+  }
 
   try {
     await db.insert(applicationReviews).values({
@@ -192,7 +239,8 @@ export async function reviewApplication(
       reviewerRole: reviewer.role,
       decision: input.decision,
       comment: input.comment?.trim() ?? '',
-      checklist: stage.checklist ? checklist : null,
+      checklist: stage.checklist && input.decision === 'approve' ? checklist : null,
+      round: application.round,
     });
   } catch (error) {
     if (isUniqueViolation(error)) throw conflict('You already reviewed this stage');
@@ -203,21 +251,29 @@ export async function reviewApplication(
     .select()
     .from(applicationReviews)
     .where(
-      and(eq(applicationReviews.applicationId, applicationId), eq(applicationReviews.stageKey, stage.key)),
+      and(
+        eq(applicationReviews.applicationId, applicationId),
+        eq(applicationReviews.stageKey, stage.key),
+        eq(applicationReviews.round, application.round),
+      ),
     );
-  const councilSize = await activeCouncilSize(db);
+  const [councilSize, rules] = await Promise.all([
+    activeCouncilSize(db),
+    loadGovernance(db, config.COUNCIL_QUORUM),
+  ]);
   const tally = (group: ApproverGroup, decision: 'approve' | 'reject') =>
     reviews.filter((r) => r.decision === decision && group.roles.includes(r.reviewerRole)).length;
   const reached = (decision: 'approve' | 'reject') =>
-    stageGroups(stage).some(
-      (g) => tally(g, decision) >= resolveQuorum(g, config.COUNCIL_QUORUM, councilSize),
-    );
+    stageGroups(stage).some((g) => tally(g, decision) >= resolveQuorum(g, rules, councilSize));
 
   const now = new Date();
   let patch: Partial<ApplicationRow> = { updatedAt: now };
   let effects: EffectResult | null = null;
 
-  if (reached('reject')) {
+  if (input.decision === 'request_changes') {
+    // One reviewer is enough to send it back; the stage starts over when it is resubmitted.
+    patch = { ...patch, status: 'changes_requested' };
+  } else if (reached('reject')) {
     patch = { ...patch, status: 'rejected', decidedAt: now, rejectionReason: input.comment?.trim() ?? null };
   } else if (reached('approve')) {
     const isLast = application.stageIndex >= WORKFLOWS[application.type].stages.length - 1;

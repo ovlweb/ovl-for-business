@@ -9,6 +9,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { errorMessage, formatMoney, humanize } from './format';
 import { Icon, type IconName } from './icons';
+import { LOCALES, LOCALE_NAMES, type Locale, msg, setLocale, t, useLocale } from './i18n';
 
 export const spring = { type: 'spring', stiffness: 420, damping: 34 } as const;
 
@@ -43,7 +44,7 @@ export function Skeleton({
 /** A few skeleton rows while a list loads. */
 export function SkeletonList({ rows = 4, avatar = true }: { rows?: number; avatar?: boolean }) {
   return (
-    <div className="stack" style={{ padding: 16 }} aria-busy="true" aria-label="Loading">
+    <div className="stack" style={{ padding: 16 }} aria-busy="true" aria-label={t('Loading')}>
       {Array.from({ length: rows }, (_, i) => (
         <div key={i} className="row" style={{ opacity: 1 - i * 0.18 }}>
           {avatar && <Skeleton width={40} height={40} radius={20} />}
@@ -121,10 +122,12 @@ export function Switch({
   checked,
   onChange,
   label,
+  disabled,
 }: {
   checked: boolean;
   onChange: (checked: boolean) => void;
   label: string;
+  disabled?: boolean;
 }) {
   return (
     <button
@@ -133,6 +136,7 @@ export function Switch({
       aria-checked={checked}
       aria-label={label}
       className="switch"
+      disabled={disabled}
       onClick={() => onChange(!checked)}
     />
   );
@@ -161,7 +165,7 @@ export function Segmented<T extends string>({
           {o.value === value && (
             <motion.span layoutId={`seg-${id}`} className="segmented-thumb" transition={spring} />
           )}
-          <span>{o.label}</span>
+          <span>{typeof o.label === 'string' ? t(o.label) : o.label}</span>
         </button>
       ))}
     </div>
@@ -240,7 +244,7 @@ export function Modal({
       >
         <div className="modal-header">
           <h2>{title}</h2>
-          <button className="btn ghost icon sm" onClick={onClose} aria-label="Close">
+          <button className="btn ghost icon sm" onClick={onClose} aria-label={t('Close')}>
             <Icon name="x" size={18} />
           </button>
         </div>
@@ -262,16 +266,16 @@ export function Tabs<T extends string>({
   const id = useId();
   return (
     <div className="tabs" role="tablist">
-      {tabs.map((t) => (
+      {tabs.map((tab) => (
         <button
-          key={t.value}
+          key={tab.value}
           role="tab"
-          aria-selected={t.value === value}
-          className={`tab${t.value === value ? ' active' : ''}`}
-          onClick={() => onChange(t.value)}
+          aria-selected={tab.value === value}
+          className={`tab${tab.value === value ? ' active' : ''}`}
+          onClick={() => onChange(tab.value)}
         >
-          {t.label}
-          {t.value === value && (
+          {tab.label}
+          {tab.value === value && (
             <motion.span layoutId={`tab-${id}`} className="tab-underline" transition={spring} />
           )}
         </button>
@@ -380,7 +384,7 @@ export function Avatar({
 }
 
 export function Badge({ kind }: { kind: BadgeKind }) {
-  return <span className={`badge ${kind}`}>{BADGE_LABELS[kind]}</span>;
+  return <span className={`badge ${kind}`}>{t(BADGE_LABELS[kind])}</span>;
 }
 
 export function Badges({ badges }: { badges: BadgeKind[] }) {
@@ -406,14 +410,53 @@ export function UserName({ user, showHandle }: { user: UserSummary; showHandle?:
 const STATUS_TONES: Record<string, string> = {
   active: 'ok',
   approved: 'ok',
+  completed: 'ok',
+  confirmed: 'ok',
+  verified: 'ok',
+  paid: 'ok',
   open: 'info',
   pending: 'warn',
+  changes_requested: 'warn',
+  awaiting_approval: 'warn',
+  waiting_for_approval: 'warn',
+  renewal_pending: 'info',
+  delivered: 'ok',
+  failed: 'bad',
+  expired: 'bad',
+  partly_paid: 'info',
+  paused: 'warn',
+  ended: '',
+  not_confirmed: 'warn',
+  overdue: 'bad',
   halted: 'warn',
   suspended: 'bad',
   rejected: 'bad',
+  declined: 'bad',
   revoked: 'bad',
   delisted: 'bad',
 };
+
+const DECISIONS: Record<string, [string, string]> = {
+  approve: ['ok', msg('Approved')],
+  reject: ['bad', msg('Rejected')],
+  request_changes: ['warn', msg('Changes requested')],
+};
+
+/** "Verified business": the company's owner passed an identity check. */
+export function VerifiedBadge({ compact }: { compact?: boolean }) {
+  return (
+    <span className="badge verified" title={t('Verified business: the owner passed an identity check')}>
+      <Icon name="shield" size={12} />
+      {compact ? t('Verified') : t('Verified business')}
+    </span>
+  );
+}
+
+/** A reviewer's decision on an application stage. */
+export function DecisionBadge({ decision }: { decision: string }) {
+  const [tone, label] = DECISIONS[decision] ?? ['', decision];
+  return <span className={`badge ${tone}`}>{t(label)}</span>;
+}
 
 export function StatusBadge({ status }: { status: string }) {
   return (
@@ -510,7 +553,7 @@ export function WorkflowStepper({
                 i + 1
               )}
             </span>
-            {stage.label}
+            {t(stage.label)}
           </span>
         );
       })}
@@ -549,4 +592,45 @@ export function useDebounced<T>(value: T, delay = 300): T {
     return () => clearTimeout(t);
   }, [value, delay]);
   return debounced;
+}
+
+/** Save a file fetched by the SDK (an object URL and a temporary link). */
+export function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** A language menu; `onChange` also saves the choice to the account where there is one. */
+export function LanguagePicker({
+  onChange,
+  compact,
+}: {
+  onChange?: (locale: Locale) => void;
+  compact?: boolean;
+}) {
+  const locale = useLocale();
+  return (
+    <select
+      className={`input${compact ? ' compact' : ''}`}
+      aria-label="Language / Язык"
+      value={locale}
+      onChange={(e) => {
+        const next = e.target.value as Locale;
+        setLocale(next);
+        onChange?.(next);
+      }}
+    >
+      {LOCALES.map((l) => (
+        <option key={l} value={l}>
+          {LOCALE_NAMES[l]}
+        </option>
+      ))}
+    </select>
+  );
 }

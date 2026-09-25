@@ -1,4 +1,4 @@
-import type { Wallet } from '@ovl/shared';
+import type { CashRequest, PaymentApproval, Wallet } from '@ovl/shared';
 import { CURRENCIES } from '@ovl/shared';
 import {
   AnimatedNumber,
@@ -11,14 +11,20 @@ import {
   Modal,
   Money,
   plural,
+  saveBlob,
+  Segmented,
+  StatusBadge,
   ShareBar,
   SkeletonList,
   Stagger,
   StaggerItem,
   useToast,
+  t,
+  msg,
+  intlLocale,
 } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useDeferredValue, useState } from 'react';
 import { api } from '../api';
 import { Icon } from './Icon';
 
@@ -68,7 +74,7 @@ export function WalletCards({
                 <span className="bc-currency">{w.currency}</span>
                 {frozen > 0 && (
                   <span className="small row" style={{ gap: 4, opacity: 0.9 }}>
-                    <Icon name="lock" size={13} /> {formatMoney(w.frozen, w.currency, false)} frozen
+                    <Icon name="lock" size={13} /> {t('{0} frozen', formatMoney(w.frozen, w.currency, false))}
                   </span>
                 )}
               </div>
@@ -78,13 +84,13 @@ export function WalletCards({
               {frozen > 0 && (
                 <ShareBar
                   parts={[
-                    { label: 'Available', value: Number(w.available), color: 'rgba(255,255,255,0.9)' },
-                    { label: 'Frozen', value: frozen, color: 'rgba(255,255,255,0.35)' },
+                    { label: t('Available'), value: Number(w.available), color: 'rgba(255,255,255,0.9)' },
+                    { label: t('Frozen'), value: frozen, color: 'rgba(255,255,255,0.35)' },
                   ]}
                 />
               )}
               <span className="bc-meta">
-                <span>Available: {formatMoney(w.available, w.currency)}</span>
+                <span>{t('Available: {0}', formatMoney(w.available, w.currency))}</span>
                 <Icon name="card" size={16} />
               </span>
             </button>
@@ -123,11 +129,22 @@ export function OpenWalletForm({ onOpen }: { onOpen: (currency: string) => Promi
           </option>
         ))}
       </select>
-      <button className="btn">Open balance</button>
+      <button className="btn">{t('Open balance')}</button>
       <ErrorAlert error={error} />
     </form>
   );
 }
+
+/** Holds that end with a decision rather than on a date. */
+function lockRelease(reason: string): string | null {
+  if (reason === 'withdrawal_request' || reason === 'withdrawal_approval') return t('When paid out');
+  if (reason === 'payment_approval') return t('When approved or declined');
+  return null;
+}
+
+/** A company payment above its approval limit comes back waiting for a second signature. */
+export const isPendingApproval = (value: object): value is PaymentApproval =>
+  'kind' in value && 'requestedBy' in value;
 
 export function Statement({ wallet }: { wallet: Wallet }) {
   const [offset, setOffset] = useState(0);
@@ -140,21 +157,24 @@ export function Statement({ wallet }: { wallet: Wallet }) {
     queryKey: ['wallet', wallet.id, 'locks'],
     queryFn: () => api.wallets.locks(wallet.id),
   });
+  const [exporting, setExporting] = useState(false);
 
   return (
     <div className="stack">
       {!!locks.data?.length && (
         <div className="card flat stack-sm">
-          <h3>Frozen funds</h3>
+          <h3>{t('Frozen funds')}</h3>
           <p className="small muted">
-            Part of every stock investment stays frozen on the business balance until its unlock date.
+            {t(
+              'Money set aside for payouts you asked for, company payments waiting for a second signature, and the part of every stock investment that stays frozen on a business balance until its unlock date.',
+            )}
           </p>
           <table className="table">
             <thead>
               <tr>
-                <th>Amount</th>
-                <th>Reason</th>
-                <th>Unlocks</th>
+                <th>{t('Amount')}</th>
+                <th>{t('Reason')}</th>
+                <th>{t('Unlocks')}</th>
               </tr>
             </thead>
             <tbody>
@@ -164,7 +184,7 @@ export function Statement({ wallet }: { wallet: Wallet }) {
                     <Money amount={l.amount} currency={l.currency} />
                   </td>
                   <td>{humanize(l.reason)}</td>
-                  <td>{formatDate(l.unlocksAt, false)}</td>
+                  <td>{lockRelease(l.reason) ?? formatDate(l.unlocksAt, false)}</td>
                 </tr>
               ))}
             </tbody>
@@ -173,18 +193,23 @@ export function Statement({ wallet }: { wallet: Wallet }) {
       )}
       <div className="card pad-0">
         <div className="card-header" style={{ padding: '16px 18px 0' }}>
-          <h3>Statement · {wallet.currency}</h3>
-          <span className="small muted">{plural(entries.data?.total ?? 0, 'operation')}</span>
+          <h3>{t('Statement · {0}', wallet.currency)}</h3>
+          <div className="row" style={{ gap: 10 }}>
+            <span className="small muted">{plural(entries.data?.total ?? 0, 'operation')}</span>
+            <button className="btn sm" onClick={() => setExporting(true)} disabled={!entries.data?.total}>
+              <Icon name="download" size={15} /> {t('Export')}
+            </button>
+          </div>
         </div>
         {entries.isLoading && <SkeletonList rows={4} />}
         <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Operation</th>
-                <th className="right">Amount</th>
-                <th className="right">Balance</th>
+                <th>{t('Date')}</th>
+                <th>{t('Operation')}</th>
+                <th className="right">{t('Amount')}</th>
+                <th className="right">{t('Balance')}</th>
               </tr>
             </thead>
             <tbody>
@@ -206,7 +231,7 @@ export function Statement({ wallet }: { wallet: Wallet }) {
             </tbody>
           </table>
         </div>
-        {entries.data?.items.length === 0 && <Empty title="No operations yet" />}
+        {entries.data?.items.length === 0 && <Empty title={t('No operations yet')} />}
         {entries.data && entries.data.total > limit && (
           <div className="spread" style={{ padding: 12 }}>
             <button
@@ -214,20 +239,355 @@ export function Statement({ wallet }: { wallet: Wallet }) {
               disabled={offset === 0}
               onClick={() => setOffset(Math.max(0, offset - limit))}
             >
-              Newer
+              {t('Newer')}
             </button>
             <span className="small muted">
-              {offset + 1}–{Math.min(offset + limit, entries.data.total)} of {entries.data.total}
+              {t(
+                '{0}–{1} of {2}',
+                offset + 1,
+                Math.min(offset + limit, entries.data.total),
+                entries.data.total,
+              )}
             </span>
             <button
               className="btn sm"
               disabled={offset + limit >= entries.data.total}
               onClick={() => setOffset(offset + limit)}
             >
-              Older
+              {t('Older')}
             </button>
           </div>
         )}
+      </div>
+      <MonthlyStatements wallet={wallet} />
+      {exporting && <ExportModal wallet={wallet} onClose={() => setExporting(false)} />}
+    </div>
+  );
+}
+
+type Period = 'month' | 'last_month' | 'year' | 'all';
+
+function periodRange(period: Period, now = new Date()): { from?: string; to?: string } {
+  const day = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  switch (period) {
+    case 'month':
+      return { from: day(new Date(y, m, 1)) };
+    case 'last_month':
+      return { from: day(new Date(y, m - 1, 1)), to: day(new Date(y, m, 0)) };
+    case 'year':
+      return { from: day(new Date(y, 0, 1)) };
+    case 'all':
+      return {};
+  }
+}
+
+function ExportModal({ wallet, onClose }: { wallet: Wallet; onClose: () => void }) {
+  const toast = useToast();
+  const [period, setPeriod] = useState<Period>('month');
+  const [format, setFormat] = useState<'csv' | 'pdf'>('csv');
+  const download = useMutation({
+    mutationFn: () =>
+      format === 'pdf'
+        ? api.wallets.statementPdf(wallet.id, periodRange(period))
+        : api.wallets.statementCsv(wallet.id, periodRange(period)),
+    onSuccess: ({ blob, filename }) => {
+      saveBlob(blob, filename ?? `ovl-statement-${wallet.currency.toLowerCase()}.${format}`);
+      toast.success(t('Statement downloaded'));
+      onClose();
+    },
+  });
+  return (
+    <Modal title={t('Export {0} statement', wallet.currency)} onClose={onClose}>
+      <div className="stack">
+        <Segmented<'csv' | 'pdf'>
+          value={format}
+          onChange={setFormat}
+          options={[
+            { value: 'csv', label: t('CSV') },
+            { value: 'pdf', label: t('PDF') },
+          ]}
+        />
+        <p className="small muted" style={{ margin: 0 }}>
+          {format === 'csv'
+            ? t(
+                'A CSV file for spreadsheets and accounting software: date, operation, description, amount and the balance after each operation.',
+              )
+            : t(
+                'A printable statement: opening and closing balance, money in and out, and every operation with the balance after it.',
+              )}
+        </p>
+        <Segmented<Period>
+          value={period}
+          onChange={setPeriod}
+          options={[
+            { value: 'month', label: t('This month') },
+            { value: 'last_month', label: t('Last month') },
+            { value: 'year', label: t('This year') },
+            { value: 'all', label: t('All time') },
+          ]}
+        />
+        <ErrorAlert error={download.error} />
+        <button className="btn primary" onClick={() => download.mutate()} disabled={download.isPending}>
+          {download.isPending ? <span className="spinner light" /> : <Icon name="download" size={16} />}
+          {t('Download')} {format.toUpperCase()}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+const monthLabel = (month: string) =>
+  new Date(`${month}-15T12:00:00Z`).toLocaleString(intlLocale(), { month: 'long', year: 'numeric' });
+
+/** One statement per calendar month, each a PDF download. */
+export function MonthlyStatements({ wallet }: { wallet: Wallet }) {
+  const toast = useToast();
+  const months = useQuery({
+    queryKey: ['entries', wallet.id, 'months'],
+    queryFn: () => api.wallets.statements(wallet.id),
+  });
+  const download = useMutation({
+    mutationFn: (m: { from: string; to: string }) => api.wallets.statementPdf(wallet.id, m),
+    onSuccess: ({ blob, filename }) => saveBlob(blob, filename ?? 'ovl-statement.pdf'),
+    onError: (e) => toast.error(e),
+  });
+  if (!months.data?.length) return null;
+  return (
+    <div className="card pad-0">
+      <div className="card-header" style={{ padding: '16px 18px 0' }}>
+        <h3>{t('Monthly statements')}</h3>
+        <span className="small muted">{t('PDF, one per month')}</span>
+      </div>
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>{t('Month')}</th>
+              <th className="right">{t('Money in')}</th>
+              <th className="right">{t('Money out')}</th>
+              <th className="right">{t('Closing balance')}</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {months.data.map((m) => (
+              <tr key={m.month}>
+                <td>
+                  <b>{monthLabel(m.month)}</b>
+                  <div className="small muted">{plural(m.operations, 'operation')}</div>
+                </td>
+                <td className="right pos">
+                  <Money amount={m.moneyIn} currency={wallet.currency} />
+                </td>
+                <td className="right neg">
+                  <Money amount={m.moneyOut} currency={wallet.currency} />
+                </td>
+                <td className="right bold">
+                  <Money amount={m.closing} currency={wallet.currency} />
+                </td>
+                <td className="right">
+                  <button
+                    className="btn ghost sm"
+                    aria-label={t('Download the {0} statement', monthLabel(m.month))}
+                    disabled={download.isPending}
+                    onClick={() => download.mutate(m)}
+                  >
+                    <Icon name="download" size={14} /> {t('PDF')}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+const METHOD_LABEL = { manager_transfer: msg('Bank transfer'), physical_cash: msg('Cash desk') } as const;
+
+/** Ask a finance manager for a deposit or a payout. */
+export function CashRequestModal({
+  wallet,
+  type,
+  onClose,
+}: {
+  wallet: Wallet;
+  type: 'deposit' | 'withdrawal';
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({
+    method: 'manager_transfer' as keyof typeof METHOD_LABEL,
+    amount: '',
+    note: '',
+  });
+  const deposit = type === 'deposit';
+  const send = useMutation({
+    mutationFn: () =>
+      api.wallets.requestCash(wallet.id, {
+        type,
+        method: form.method,
+        amount: form.amount,
+        note: form.note || undefined,
+      }),
+    onSuccess: () => {
+      for (const key of ['cashRequests', 'wallets', 'orgWallets', 'wallet'])
+        queryClient.invalidateQueries({ queryKey: [key] });
+      toast.success(deposit ? t('Deposit requested') : t('Payout requested — the amount is held meanwhile'));
+      onClose();
+    },
+  });
+  return (
+    <Modal
+      title={deposit ? t('Deposit {0}', wallet.currency) : t('Withdraw {0}', wallet.currency)}
+      onClose={onClose}
+    >
+      <form
+        className="stack"
+        onSubmit={(e) => {
+          e.preventDefault();
+          send.mutate();
+        }}
+      >
+        <p className="small muted" style={{ margin: 0 }}>
+          {deposit
+            ? t(
+                'A finance manager confirms the deposit once the money arrives by bank transfer or is handed in at the cash desk.',
+              )
+            : t(
+                'A finance manager pays the money out by bank transfer or at the cash desk. The amount is held on your balance until then; you can cancel while the request is pending.',
+              )}
+        </p>
+        {!deposit && (
+          <div className="alert info">
+            {t('Available: {0}', formatMoney(wallet.available, wallet.currency))}
+          </div>
+        )}
+        <div className="row">
+          {(Object.keys(METHOD_LABEL) as (keyof typeof METHOD_LABEL)[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              className={`chip${form.method === m ? ' active' : ''}`}
+              onClick={() => setForm({ ...form, method: m })}
+            >
+              {t(METHOD_LABEL[m])}
+            </button>
+          ))}
+        </div>
+        <Field label={t('Amount ({0})', wallet.currency)}>
+          <input
+            className="input"
+            inputMode="decimal"
+            placeholder="0.00"
+            value={form.amount}
+            onChange={(e) => setForm({ ...form, amount: e.target.value.replace(',', '.') })}
+            autoFocus
+            required
+          />
+        </Field>
+        <Field
+          label={t('Note for the finance manager (optional)')}
+          hint={
+            form.method === 'manager_transfer' && !deposit
+              ? t('For example, the bank account to pay into.')
+              : undefined
+          }
+        >
+          <textarea
+            className="textarea"
+            rows={3}
+            value={form.note}
+            onChange={(e) => setForm({ ...form, note: e.target.value })}
+            maxLength={1000}
+          />
+        </Field>
+        <ErrorAlert error={send.error} />
+        <button className="btn primary" disabled={send.isPending}>
+          {deposit ? t('Request deposit') : t('Request payout')}
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
+function requestDetail(r: CashRequest): string {
+  if (r.status === 'completed')
+    return t('Done by {0} · ref. {1}', r.handledBy?.displayName ?? t('finance'), r.reference);
+  if (r.status === 'declined') return `Declined: ${r.declineReason}`;
+  if (r.status === 'cancelled') return 'Cancelled';
+  if (r.awaitingApproval) return t('Being handled · a second finance manager confirms large amounts');
+  return r.type === 'withdrawal'
+    ? t('Waiting for a finance manager · amount held')
+    : t('Waiting for a finance manager');
+}
+
+/** Deposit and payout requests for one balance, newest first. Hidden until there is one. */
+export function CashRequests({ wallet }: { wallet: Wallet }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const requests = useQuery({
+    queryKey: ['cashRequests', wallet.id],
+    queryFn: () => api.wallets.cashRequests(wallet.id),
+  });
+  const cancel = useMutation({
+    mutationFn: (id: string) => api.wallets.cancelCashRequest(id),
+    onSuccess: () => {
+      for (const key of ['cashRequests', 'wallets', 'orgWallets', 'wallet'])
+        queryClient.invalidateQueries({ queryKey: [key] });
+      toast.success(t('Request cancelled'));
+    },
+  });
+  if (!requests.data?.length) return null;
+  return (
+    <div className="card stack-sm">
+      <div className="card-header">
+        <h3>{t('Deposit and payout requests')}</h3>
+        <span className="small muted">
+          {plural(requests.data.filter((r) => r.status === 'pending').length, 'pending request')}
+        </span>
+      </div>
+      <ErrorAlert error={cancel.error} />
+      <div className="list">
+        {requests.data.map((r) => (
+          <div key={r.id} className="list-item cash-request">
+            <span className={`cr-icon ${r.type}`}>
+              <Icon name={r.type === 'deposit' ? 'incoming' : 'outgoing'} size={17} />
+            </span>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="row" style={{ gap: 8 }}>
+                <b>{r.type === 'deposit' ? t('Deposit') : t('Payout')}</b>
+                <span className="small muted">
+                  {t(METHOD_LABEL[r.method])} · {formatDate(r.createdAt)}
+                </span>
+              </div>
+              <div className="small muted ellipsis">{requestDetail(r)}</div>
+              {r.note && <div className="small ellipsis">“{r.note}”</div>}
+            </div>
+            <div className="cr-amount">
+              <b className={r.type === 'deposit' ? 'pos' : ''}>
+                {r.type === 'deposit' ? '+' : '−'}
+                <Money amount={r.amount} currency={r.currency} />
+              </b>
+              <StatusBadge status={r.status} />
+            </div>
+            {r.status === 'pending' && (
+              <button
+                className="btn ghost sm"
+                onClick={() => cancel.mutate(r.id)}
+                disabled={cancel.isPending}
+                aria-label={t('Cancel request')}
+              >
+                {t('Cancel')}
+              </button>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -248,15 +608,17 @@ export function TransferModal({ wallet, onClose }: { wallet: Wallet; onClose: ()
         amount: form.amount,
         note: form.note || undefined,
       }),
-    onSuccess: () => {
-      for (const key of ['wallets', 'orgWallets', 'entries', 'wallet'])
+    onSuccess: (result) => {
+      for (const key of ['wallets', 'orgWallets', 'entries', 'wallet', 'paymentApprovals'])
         queryClient.invalidateQueries({ queryKey: [key] });
-      toast.success(`Sent ${formatMoney(form.amount, wallet.currency)}`);
+      if (isPendingApproval(result))
+        toast.info(t('Above the approval limit: another finance member has to approve this payment'));
+      else toast.success(t('Sent {0}', formatMoney(form.amount, wallet.currency)));
       onClose();
     },
   });
   return (
-    <Modal title={`Send ${wallet.currency}`} onClose={onClose}>
+    <Modal title={t('Send {0}', wallet.currency)} onClose={onClose}>
       <form
         className="stack"
         onSubmit={(e) => {
@@ -264,24 +626,26 @@ export function TransferModal({ wallet, onClose }: { wallet: Wallet; onClose: ()
           transfer.mutate();
         }}
       >
-        <div className="alert info">Available: {formatMoney(wallet.available, wallet.currency)}</div>
+        <div className="alert info">
+          {t('Available: {0}', formatMoney(wallet.available, wallet.currency))}
+        </div>
         <div className="row">
           <button
             type="button"
             className={`chip${form.type === 'user' ? ' active' : ''}`}
             onClick={() => setForm({ ...form, type: 'user' })}
           >
-            To a person
+            {t('To a person')}
           </button>
           <button
             type="button"
             className={`chip${form.type === 'organization' ? ' active' : ''}`}
             onClick={() => setForm({ ...form, type: 'organization' })}
           >
-            To a company
+            {t('To a company')}
           </button>
         </div>
-        <Field label={form.type === 'user' ? 'Username' : 'Company handle (slug)'}>
+        <Field label={form.type === 'user' ? t('Username') : t('Company handle (slug)')}>
           <input
             className="input"
             value={form.to}
@@ -289,7 +653,7 @@ export function TransferModal({ wallet, onClose }: { wallet: Wallet; onClose: ()
             required
           />
         </Field>
-        <Field label={`Amount (${wallet.currency})`}>
+        <Field label={t('Amount ({0})', wallet.currency)}>
           <input
             className="input"
             inputMode="decimal"
@@ -299,7 +663,7 @@ export function TransferModal({ wallet, onClose }: { wallet: Wallet; onClose: ()
             required
           />
         </Field>
-        <Field label="Note (optional)">
+        <Field label={t('Note (optional)')}>
           <input
             className="input"
             value={form.note}
@@ -309,9 +673,112 @@ export function TransferModal({ wallet, onClose }: { wallet: Wallet; onClose: ()
         </Field>
         <ErrorAlert error={transfer.error} />
         <button className="btn primary" disabled={transfer.isPending}>
-          Send
+          {t('Send')}
         </button>
       </form>
+    </Modal>
+  );
+}
+
+/** Convert money between two balances of the same owner at the managed rate. */
+export function ConvertModal({ wallet, onClose }: { wallet: Wallet; onClose: () => void }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const info = useQuery({ queryKey: ['exchangeRates'], queryFn: api.exchange.info });
+  const targets = info.data
+    ? [info.data.base, ...info.data.rates.map((r) => r.currency)].filter((c) => c !== wallet.currency)
+    : [];
+  const [to, setTo] = useState<string>();
+  const [amount, setAmount] = useState('');
+  const target = to ?? targets[0];
+  const input = useDeferredValue({ target, amount });
+  const valid = !!input.target && /^\d+(\.\d+)?$/.test(input.amount) && Number(input.amount) > 0;
+  const quote = useQuery({
+    queryKey: ['exchangeQuote', wallet.id, input.target, input.amount],
+    queryFn: () =>
+      api.exchange.quote({ fromWalletId: wallet.id, toCurrency: input.target!, amount: input.amount }),
+    enabled: valid,
+    retry: false,
+  });
+  const convert = useMutation({
+    mutationFn: () => api.exchange.execute({ fromWalletId: wallet.id, toCurrency: target!, amount }),
+    onSuccess: (result) => {
+      for (const key of ['wallets', 'orgWallets', 'entries', 'wallet', 'paymentApprovals'])
+        queryClient.invalidateQueries({ queryKey: [key] });
+      if (isPendingApproval(result))
+        toast.info(t('Above the approval limit: another finance member has to approve this exchange'));
+      else toast.success(t('Converted to {0}', formatMoney(result.receive, result.toCurrency)));
+      onClose();
+    },
+  });
+  const q = valid ? quote.data : undefined;
+
+  return (
+    <Modal title={t('Convert {0}', wallet.currency)} onClose={onClose}>
+      {info.isLoading && <SkeletonList rows={2} avatar={false} />}
+      <ErrorAlert error={info.error} />
+      {info.data && targets.length === 0 && (
+        <Empty title={t('No exchange rates yet')}>
+          {t(
+            'Finance managers publish rates in the admin panel; conversion opens once there is one for {0}.',
+            wallet.currency,
+          )}
+        </Empty>
+      )}
+      {info.data && targets.length > 0 && (
+        <form
+          className="stack"
+          onSubmit={(e) => {
+            e.preventDefault();
+            convert.mutate();
+          }}
+        >
+          <div className="alert info">
+            {t('Available: {0}', formatMoney(wallet.available, wallet.currency))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+            <Field label={t('Amount ({0})', wallet.currency)}>
+              <input
+                className="input"
+                inputMode="decimal"
+                placeholder="0.00"
+                value={amount}
+                autoFocus
+                onChange={(e) => setAmount(e.target.value.replace(',', '.'))}
+                required
+              />
+            </Field>
+            <Field label={t('Into')}>
+              <select className="select" value={target} onChange={(e) => setTo(e.target.value)}>
+                {targets.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <div className="card flat stack-sm" aria-live="polite">
+            <div className="spread">
+              <span className="muted">{t('You get')}</span>
+              <b style={{ fontSize: 20 }}>{q ? formatMoney(q.receive, q.toCurrency) : '—'}</b>
+            </div>
+            <div className="spread small muted">
+              <span>{t('Rate')}</span>
+              <span>{q ? `1 ${q.fromCurrency} = ${q.rate} ${q.toCurrency}` : '—'}</span>
+            </div>
+            <div className="spread small muted">
+              <span>{t('Fee ({0}%)', info.data.feePercent)}</span>
+              <span>{q ? formatMoney(q.fee, q.fromCurrency) : '—'}</span>
+            </div>
+          </div>
+          {valid && <ErrorAlert error={quote.error} />}
+          <ErrorAlert error={convert.error} />
+          <button className="btn primary" disabled={convert.isPending || !q}>
+            {t('Convert')}
+          </button>
+        </form>
+      )}
     </Modal>
   );
 }

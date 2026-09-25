@@ -20,7 +20,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:e2e": "pnpm --filter @ovl/e2e test",
-    "gen:dart": "node --experimental-strip-types --no-warnings scripts/gen-dart.ts"
+    "gen:dart": "node --experimental-strip-types --no-warnings scripts/gen-dart.ts",
+    "i18n": "pnpm --dir server exec tsx ../scripts/i18n/extract.ts && pnpm --dir server exec tsx ../scripts/i18n/build-catalog.ts"
   },
   "devDependencies": {
     "prettier": "^3.6.2",

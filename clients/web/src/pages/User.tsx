@@ -1,4 +1,4 @@
-import { Avatar, Badges, ErrorAlert, formatDate, humanize, Spinner } from '@ovl/ui';
+import { Avatar, Badges, ErrorAlert, formatDate, humanize, Spinner, t } from '@ovl/ui';
 import { ROLE_LABELS } from '@ovl/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -49,7 +49,7 @@ export function UserPage() {
               <Badges badges={u.badges} />
             </div>
             <div className="muted">
-              @{u.username} · {ROLE_LABELS[u.role]} · joined {formatDate(u.createdAt, false)}
+              {t('@{0} · {1} · joined {2}', u.username, ROLE_LABELS[u.role], formatDate(u.createdAt, false))}
             </div>
           </div>
         </div>
@@ -57,11 +57,11 @@ export function UserPage() {
         {u.id !== me.id && (
           <div className="row-wrap">
             <button className="btn primary" onClick={() => message.mutate()}>
-              Message
+              {t('Message')}
             </button>
             {!u.isContact && (
               <button className="btn" onClick={() => add.mutate()}>
-                Add to contacts
+                {t('Add to contacts')}
               </button>
             )}
           </div>
@@ -69,7 +69,7 @@ export function UserPage() {
       </div>
       {licenses.length > 0 && (
         <div className="card stack">
-          <h3>Licenses in the registry</h3>
+          <h3>{t('Licenses in the registry')}</h3>
           {licenses.map((l) => (
             <div key={l.id} className="spread">
               <span>

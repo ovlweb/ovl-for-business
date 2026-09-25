@@ -9,6 +9,7 @@ import {
   WORKFLOWS,
 } from '@ovl/shared';
 import type { FastifyInstance } from 'fastify';
+import { loadGovernance } from '../lib/governance';
 
 /**
  * Static platform metadata so any client (including native apps written in other
@@ -30,6 +31,12 @@ export async function metaRoutes(app: FastifyInstance) {
       lockDaysMin: app.config.STOCK_LOCK_DAYS_MIN,
       lockDaysMax: app.config.STOCK_LOCK_DAYS_MAX,
     },
-    councilQuorum: app.config.COUNCIL_QUORUM,
+    councilQuorum: (await loadGovernance(app.db, app.config.COUNCIL_QUORUM)).councilQuorum,
+    security: {
+      twoFactorForStaff: app.config.REQUIRE_2FA_FOR_STAFF,
+      twoFactorForCompanyFinance: app.config.REQUIRE_2FA_FOR_COMPANY_FINANCE,
+      verifiedEmailForApplications: app.config.REQUIRE_VERIFIED_EMAIL,
+      identityForCompanies: app.config.REQUIRE_IDENTITY_FOR_COMPANIES,
+    },
   }));
 }

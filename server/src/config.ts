@@ -5,6 +5,13 @@ const bool = z
   .transform((v) => v === 'true' || v === '1')
   .optional();
 
+/** A true/false setting with a default. */
+const flag = (fallback: boolean) =>
+  z
+    .enum(['true', 'false', '1', '0'])
+    .default(fallback ? 'true' : 'false')
+    .transform((v) => v === 'true' || v === '1');
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   HOST: z.string().default('0.0.0.0'),
@@ -41,6 +48,90 @@ const envSchema = z.object({
   STOCK_LOCK_DAYS_MIN: z.coerce.number().int().default(90),
   STOCK_LOCK_DAYS_MAX: z.coerce.number().int().default(183),
 
+  /** Where people open the web client; used for links in emails. */
+  PUBLIC_WEB_URL: z.string().url().default('http://localhost:5173'),
+  /** Where staff open the admin panel (a passkey origin). */
+  PUBLIC_ADMIN_URL: z.string().url().default('http://localhost:5174'),
+  /** Passkeys: the relying-party ID (defaults to the web client's host name). */
+  WEBAUTHN_RP_ID: z.string().optional(),
+  /** Passkeys: comma-separated origins allowed to use them (defaults to the web and admin URLs). */
+  WEBAUTHN_ORIGINS: z.string().optional(),
+  /** smtp://user:pass@host:587 (or smtps://…). Without it, emails are written to the log. */
+  SMTP_URL: z.string().optional(),
+  MAIL_FROM: z.string().default('OVL For Business <no-reply@localhost>'),
+
+  /** Staff (moderators and up) must turn on two-step verification before using staff tools. */
+  REQUIRE_2FA_FOR_STAFF: flag(true),
+  /** Company owners, directors and accountants must turn it on before moving company money. */
+  REQUIRE_2FA_FOR_COMPANY_FINANCE: flag(true),
+  /** Company owners pass an identity check (KYC) before a company can be approved. */
+  REQUIRE_IDENTITY_FOR_COMPANIES: flag(true),
+  /** Applications (companies, licenses, roles) need a confirmed email address. */
+  REQUIRE_VERIFIED_EMAIL: flag(true),
+
+  /** Networks allowed to call the admin API (/api/v1/admin/*), e.g. "10.0.0.0/8, 203.0.113.7". Empty: anywhere. */
+  ADMIN_IP_ALLOWLIST: z.string().optional(),
+  /** Cash desk operations of at least this amount (in the operation's currency) need a second manager. 0 turns it off. */
+  CASH_FOUR_EYES_AMOUNT: z.coerce.number().min(0).default(10_000),
+
+  /** Single sign-on for the admin panel (OpenID Connect: Google Workspace, Microsoft Entra, Okta, Keycloak…). */
+  OIDC_ISSUER: z.string().url().optional(),
+  OIDC_CLIENT_ID: z.string().optional(),
+  OIDC_CLIENT_SECRET: z.string().optional(),
+  /** The button text, e.g. "Sign in with Okta". */
+  OIDC_LABEL: z.string().default('Sign in with single sign-on'),
+
+  /** Uploaded files: a directory (local) or an S3-compatible bucket (s3: AWS, MinIO, R2…). */
+  STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  STORAGE_DIR: z.string().default('data/uploads'),
+  S3_ENDPOINT: z.string().url().optional(),
+  S3_REGION: z.string().default('us-east-1'),
+  S3_BUCKET: z.string().optional(),
+  S3_ACCESS_KEY_ID: z.string().optional(),
+  S3_SECRET_ACCESS_KEY: z.string().optional(),
+  /** MinIO and most self-hosted stores want bucket-in-path URLs. */
+  S3_FORCE_PATH_STYLE: flag(true),
+  MAX_UPLOAD_MB: z.coerce.number().min(1).max(100).default(10),
+
+  /** Licences and virtual countries run this many months, then need a renewal. 0: they never expire. */
+  LICENSE_TERM_MONTHS: z.coerce.number().int().min(0).max(120).default(12),
+
+  /** Webhooks may call private and loopback addresses (development and tests only by default). */
+  WEBHOOK_ALLOW_PRIVATE_NETWORKS: flag(false),
+
+  /**
+   * How instances share realtime events and who is online: `postgres` (LISTEN/NOTIFY, works for one
+   * instance or many) or `memory` (a single instance only).
+   */
+  REALTIME_BROKER: z.enum(['postgres', 'memory']).default('postgres'),
+  /** Where rate-limit counters live: `memory` (per instance) or `postgres` (shared by all instances). */
+  RATE_LIMIT_STORE: z.enum(['memory', 'postgres']).default('memory'),
+
+  /** Web Push (VAPID). Without keys the server makes a pair once and keeps it in the database. */
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().default('mailto:admin@localhost'),
+  /** Firebase Cloud Messaging: the service account JSON (or its base64). */
+  FCM_SERVICE_ACCOUNT: z.string().optional(),
+  FCM_API_URL: z.url().default('https://fcm.googleapis.com'),
+  /** Apple Push Notification service: the .p8 key (PEM), its key id, your team id and the app's bundle id. */
+  APNS_KEY: z.string().optional(),
+  APNS_KEY_ID: z.string().optional(),
+  APNS_TEAM_ID: z.string().optional(),
+  APNS_TOPIC: z.string().optional(),
+  APNS_HOST: z.url().default('https://api.push.apple.com'),
+  /** GET /metrics (Prometheus) needs this bearer token; without one it answers private networks only. */
+  METRICS_TOKEN: z.preprocess((v) => (v === '' ? undefined : v), z.string().min(16).optional()),
+
+  /** Notifications older than this many days are removed. */
+  NOTIFICATION_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
+
+  /** Investors accept the risk disclosure before their first investment or trade. */
+  STOCK_REQUIRE_RISK_ACK: flag(true),
+
+  /** Background jobs (recurring invoices…). Every instance may run them; they share the work. */
+  SCHEDULER_ENABLED: flag(true),
+
   /** Requests per minute for the public registry / stock API. */
   PUBLIC_RATE_LIMIT: z.coerce.number().int().default(60),
   API_KEY_RATE_LIMIT: z.coerce.number().int().default(600),
@@ -49,7 +140,25 @@ const envSchema = z.object({
 
 export type Config = z.infer<typeof envSchema>;
 
+/**
+ * Rules that make a laptop demo awkward (two-step verification for staff and company money,
+ * identity checks) are on by default in production and off by default in development.
+ * Setting them explicitly always wins.
+ */
+const RELAXED_IN_DEVELOPMENT = [
+  'REQUIRE_2FA_FOR_STAFF',
+  'REQUIRE_2FA_FOR_COMPANY_FINANCE',
+  'REQUIRE_IDENTITY_FOR_COMPANIES',
+] as const;
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  if ((env.NODE_ENV ?? 'development') === 'development') {
+    env = { ...env };
+    for (const key of RELAXED_IN_DEVELOPMENT) env[key] ??= 'false';
+  }
+  if ((env.NODE_ENV ?? 'development') !== 'production') {
+    env = { ...env, WEBHOOK_ALLOW_PRIVATE_NETWORKS: env.WEBHOOK_ALLOW_PRIVATE_NETWORKS ?? 'true' };
+  }
   const parsed = envSchema.safeParse(env);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`).join('\n');

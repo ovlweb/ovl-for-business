@@ -15,6 +15,9 @@ import {
   StaggerItem,
   timeAgo,
   type IconName,
+  t,
+  msg,
+  intlLocale,
 } from '@ovl/ui';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'motion/react';
@@ -42,10 +45,10 @@ const ROLE_COLORS: Record<Role, string> = {
 
 function greeting(): string {
   const h = new Date().getHours();
-  if (h < 5) return 'Good night';
-  if (h < 12) return 'Good morning';
-  if (h < 18) return 'Good afternoon';
-  return 'Good evening';
+  if (h < 5) return t('Good night');
+  if (h < 12) return t('Good morning');
+  if (h < 18) return t('Good afternoon');
+  return t('Good evening');
 }
 
 function Kpi({
@@ -75,7 +78,7 @@ function Kpi({
         </span>
       </div>
       <span className="kpi-value">
-        <AnimatedNumber value={String(value)} format={(v) => Number(v).toLocaleString()} />
+        <AnimatedNumber value={String(value)} format={(v) => Number(v).toLocaleString(intlLocale())} />
       </span>
       {hint && <span className="tiny muted">{hint}</span>}
     </>
@@ -102,20 +105,25 @@ const AUDIT_ICONS: [prefix: string, icon: IconName][] = [
 ];
 
 const AUDIT_TEXT: Record<string, string> = {
-  'wallet.deposit': 'recorded a deposit',
-  'wallet.withdrawal': 'recorded a withdrawal',
-  'application.submit': 'submitted an application',
-  'application.approve': 'approved an application',
-  'application.reject': 'rejected an application',
-  'registry.status': 'changed a registry status',
-  'organization.status': 'changed an organization status',
-  'organization.member_set': 'changed company members',
-  'stock.listing_update': 'updated a stock listing',
-  'story.publish': 'published a service story',
-  'story.delete': 'deleted a service story',
+  'wallet.deposit': msg('recorded a deposit'),
+  'wallet.withdrawal': msg('recorded a withdrawal'),
+  'cash_request.decline': msg('declined a deposit or payout request'),
+  'identity.approve': msg('verified the identity of'),
+  'identity.reject': msg('rejected the identity check of'),
+  'identity.revoke': msg('revoked the verified status of'),
+  'application.submit': msg('submitted an application'),
+  'application.approve': msg('approved an application'),
+  'application.reject': msg('rejected an application'),
+  'registry.status': msg('changed a registry status'),
+  'organization.status': msg('changed an organization status'),
+  'organization.member_set': msg('changed company members'),
+  'stock.listing_update': msg('updated a stock listing'),
+  'story.publish': msg('published a service story'),
+  'story.delete': msg('deleted a service story'),
   'apikey.revoke': 'revoked an API key',
-  'channel.create': 'created a news channel',
-  'user.update': 'updated an account',
+  'channel.create': msg('created a news channel'),
+  'user.update': msg('updated an account'),
+  'user.sign_out': msg('signed an account out everywhere'),
 };
 
 function AuditRow({ log }: { log: AuditLog }) {
@@ -131,14 +139,61 @@ function AuditRow({ log }: { log: AuditLog }) {
       </span>
       <div className="grow" style={{ minWidth: 0 }}>
         <div className="ellipsis">
-          <b>{log.actor ? `@${log.actor.username}` : 'System'}</b>{' '}
-          {AUDIT_TEXT[log.action] ?? humanize(log.action.replace('.', ' ')).toLowerCase()}
+          <b>{log.actor ? `@${log.actor.username}` : t('System')}</b>{' '}
+          {t(AUDIT_TEXT[log.action] ?? '') || humanize(log.action.replace('.', ' ')).toLowerCase()}
           {amount}
         </div>
         <div className="tiny muted">
-          {log.targetType ?? 'platform'} · {timeAgo(log.createdAt)}
+          {log.targetType ?? t('platform')} · {timeAgo(log.createdAt)}
         </div>
       </div>
+    </div>
+  );
+}
+
+const ago = (iso: string | null) => {
+  if (!iso) return 'never';
+  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  return minutes < 1 ? 'just now' : minutes < 90 ? `${minutes} min ago` : `${Math.round(minutes / 60)} h ago`;
+};
+
+/** How the running platform is doing: instances, connections, queues, jobs and backups. */
+function SystemCard() {
+  const system = useQuery({ queryKey: ['system'], queryFn: api.admin.system, refetchInterval: 30_000 });
+  const s = system.data;
+  const failing = s?.jobs.filter((j) => j.lastError) ?? [];
+  const backupAge = s?.lastBackup ? (Date.now() - new Date(s.lastBackup.at).getTime()) / 3_600_000 : null;
+  return (
+    <div className="card stack" aria-label={t('System')}>
+      <h3>{t('System')}</h3>
+      <ErrorAlert error={system.error} />
+      {s && (
+        <dl className="dl small">
+          <dt>{t('Version')}</dt>
+          <dd>{t('{0} · up {1} h', s.instance.version, Math.floor(s.instance.uptimeSeconds / 3600))}</dd>
+          <dt>{t('Instances')}</dt>
+          <dd>{s.instances}</dd>
+          <dt>{t('Connected now')}</dt>
+          <dd>{plural(s.onlineUsers, 'person', 'people')}</dd>
+          <dt>{t('Waiting to send')}</dt>
+          <dd>
+            {plural(s.queues.notifications, 'notification')} ·{' '}
+            {plural(s.queues.webhooks, 'webhook delivery', 'webhook deliveries')}
+          </dd>
+          <dt>{t('Last backup')}</dt>
+          <dd className={backupAge === null || backupAge > 26 ? 'neg' : undefined}>
+            {s.lastBackup
+              ? t('{0} · {1} MB', ago(s.lastBackup.at), (s.lastBackup.bytes / 1_048_576).toFixed(1))
+              : t('none recorded — is the backup service running?')}
+          </dd>
+          <dt>{t('Background jobs')}</dt>
+          <dd className={failing.length ? 'neg' : undefined}>
+            {failing.length
+              ? `${failing.map((j) => j.name).join(', ')} failing: ${failing[0]!.lastError}`
+              : t('{0} running fine', s.jobs.length)}
+          </dd>
+        </dl>
+      )}
     </div>
   );
 }
@@ -162,7 +217,7 @@ export function DashboardPage() {
     <div className="page stack-lg">
       <PageHeader
         title={`${greeting()}, ${me.displayName.split(' ')[0]}`}
-        subtitle={new Date().toLocaleDateString(undefined, {
+        subtitle={new Date().toLocaleDateString(intlLocale(), {
           weekday: 'long',
           day: 'numeric',
           month: 'long',
@@ -170,27 +225,47 @@ export function DashboardPage() {
         })}
         actions={
           <button className="btn" onClick={() => stats.refetch()} disabled={stats.isFetching}>
-            <Icon name="refresh" size={16} /> Refresh
+            <Icon name="refresh" size={16} /> {t('Refresh')}
           </button>
         }
       />
       <ErrorAlert error={stats.error} />
 
-      {s && s.pendingApplications + s.openTickets > 0 && (
+      {!me.twoFactorEnabled && (
+        <motion.div
+          className="admin-attention security"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <Icon name="shield" size={18} />
+          <span className="grow">
+            <b>{t('Protect your staff account.')}</b>{' '}
+            {t('Turn on two-step verification in the OVL For Business app: Settings → Security.')}
+          </span>
+        </motion.div>
+      )}
+
+      {s && s.pendingApplications + s.openTickets + s.pendingCashRequests > 0 && (
         <motion.div className="admin-attention" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
           <Icon name="bell" size={18} />
           <span className="grow">
-            Waiting for staff: <b>{plural(s.pendingApplications, 'application')}</b> and{' '}
-            <b>{plural(s.openTickets, 'open ticket')}</b>.
+            {t('Waiting for staff:')} <b>{plural(s.pendingApplications, 'application')}</b>,{' '}
+            <b>{plural(s.openTickets, 'open ticket')}</b> {t('and')}{' '}
+            <b>{plural(s.pendingCashRequests, 'deposit or payout request', 'deposit or payout requests')}</b>.
           </span>
+          {can('wallet.cash') && s.pendingCashRequests > 0 && (
+            <Link className="btn sm" to="/cash">
+              {t('Handle')}
+            </Link>
+          )}
           {can('applications.view_all') && s.pendingApplications > 0 && (
             <Link className="btn sm" to="/applications">
-              Review
+              {t('Review')}
             </Link>
           )}
           {can('support.answer') && s.openTickets > 0 && (
             <Link className="btn sm" to="/support">
-              Answer
+              {t('Answer')}
             </Link>
           )}
         </motion.div>
@@ -202,17 +277,17 @@ export function DashboardPage() {
             <Kpi
               to="/users"
               icon="users"
-              label="Accounts"
+              label={t('Accounts')}
               value={totalUsers}
               tone="var(--accent)"
-              hint={`${s.users.user ?? 0} regular · ${totalUsers - (s.users.user ?? 0)} staff`}
+              hint={t('{0} regular · {1} staff', s.users.user ?? 0, totalUsers - (s.users.user ?? 0))}
             />
           </StaggerItem>
           <StaggerItem>
             <Kpi
               to="/applications"
               icon="review"
-              label="Pending applications"
+              label={t('Pending applications')}
               value={s.pendingApplications}
               tone="var(--warning)"
             />
@@ -221,7 +296,7 @@ export function DashboardPage() {
             <Kpi
               to="/support"
               icon="support"
-              label="Open tickets"
+              label={t('Open tickets')}
               value={s.openTickets}
               tone="var(--danger)"
             />
@@ -230,7 +305,7 @@ export function DashboardPage() {
             <Kpi
               to="/organizations"
               icon="building"
-              label="Organizations"
+              label={t('Organizations')}
               value={s.organizations}
               tone="var(--council)"
             />
@@ -239,7 +314,7 @@ export function DashboardPage() {
             <Kpi
               to="/stock"
               icon="chart"
-              label="Active listings"
+              label={t('Active listings')}
               value={s.activeListings}
               tone="var(--success)"
             />
@@ -248,7 +323,7 @@ export function DashboardPage() {
             <Kpi
               to="/registry"
               icon="book"
-              label="Registry entries"
+              label={t('Registry entries')}
               value={s.registryEntries}
               tone="var(--moderator)"
             />
@@ -269,10 +344,13 @@ export function DashboardPage() {
           <div className="card stack">
             <div className="spread" style={{ flexWrap: 'wrap', gap: 10 }}>
               <div>
-                <h3>Platform activity</h3>
+                <h3>{t('Platform activity')}</h3>
                 <span className="small muted">
-                  {periodTotal.toLocaleString()} {SERIES.find((x) => x.value === series)!.label.toLowerCase()}{' '}
-                  in the last 14 days
+                  {t(
+                    '{0}  {1} in the last 14 days',
+                    periodTotal.toLocaleString(intlLocale()),
+                    t(SERIES.find((x) => x.value === series)!.label).toLowerCase(),
+                  )}
                 </span>
               </div>
               <Segmented<Series> value={series} onChange={setSeries} options={SERIES} />
@@ -281,21 +359,21 @@ export function DashboardPage() {
               key={series}
               values={values}
               labels={s.activity.map((d) =>
-                new Date(`${d.date}T12:00:00Z`).toLocaleDateString(undefined, {
+                new Date(`${d.date}T12:00:00Z`).toLocaleDateString(intlLocale(), {
                   day: 'numeric',
                   month: 'short',
                 }),
               )}
-              format={(v) => Math.round(v).toLocaleString()}
+              format={(v) => Math.round(v).toLocaleString(intlLocale())}
               height={220}
-              label={`${series} per day`}
+              label={t('{0} per day', series)}
             />
             <div className="admin-axis">
               {s.activity
                 .filter((_, i) => i % 3 === 1)
                 .map((d) => (
                   <span key={d.date}>
-                    {new Date(`${d.date}T12:00:00Z`).toLocaleDateString(undefined, {
+                    {new Date(`${d.date}T12:00:00Z`).toLocaleDateString(intlLocale(), {
                       day: 'numeric',
                       month: 'short',
                     })}
@@ -305,7 +383,7 @@ export function DashboardPage() {
           </div>
 
           <div className="card stack">
-            <h3>Accounts by role</h3>
+            <h3>{t('Accounts by role')}</h3>
             <div className="stack-sm">
               {ROLES.map((r, i) => {
                 const n = s.users[r] ?? 0;
@@ -313,7 +391,7 @@ export function DashboardPage() {
                   <div key={r} className="admin-bar-row">
                     <span className="admin-bar-label">
                       <span className="dot" style={{ background: ROLE_COLORS[r] }} />
-                      {ROLE_LABELS[r]}
+                      {t(ROLE_LABELS[r])}
                     </span>
                     <div className="admin-bar">
                       <motion.span
@@ -334,14 +412,14 @@ export function DashboardPage() {
 
           <div className="card stack">
             <div className="spread">
-              <h3>Money on the platform</h3>
+              <h3>{t('Money on the platform')}</h3>
               {can('wallet.view_all') && (
                 <Link to="/cash" className="small">
-                  Cash desk →
+                  {t('Cash desk →')}
                 </Link>
               )}
             </div>
-            {s.balances.length === 0 && <p className="small muted">No balances yet.</p>}
+            {s.balances.length === 0 && <p className="small muted">{t('No balances yet.')}</p>}
             <div className="stack-sm">
               {s.balances.map((b) => (
                 <div key={b.currency} className="admin-money-row">
@@ -355,19 +433,20 @@ export function DashboardPage() {
             </div>
           </div>
 
+          {can('audit.view') && <SystemCard />}
           {can('audit.view') && (
             <div className="card stack">
               <div className="spread">
-                <h3>Recent staff actions</h3>
+                <h3>{t('Recent staff actions')}</h3>
                 <Link to="/audit" className="small">
-                  Audit log →
+                  {t('Audit log →')}
                 </Link>
               </div>
               <div className="stack-sm">
                 {audit.data?.items.map((l) => (
                   <AuditRow key={l.id} log={l} />
                 ))}
-                {audit.data?.items.length === 0 && <p className="small muted">Nothing yet.</p>}
+                {audit.data?.items.length === 0 && <p className="small muted">{t('Nothing yet.')}</p>}
               </div>
             </div>
           )}

@@ -3,6 +3,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme/theme.dart';
 import 'widgets.dart';
+import '../i18n/i18n.dart';
 
 /// Grid of theme previews (a miniature of the app in each palette). "system" follows the OS.
 class ThemeGallery extends StatelessWidget {
@@ -33,8 +34,8 @@ class ThemeGallery extends StatelessWidget {
                   delay: stagger(i, 35),
                   child: _ThemeCard(
                     id: o.$1,
-                    name: o.$2,
-                    description: o.$3,
+                    name: tr(o.$2),
+                    description: tr(o.$3),
                     selected: value == o.$1,
                     onTap: (origin) => onChanged(o.$1, origin),
                   ),

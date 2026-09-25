@@ -80,21 +80,47 @@ const PEOPLE: Person[] = [
   },
 ];
 
+/** Sign-in and registration are rate limited per minute: wait and try again instead of failing. */
+async function patiently<T>(call: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await call();
+    } catch (error) {
+      if (!(error instanceof OvlApiError) || error.status !== 429 || attempt >= 8) throw error;
+      const seconds = Number(/retry in (\d+)/.exec(error.message)?.[1] ?? 15);
+      console.log(`Rate limited, waiting ${seconds} s…`);
+      await new Promise((resolve) => setTimeout(resolve, (seconds + 1) * 1000));
+    }
+  }
+}
+
 async function signIn(login: string, password: string): Promise<{ client: OvlClient; me: Me }> {
   const client = new OvlClient({ baseUrl: API });
-  const me = await client.auth.login({ login, password });
+  const me = await patiently(() => client.auth.login({ login, password }));
   return { client, me };
+}
+
+/** Without SMTP the development server keeps emails in /dev/outbox: follow the confirmation link. */
+async function confirmEmail(client: OvlClient, email: string) {
+  const res = await fetch(`${API}/api/v1/dev/outbox`);
+  if (!res.ok) return;
+  const mails = (await res.json()) as { to: string; text: string }[];
+  const token = mails.find((m) => m.to === email)?.text.match(/verify-email\?token=([\w-]+)/)?.[1];
+  if (token) await patiently(() => client.auth.verifyEmail(token));
 }
 
 async function person(p: Person): Promise<{ client: OvlClient; me: Me }> {
   const client = new OvlClient({ baseUrl: API });
   try {
-    const me = await client.auth.register({
-      username: p.username,
-      email: `${p.username}@demo.ovl`,
-      password: PASSWORD,
-      displayName: p.displayName,
-    });
+    const me = await patiently(() =>
+      client.auth.register({
+        username: p.username,
+        email: `${p.username}@demo.ovl`,
+        password: PASSWORD,
+        displayName: p.displayName,
+      }),
+    );
+    await confirmEmail(client, `${p.username}@demo.ovl`);
     await client.me.update({ bio: p.bio });
     await client.me.updatePreferences({
       onboardingCompleted: true,
@@ -103,8 +129,11 @@ async function person(p: Person): Promise<{ client: OvlClient; me: Me }> {
     });
     return { client, me };
   } catch (error) {
-    if (error instanceof OvlApiError && error.status === 409) return signIn(p.username, PASSWORD);
-    throw error;
+    if (!(error instanceof OvlApiError) || error.status !== 409) throw error;
+    // Registered by an earlier, interrupted run: finish the email confirmation too.
+    const account = await signIn(p.username, PASSWORD);
+    if (!account.me.emailVerified) await confirmEmail(account.client, `${p.username}@demo.ovl`);
+    return account;
   }
 }
 
@@ -150,7 +179,7 @@ async function main() {
     ['elena', 'CHF', '7200'],
   ];
   for (const [name, currency, amount] of deposits) {
-    await sofia.admin.cashOperation({
+    const done = await sofia.admin.cashOperation({
       ownerType: 'user',
       ownerId: u(name).me.id,
       currency,
@@ -159,7 +188,22 @@ async function main() {
       method: Number(amount) > 20000 ? 'manager_transfer' : 'physical_cash',
       reference: `DEMO-${name.toUpperCase()}-${currency}`,
     });
+    // Large amounts wait for a second finance manager ("four eyes"): the owner confirms.
+    if ('kind' in done) await owner.client.admin.approveCash(done.id);
   }
+
+  // --- Exchange rates (what one unit is worth in USD) -----------------------------------
+  await sofia.admin.setExchange({
+    base: 'USD',
+    feePercent: '0.5',
+    rates: [
+      { currency: 'EUR', rate: '1.08' },
+      { currency: 'GBP', rate: '1.27' },
+      { currency: 'CHF', rate: '1.12' },
+      { currency: 'JPY', rate: '0.0067' },
+      { currency: 'CNY', rate: '0.138' },
+    ],
+  });
 
   // --- Companies through the full approval workflow -----------------------------------
   const companies = [
@@ -218,6 +262,8 @@ async function main() {
     for (const price of c.prices) await owner.client.admin.updateListing(listing.id, { sharePrice: price });
   }
 
+  const maria = u('maria').client;
+
   // --- Investments ---------------------------------------------------------------------
   const invest: [string, string, string][] = [
     ['ivan', 'AURA', '25000'],
@@ -227,12 +273,63 @@ async function main() {
     ['chen', 'AURA', '4200'],
     ['ivan', 'HLX', '0'],
   ];
+  for (const name of new Set(invest.map(([name]) => name))) {
+    const client = u(name).client;
+    const risk = await client.stock.risk();
+    if (!risk.acceptedAt) await client.stock.acceptRisk(risk.version);
+  }
   for (const [name, ticker, amount] of invest) {
     if (amount === '0') continue;
     await u(name)
       .client.stock.invest(ticker, amount)
       .catch(() => undefined);
   }
+
+  // --- Multi-signature: Aurora's large payments need two people ------------------------------
+  const aurora = (await maria.organizations.mine()).find((o) => o.name === 'Aurora Media Group');
+  if (aurora) {
+    const members = await maria.organizations.members(aurora.id);
+    if (!members.some((m) => m.user.username === 'ivan'))
+      await maria.organizations.addMember(aurora.id, 'ivan', 'director');
+    if (!aurora.approvalLimit) await maria.organizations.update(aurora.id, { approvalLimit: '5000' });
+    const waiting = await maria.organizations.paymentApprovals(aurora.id, 'pending');
+    const eur = (await maria.organizations.wallets(aurora.id)).find((w) => w.currency === 'EUR');
+    if (!waiting.length && eur && Number(eur.available) > 6000)
+      await maria.wallets.transfer({
+        fromWalletId: eur.id,
+        to: { type: 'organization', slug: 'helios-works' },
+        amount: '6000',
+        note: 'Studio lease, Q4',
+      });
+  }
+
+  // --- Payroll and a recurring invoice ---------------------------------------------------
+  if (aurora) {
+    const eur = (await maria.organizations.wallets(aurora.id)).find((w) => w.currency === 'EUR');
+    const runs = await maria.organizations.payroll(aurora.id);
+    if (eur && !runs.length && Number(eur.available) > 2500)
+      await maria.organizations.runPayroll(aurora.id, {
+        walletId: eur.id,
+        title: 'Freelance fees — September',
+        items: [
+          { username: 'elena', amount: '1200', note: 'Editorial board' },
+          { username: 'chen', amount: '900', note: 'Game trailer' },
+        ],
+      });
+  }
+  const amara = u('amara').client;
+  const helios = (await amara.organizations.mine()).find((o) => o.name === 'Helios Works');
+  if (helios && !(await amara.invoices.schedules()).length)
+    await amara.invoices.createSchedule({
+      from: { type: 'organization', organizationId: helios.id },
+      to: { type: 'organization', slug: 'aurora-media-group' },
+      currency: 'EUR',
+      interval: 'monthly',
+      startDate: new Date().toISOString().slice(0, 10),
+      dueDays: 14,
+      items: [{ description: 'Studio lease, Helios district 4', quantity: 1, unitPrice: '750' }],
+      note: 'Monthly lease as agreed.',
+    });
 
   // --- Licenses -------------------------------------------------------------------------
   const licenses = [
@@ -267,6 +364,25 @@ async function main() {
     const app = await u(l.who).client.applications.submit({ type: 'license', payload: l });
     await approveAll(app, reviewers, { moderation: LICENSE_CHECKS });
   }
+  // The Republic of Helios issues its own currency and pays Maria in it.
+  const country = (await u('amara').client.me.licences()).find((l) => l.kind === 'virtual_country');
+  if (country && !country.currency) {
+    await u('amara').client.virtualCurrencies.create(country.id, {
+      code: 'HEL',
+      name: 'Helios crown',
+      decimals: 2,
+    });
+    await u('amara').client.virtualCurrencies.issue('HEL', '50000', 'Founding issue');
+    const hel = (await u('amara').client.wallets.list()).find((w) => w.currency === 'HEL');
+    if (hel)
+      await u('amara').client.wallets.transfer({
+        fromWalletId: hel.id,
+        to: { type: 'user', username: 'maria' },
+        amount: '1200',
+        note: 'District 4 media rights',
+      });
+  }
+
   // One application still waiting for the council, for the review queue.
   const pending = await u('ivan').client.applications.mine();
   if (!pending.some((a) => a.status === 'pending')) {
@@ -282,7 +398,6 @@ async function main() {
   }
 
   // --- Contacts, chats, a group and a news channel --------------------------------------
-  const maria = u('maria').client;
   for (const name of ['ivan', 'chen', 'amara', 'elena'])
     await maria.contacts.add(name).catch(() => undefined);
   await u('ivan')
@@ -308,9 +423,15 @@ async function main() {
       title: 'Board — Aurora Media',
       memberIds: [u('ivan').me.id, u('chen').me.id, u('elena').me.id],
     });
-    await maria.chats.send(group.id, 'Agenda for Friday: Q3 results, radio license, hiring plan.');
+    const agenda = await maria.chats.send(
+      group.id,
+      'Agenda for Friday: Q3 results, radio license, hiring plan.',
+    );
     await u('chen').client.chats.send(group.id, 'I can present the cross-promotion with Northwind.');
     await u('elena').client.chats.send(group.id, 'Council will review the radio license on Thursday.');
+    await u('ivan').client.chats.react(group.id, agenda.id, '👍');
+    await u('chen').client.chats.react(group.id, agenda.id, '👍');
+    await maria.chats.send(group.id, '@ivan can you bring the Q3 numbers?');
   }
 
   const channels = await owner.client.chats.discoverChannels('ovl_news');
@@ -324,11 +445,19 @@ async function main() {
       channel.id,
       'The stock exchange now shows price history for every listing.',
     );
-    await u('arjun').client.chats.send(
+    const post = await u('arjun').client.chats.send(
       channel.id,
       'New: themes, multi-account and native apps for every platform.',
     );
     for (const name of ['maria', 'ivan', 'chen', 'amara']) await u(name).client.chats.join(channel.id);
+    await u('maria').client.chats.react(channel.id, post.id, '🎉');
+    await u('amara').client.chats.react(channel.id, post.id, '🔥');
+    await u('chen').client.chats.comment(channel.id, post.id, 'The desktop app is great, thanks!');
+    await u('ivan').client.chats.comment(
+      channel.id,
+      post.id,
+      'Is there a dark theme for the admin panel too?',
+    );
   }
 
   // --- Service stories -------------------------------------------------------------------

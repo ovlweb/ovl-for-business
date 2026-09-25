@@ -11,6 +11,7 @@ import '../ui/format.dart';
 import '../ui/widgets.dart';
 import 'applications.dart';
 import 'contacts.dart';
+import '../i18n/i18n.dart';
 
 /// Staff review queue: applications waiting for a decision at a stage the reviewer's role acts on.
 class ReviewScreen extends StatelessWidget {
@@ -29,20 +30,21 @@ class ReviewScreen extends StatelessWidget {
           builder: (context, s) => PageBody(
             onRefresh: () => s.fetch(),
             children: [
-              const PageTitle(
+              PageTitle(
                 icon: LucideIcons.clipboardCheck,
-                title: 'Review queue',
-                subtitle:
-                    'Applications waiting for a decision from your role. Moderators confirm every checklist item.',
+                title: tr('Review queue'),
+                subtitle: tr(
+                  'Applications waiting for a decision from your role. Moderators confirm every checklist item.',
+                ),
               ),
               const SizedBox(height: 18),
               if (!s.hasData)
                 const SkeletonList()
               else if (s.data!.isEmpty)
-                const EmptyState(
+                EmptyState(
                   icon: LucideIcons.partyPopper,
-                  title: 'All caught up',
-                  text: 'Nothing is waiting for you.',
+                  title: tr('All caught up'),
+                  text: tr('Nothing is waiting for you.'),
                 )
               else
                 for (final (i, a) in s.data!.indexed)
@@ -117,12 +119,13 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
       _checked.clear();
       _comment.clear();
       if (mounted) {
-        toast(
-          context,
-          decision == 'approve'
-              ? 'Approved — ${updated.currentStage == null ? 'the application is complete' : 'moved to the next stage'}'
-              : 'Rejected',
-        );
+        toast(context, switch (decision) {
+          'approve' => tr('Approved — {0}', [
+            updated.currentStage == null ? tr('the application is complete') : tr('moved to the next stage'),
+          ]),
+          'request_changes' => tr('Sent back to the applicant for changes'),
+          _ => tr('Rejected'),
+        });
       }
     } catch (e) {
       setState(() => _error = e);
@@ -138,7 +141,7 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: BackButton(onPressed: () => context.go('/review')),
-        title: const Text('Review'),
+        title: Text(tr('Review')),
       ),
       body: Query<Application>(
         client: session.queries,
@@ -223,9 +226,9 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                                         .map((x) => '${humanize(x.key as String)}: ${x.value}')
                                         .join(' · ')
                                   : e.key == 'licenseType'
-                                  ? licenseTypeLabels[e.value] ?? '${e.value}'
+                                  ? tr(licenseTypeLabels[e.value] ?? '${e.value}')
                                   : e.value is bool
-                                  ? (e.value as bool ? 'Yes' : 'No')
+                                  ? (e.value as bool ? tr('Yes') : tr('No'))
                                   : '${e.value}'.isEmpty
                                   ? '—'
                                   : '${e.value}',
@@ -239,15 +242,23 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
               ),
               if (a.reviews.isNotEmpty) ...[
                 const SizedBox(height: 16),
-                Text('Decisions so far', style: context.text.titleLarge),
+                Text(tr('Decisions so far'), style: context.text.titleLarge),
                 const SizedBox(height: 8),
                 for (final r in a.reviews)
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: IconTile(
-                      r.decision == 'approve' ? LucideIcons.check : LucideIcons.x,
+                      switch (r.decision) {
+                        'approve' => LucideIcons.check,
+                        'request_changes' => LucideIcons.pencil,
+                        _ => LucideIcons.x,
+                      },
                       size: 34,
-                      color: r.decision == 'approve' ? c.success : c.danger,
+                      color: switch (r.decision) {
+                        'approve' => c.success,
+                        'request_changes' => c.warning,
+                        _ => c.danger,
+                      },
                     ),
                     title: Row(
                       children: [
@@ -270,12 +281,12 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text('Current stage: ${stage.label}', style: context.text.titleLarge),
+                      Text(tr('Current stage: {0}', [stage.label]), style: context.text.titleLarge),
                       const SizedBox(height: 4),
                       Text(stage.description, style: context.text.bodyMedium),
                       if (checklist.isNotEmpty) ...[
                         const SizedBox(height: 12),
-                        Caption('Confirm you reviewed'),
+                        Caption(tr('Confirm you reviewed')),
                         for (final item in checklist)
                           CheckboxListTile(
                             contentPadding: EdgeInsets.zero,
@@ -288,7 +299,18 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                           ),
                       ],
                       const SizedBox(height: 12),
-                      LabeledField(label: 'Comment (optional)', controller: _comment, maxLines: 2),
+                      LabeledField(
+                        label: tr('Comment'),
+                        controller: _comment,
+                        maxLines: 2,
+                        helper: tr('Required when rejecting or asking for changes.'),
+                      ),
+                      if (a.attachments.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Caption(tr('Documents')),
+                        const SizedBox(height: 6),
+                        AttachmentChips(files: a.attachments),
+                      ],
                       if (_error != null) ...[const SizedBox(height: 12), ErrorBox(_error)],
                       const SizedBox(height: 16),
                       Row(
@@ -301,7 +323,15 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                               ),
                               onPressed: _busy != null ? null : () => _decide(a, 'reject'),
                               icon: const Icon(LucideIcons.x, size: 17),
-                              label: const Text('Reject'),
+                              label: Text(tr('Reject')),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _busy != null ? null : () => _decide(a, 'request_changes'),
+                              icon: const Icon(LucideIcons.pencil, size: 17),
+                              label: Text(tr('Ask for changes')),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -315,7 +345,7 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                                     )
                                   : const Icon(LucideIcons.check, size: 17),
-                              label: const Text('Approve'),
+                              label: Text(tr('Approve')),
                             ),
                           ),
                         ],

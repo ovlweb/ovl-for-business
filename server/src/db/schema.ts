@@ -2,10 +2,16 @@ import {
   APPLICATION_STATUSES,
   APPLICATION_TYPES,
   CASH_METHODS,
+  CASH_REQUEST_STATUSES,
+  IDENTITY_STATUSES,
+  INVOICE_INTERVALS,
+  INVOICE_SCHEDULE_STATUSES,
+  INVOICE_STATUSES,
   CHAT_TYPES,
   LEDGER_KINDS,
   LISTING_STATUSES,
   ORG_ROLES,
+  PAYROLL_STATUSES,
   REGISTRY_KINDS,
   REGISTRY_STATUSES,
   ROLES,
@@ -17,6 +23,7 @@ import {
   boolean,
   char,
   check,
+  date,
   index,
   integer,
   jsonb,
@@ -42,7 +49,7 @@ export const cashTypeEnum = pgEnum('cash_type', ['deposit', 'withdrawal']);
 export const cashMethodEnum = pgEnum('cash_method', CASH_METHODS);
 export const applicationTypeEnum = pgEnum('application_type', APPLICATION_TYPES);
 export const applicationStatusEnum = pgEnum('application_status', APPLICATION_STATUSES);
-export const reviewDecisionEnum = pgEnum('review_decision', ['approve', 'reject']);
+export const reviewDecisionEnum = pgEnum('review_decision', ['approve', 'reject', 'request_changes']);
 export const registryKindEnum = pgEnum('registry_kind', REGISTRY_KINDS);
 export const registryStatusEnum = pgEnum('registry_status', REGISTRY_STATUSES);
 export const listingStatusEnum = pgEnum('listing_status', LISTING_STATUSES);
@@ -66,9 +73,130 @@ export const users = pgTable('users', {
   bio: text('bio').notNull().default(''),
   avatarUrl: text('avatar_url'),
   preferences: jsonb('preferences').$type<Record<string, unknown>>().notNull().default({}),
+  // Two-factor authentication (TOTP). Secrets are sealed with AES-GCM (see lib/totp.ts).
+  totpSecret: text('totp_secret'),
+  totpPendingSecret: text('totp_pending_secret'),
+  totpEnabledAt: timestamp('totp_enabled_at', { withTimezone: true }),
+  /** Last accepted time step: a code cannot be used twice. */
+  totpLastStep: integer('totp_last_step'),
+  emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
+  /** Identity documents checked by staff (KYC). */
+  identityVerifiedAt: timestamp('identity_verified_at', { withTimezone: true }),
+  /** When a council seat ends (governance term length); null: no term limit or not on the council. */
+  councilTermEndsAt: timestamp('council_term_ends_at', { withTimezone: true }),
   createdAt: createdAt(),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
 });
+
+/** WebAuthn credentials ("passkeys") for signing in without a password. */
+export const passkeys = pgTable(
+  'passkeys',
+  {
+    /** The credential ID (base64url), as the browser reports it. */
+    id: text('id').primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 64 }).notNull(),
+    publicKey: text('public_key').notNull(),
+    counter: bigint('counter', { mode: 'number' }).notNull().default(0),
+    transports: jsonb('transports').$type<string[]>().notNull().default([]),
+    backedUp: boolean('backed_up').notNull().default(false),
+    createdAt: createdAt(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  },
+  (t) => [index('passkeys_user_idx').on(t.userId)],
+);
+
+/** Pending WebAuthn challenges (a few minutes each). */
+export const webauthnChallenges = pgTable('webauthn_challenges', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  purpose: varchar('purpose', { length: 16 }).notNull(),
+  challenge: text('challenge').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+});
+
+export const identityStatusEnum = pgEnum('identity_status', IDENTITY_STATUSES);
+
+/** Identity checks (KYC). The document number itself is not kept: only its last four characters
+ * and a keyed hash, so staff can spot one document used by several accounts. */
+export const identityChecks = pgTable(
+  'identity_checks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    status: identityStatusEnum('status').notNull().default('pending'),
+    legalName: varchar('legal_name', { length: 120 }).notNull(),
+    dateOfBirth: date('date_of_birth').notNull(),
+    country: varchar('country', { length: 80 }).notNull(),
+    documentType: varchar('document_type', { length: 24 }).notNull(),
+    documentLast4: varchar('document_last4', { length: 4 }).notNull(),
+    documentHash: varchar('document_hash', { length: 64 }).notNull(),
+    rejectionReason: text('rejection_reason'),
+    reviewedBy: uuid('reviewed_by').references(() => users.id),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('identity_checks_user_idx').on(t.userId), index('identity_checks_status_idx').on(t.status)],
+);
+
+export const emailTokenPurposeEnum = pgEnum('email_token_purpose', ['verify_email', 'reset_password']);
+
+/** Links sent by email (confirm the address, reset the password). Only hashes are stored. */
+export const emailTokens = pgTable(
+  'email_tokens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    purpose: emailTokenPurposeEnum('purpose').notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    /** The address the link was sent to: a link stops working if the email changes. */
+    email: varchar('email', { length: 254 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('email_tokens_user_idx').on(t.userId, t.purpose)],
+);
+
+/** One-time codes for signing in without the authenticator. Only hashes are stored. */
+export const recoveryCodes = pgTable(
+  'recovery_codes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    codeHash: text('code_hash').notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('recovery_codes_user_idx').on(t.userId)],
+);
+
+/** A signed-in device. Refresh tokens rotate inside it; signing it out revokes all of them. */
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    userAgent: text('user_agent'),
+    ip: text('ip'),
+    /** How it signed in: password (+ code), passkey or single sign-on. */
+    method: varchar('method', { length: 16 }).notNull().default('password'),
+    createdAt: createdAt(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (t) => [index('sessions_user_idx').on(t.userId)],
+);
 
 export const refreshTokens = pgTable(
   'refresh_tokens',
@@ -77,13 +205,14 @@ export const refreshTokens = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    sessionId: uuid('session_id').references(() => sessions.id, { onDelete: 'cascade' }),
     tokenHash: text('token_hash').notNull().unique(),
     userAgent: text('user_agent'),
     createdAt: createdAt(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
   },
-  (t) => [index('refresh_tokens_user_idx').on(t.userId)],
+  (t) => [index('refresh_tokens_user_idx').on(t.userId), index('refresh_tokens_session_idx').on(t.sessionId)],
 );
 
 export const contacts = pgTable(
@@ -118,6 +247,10 @@ export const organizations = pgTable('organizations', {
     .references(() => users.id),
   registryNumber: varchar('registry_number', { length: 32 }),
   applicationId: uuid('application_id'),
+  /** Verified business: set while the owner's identity is verified. */
+  verifiedAt: timestamp('verified_at', { withTimezone: true }),
+  /** Payments of at least this much (base currency, minor units) need a second finance member. */
+  approvalLimit: money('approval_limit'),
   createdAt: createdAt(),
 });
 
@@ -202,6 +335,284 @@ export const cashOperations = pgTable(
   (t) => [index('cash_operations_created_idx').on(t.createdAt)],
 );
 
+export const cashRequestStatusEnum = pgEnum('cash_request_status', CASH_REQUEST_STATUSES);
+
+/** A person's request for a deposit or a payout, fulfilled by a finance manager. */
+export const cashRequests = pgTable(
+  'cash_requests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    walletId: uuid('wallet_id')
+      .notNull()
+      .references(() => wallets.id),
+    type: cashTypeEnum('type').notNull(),
+    method: cashMethodEnum('method').notNull(),
+    amount: money('amount').notNull(),
+    currency: char('currency', { length: 3 }).notNull(),
+    note: text('note').notNull().default(''),
+    status: cashRequestStatusEnum('status').notNull().default('pending'),
+    requestedBy: uuid('requested_by')
+      .notNull()
+      .references(() => users.id),
+    handledBy: uuid('handled_by').references(() => users.id),
+    cashOperationId: uuid('cash_operation_id').references(() => cashOperations.id),
+    declineReason: text('decline_reason'),
+    createdAt: createdAt(),
+    handledAt: timestamp('handled_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('cash_requests_status_idx').on(t.status, t.createdAt),
+    index('cash_requests_wallet_idx').on(t.walletId),
+  ],
+);
+
+export const invoiceStatusEnum = pgEnum('invoice_status', INVOICE_STATUSES);
+
+/** One line of an invoice; the unit price is in minor units (as a string, since jsonb has no bigint). */
+export interface InvoiceItemRow {
+  description: string;
+  quantity: number;
+  unitPrice: string;
+}
+
+/** An invoice from a person or company to another; paid from one of the recipient's balances. */
+export const invoices = pgTable(
+  'invoices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    number: varchar('number', { length: 32 }).notNull(),
+    issuerType: walletOwnerEnum('issuer_type').notNull(),
+    issuerUserId: uuid('issuer_user_id').references(() => users.id),
+    issuerOrgId: uuid('issuer_org_id').references(() => organizations.id),
+    recipientType: walletOwnerEnum('recipient_type').notNull(),
+    recipientUserId: uuid('recipient_user_id').references(() => users.id),
+    recipientOrgId: uuid('recipient_org_id').references(() => organizations.id),
+    currency: char('currency', { length: 3 }).notNull(),
+    items: jsonb('items').$type<InvoiceItemRow[]>().notNull(),
+    total: money('total').notNull(),
+    note: text('note').notNull().default(''),
+    dueDate: date('due_date').notNull(),
+    status: invoiceStatusEnum('status').notNull().default('open'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+    paidAt: timestamp('paid_at', { withTimezone: true }),
+    paidBy: uuid('paid_by').references(() => users.id),
+    paidFromWalletId: uuid('paid_from_wallet_id').references(() => wallets.id),
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+    cancelReason: text('cancel_reason'),
+    /** Invoices can be paid in parts; `paidAt` is set once this reaches the total. */
+    amountPaid: money('amount_paid')
+      .notNull()
+      .default(sql`0`),
+    scheduleId: uuid('schedule_id'),
+  },
+  (t) => [
+    uniqueIndex('invoices_issuer_user_number_uq').on(t.issuerUserId, t.number),
+    uniqueIndex('invoices_issuer_org_number_uq').on(t.issuerOrgId, t.number),
+    index('invoices_recipient_user_idx').on(t.recipientUserId, t.createdAt),
+    index('invoices_recipient_org_idx').on(t.recipientOrgId, t.createdAt),
+    check('invoices_single_issuer', sql`(${t.issuerUserId} is null) <> (${t.issuerOrgId} is null)`),
+    check('invoices_single_recipient', sql`(${t.recipientUserId} is null) <> (${t.recipientOrgId} is null)`),
+    check('invoices_total_positive', sql`${t.total} > 0`),
+  ],
+);
+
+/** Monthly statement emails already sent (one per person and month, across all instances). */
+export const statementNotices = pgTable(
+  'statement_notices',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    month: char('month', { length: 7 }).notNull(),
+    sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.month] })],
+);
+
+export const invoicePayments = pgTable(
+  'invoice_payments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    invoiceId: uuid('invoice_id')
+      .notNull()
+      .references(() => invoices.id),
+    walletId: uuid('wallet_id')
+      .notNull()
+      .references(() => wallets.id),
+    amount: money('amount').notNull(),
+    paidBy: uuid('paid_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index('invoice_payments_invoice_idx').on(t.invoiceId)],
+);
+
+export const invoiceScheduleStatusEnum = pgEnum('invoice_schedule_status', INVOICE_SCHEDULE_STATUSES);
+
+/** Recurring invoices: the scheduler issues one every period from `startDate`. */
+export const invoiceSchedules = pgTable(
+  'invoice_schedules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    issuerType: walletOwnerEnum('issuer_type').notNull(),
+    issuerUserId: uuid('issuer_user_id').references(() => users.id),
+    issuerOrgId: uuid('issuer_org_id').references(() => organizations.id),
+    recipientType: walletOwnerEnum('recipient_type').notNull(),
+    recipientUserId: uuid('recipient_user_id').references(() => users.id),
+    recipientOrgId: uuid('recipient_org_id').references(() => organizations.id),
+    currency: char('currency', { length: 3 }).notNull(),
+    items: jsonb('items').$type<InvoiceItemRow[]>().notNull(),
+    total: money('total').notNull(),
+    note: text('note').notNull().default(''),
+    interval: varchar('interval', { length: 16 }).$type<(typeof INVOICE_INTERVALS)[number]>().notNull(),
+    dueDays: integer('due_days').notNull(),
+    startDate: date('start_date').notNull(),
+    endDate: date('end_date'),
+    /** Periods since the start that are done (issued or skipped); the next run follows from it. */
+    periods: integer('periods').notNull().default(0),
+    nextRunOn: date('next_run_on'),
+    status: invoiceScheduleStatusEnum('status').notNull().default('active'),
+    invoiceCount: integer('invoice_count').notNull().default(0),
+    lastInvoiceId: uuid('last_invoice_id'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index('invoice_schedules_due_idx').on(t.status, t.nextRunOn)],
+);
+
+export const payrollStatusEnum = pgEnum('payroll_status', PAYROLL_STATUSES);
+
+/** A company paying many people at once from one balance. */
+export const payrollRuns = pgTable(
+  'payroll_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    walletId: uuid('wallet_id')
+      .notNull()
+      .references(() => wallets.id),
+    currency: char('currency', { length: 3 }).notNull(),
+    title: varchar('title', { length: 120 }).notNull(),
+    total: money('total').notNull(),
+    status: payrollStatusEnum('status').notNull(),
+    items: jsonb('items').$type<{ userId: string; amount: string; note: string }[]>().notNull(),
+    approvalId: uuid('approval_id'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+    paidAt: timestamp('paid_at', { withTimezone: true }),
+  },
+  (t) => [index('payroll_runs_org_idx').on(t.organizationId, t.createdAt)],
+);
+
+export const cashApprovalStatusEnum = pgEnum('cash_approval_status', ['pending', 'approved', 'rejected']);
+
+/** Four eyes: a large cash operation (or request completion) waiting for a second manager. */
+export const cashApprovals = pgTable(
+  'cash_approvals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    kind: varchar('kind', { length: 16 }).$type<'operation' | 'request'>().notNull(),
+    cashRequestId: uuid('cash_request_id').references(() => cashRequests.id),
+    walletId: uuid('wallet_id')
+      .notNull()
+      .references(() => wallets.id),
+    type: cashTypeEnum('type').notNull(),
+    method: cashMethodEnum('method').notNull(),
+    amount: money('amount').notNull(),
+    currency: char('currency', { length: 3 }).notNull(),
+    reference: varchar('reference', { length: 128 }).notNull(),
+    note: text('note').notNull().default(''),
+    status: cashApprovalStatusEnum('status').notNull().default('pending'),
+    requestedBy: uuid('requested_by')
+      .notNull()
+      .references(() => users.id),
+    decidedBy: uuid('decided_by').references(() => users.id),
+    rejectReason: text('reject_reason'),
+    cashOperationId: uuid('cash_operation_id').references(() => cashOperations.id),
+    createdAt: createdAt(),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+  },
+  (t) => [index('cash_approvals_status_idx').on(t.status, t.createdAt)],
+);
+
+/** Platform-wide settings edited in the admin panel (exchange fee, governance…). */
+export const platformSettings = pgTable('platform_settings', {
+  key: varchar('key', { length: 64 }).primaryKey(),
+  value: jsonb('value').$type<Record<string, unknown>>().notNull(),
+  updatedBy: uuid('updated_by').references(() => users.id),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Managed exchange rates: what one unit of `currency` is worth in the base currency. */
+export const exchangeRates = pgTable('exchange_rates', {
+  currency: char('currency', { length: 3 }).primaryKey(),
+  rate: varchar('rate', { length: 32 }).notNull(),
+  updatedBy: uuid('updated_by').references(() => users.id),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const exchanges = pgTable(
+  'exchanges',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    actorId: uuid('actor_id')
+      .notNull()
+      .references(() => users.id),
+    fromWalletId: uuid('from_wallet_id')
+      .notNull()
+      .references(() => wallets.id),
+    toWalletId: uuid('to_wallet_id')
+      .notNull()
+      .references(() => wallets.id),
+    fromAmount: money('from_amount').notNull(),
+    toAmount: money('to_amount').notNull(),
+    fee: money('fee').notNull(),
+    rate: varchar('rate', { length: 32 }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('exchanges_from_idx').on(t.fromWalletId)],
+);
+
+/** Multi-signature: a company payment above its approval limit, waiting for a second member. */
+export const paymentApprovals = pgTable(
+  'payment_approvals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    walletId: uuid('wallet_id')
+      .notNull()
+      .references(() => wallets.id),
+    kind: varchar('kind', { length: 16 })
+      .$type<'transfer' | 'invoice' | 'exchange' | 'payroll' | 'dividend'>()
+      .notNull(),
+    action: jsonb('action').$type<Record<string, unknown>>().notNull(),
+    amount: money('amount').notNull(),
+    currency: char('currency', { length: 3 }).notNull(),
+    description: text('description').notNull(),
+    status: cashApprovalStatusEnum('status').notNull().default('pending'),
+    requestedBy: uuid('requested_by')
+      .notNull()
+      .references(() => users.id),
+    decidedBy: uuid('decided_by').references(() => users.id),
+    reason: text('reason'),
+    createdAt: createdAt(),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+  },
+  (t) => [index('payment_approvals_org_idx').on(t.organizationId, t.status)],
+);
+
 export const fundLocks = pgTable(
   'fund_locks',
   {
@@ -235,6 +646,8 @@ export const applications = pgTable(
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
     result: jsonb('result').$type<Record<string, unknown>>(),
     rejectionReason: text('rejection_reason'),
+    /** Bumped each time the applicant resubmits after "request changes"; reviews count per round. */
+    round: integer('round').notNull().default(1),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
@@ -260,9 +673,33 @@ export const applicationReviews = pgTable(
     decision: reviewDecisionEnum('decision').notNull(),
     comment: text('comment').notNull().default(''),
     checklist: jsonb('checklist').$type<string[]>(),
+    round: integer('round').notNull().default(1),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex('application_reviews_once_uq').on(t.applicationId, t.stageKey, t.reviewerId)],
+  (t) => [uniqueIndex('application_reviews_once_uq').on(t.applicationId, t.stageKey, t.reviewerId, t.round)],
+);
+
+/**
+ * Uploaded files. A file starts private to its uploader and is attached to something (an
+ * application, a chat message…) through `scope` + `scopeId`, which decides who may read it.
+ */
+export const files = pgTable(
+  'files',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id')
+      .notNull()
+      .references(() => users.id),
+    storageKey: text('storage_key').notNull(),
+    name: varchar('name', { length: 255 }).notNull(),
+    contentType: varchar('content_type', { length: 127 }).notNull(),
+    size: integer('size').notNull(),
+    sha256: varchar('sha256', { length: 64 }).notNull(),
+    scope: varchar('scope', { length: 24 }),
+    scopeId: uuid('scope_id'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('files_scope_idx').on(t.scope, t.scopeId), index('files_owner_idx').on(t.ownerId)],
 );
 
 // ---------------------------------------------------------------------------
@@ -290,13 +727,92 @@ export const registryEntries = pgTable(
     applicationId: uuid('application_id'),
     data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
     issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Licences run for a term (LICENSE_TERM_MONTHS); null never expires. */
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    /** Expiry reminders sent for the current term: 0 none, 1 the 30-day one, 2 the 7-day one. */
+    reminderStage: integer('reminder_stage').notNull().default(0),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('registry_kind_idx').on(t.kind, t.status),
+    index('registry_expiry_idx').on(t.status, t.expiresAt),
     index('registry_title_idx').on(sql`lower(${t.title})`),
   ],
 );
+
+export const webhookEndpoints = pgTable('webhook_endpoints', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  url: text('url').notNull(),
+  description: varchar('description', { length: 200 }).notNull().default(''),
+  events: text('events').array().notNull(),
+  /** Sealed with the server secret (it signs deliveries, so it cannot be a hash). */
+  secret: text('secret').notNull(),
+  active: boolean('active').notNull().default(true),
+  failures: integer('failures').notNull().default(0),
+  disabledReason: text('disabled_reason'),
+  lastDeliveryAt: timestamp('last_delivery_at', { withTimezone: true }),
+  createdAt: createdAt(),
+});
+
+/** Something happened (a registry entry changed…): one row, delivered to every subscribed endpoint. */
+export const webhookEvents = pgTable('webhook_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  type: varchar('type', { length: 40 }).notNull(),
+  data: jsonb('data').$type<Record<string, unknown>>().notNull(),
+  createdAt: createdAt(),
+});
+
+export const webhookDeliveries = pgTable(
+  'webhook_deliveries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => webhookEvents.id, { onDelete: 'cascade' }),
+    endpointId: uuid('endpoint_id')
+      .notNull()
+      .references(() => webhookEndpoints.id, { onDelete: 'cascade' }),
+    status: varchar('status', { length: 16 })
+      .$type<'pending' | 'delivered' | 'failed'>()
+      .notNull()
+      .default('pending'),
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    /** A worker holds the delivery while it sends it (so two never send it at once). */
+    lockedUntil: timestamp('locked_until', { withTimezone: true }),
+    responseStatus: integer('response_status'),
+    error: text('error'),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('webhook_deliveries_due_idx').on(t.status, t.nextAttemptAt),
+    index('webhook_deliveries_endpoint_idx').on(t.endpointId, t.createdAt),
+  ],
+);
+
+/** A currency issued by a virtual country (one per country); its holder issues and redeems it. */
+export const virtualCurrencies = pgTable('virtual_currencies', {
+  code: char('code', { length: 3 }).primaryKey(),
+  name: varchar('name', { length: 64 }).notNull(),
+  decimals: integer('decimals').notNull(),
+  registryEntryId: uuid('registry_entry_id')
+    .notNull()
+    .unique()
+    .references(() => registryEntries.id),
+  status: varchar('status', { length: 16 }).$type<'active' | 'suspended'>().notNull().default('active'),
+  /** Issued minus redeemed, in minor units. */
+  supply: money('supply')
+    .notNull()
+    .default(sql`0`),
+  createdBy: uuid('created_by')
+    .notNull()
+    .references(() => users.id),
+  createdAt: createdAt(),
+});
 
 // ---------------------------------------------------------------------------
 // Developer API keys (public registry / stock API)
@@ -383,6 +899,188 @@ export const investments = pgTable(
   ],
 );
 
+/** Who holds how many shares (investments, then trades on the secondary market). */
+export const shareholdings = pgTable(
+  'shareholdings',
+  {
+    listingId: uuid('listing_id')
+      .notNull()
+      .references(() => stockListings.id),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    shares: bigint('shares', { mode: 'bigint' }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.listingId, t.userId] }),
+    check('shareholdings_non_negative', sql`${t.shares} >= 0`),
+  ],
+);
+
+export const orderSideEnum = pgEnum('order_side', ['buy', 'sell']);
+export const orderStatusEnum = pgEnum('order_status', ['open', 'filled', 'cancelled']);
+
+/** Limit orders on the secondary market; a buy order holds its money meanwhile. */
+export const stockOrders = pgTable(
+  'stock_orders',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    listingId: uuid('listing_id')
+      .notNull()
+      .references(() => stockListings.id),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    walletId: uuid('wallet_id')
+      .notNull()
+      .references(() => wallets.id),
+    side: orderSideEnum('side').notNull(),
+    price: money('price').notNull(),
+    shares: bigint('shares', { mode: 'bigint' }).notNull(),
+    filled: bigint('filled', { mode: 'bigint' })
+      .notNull()
+      .default(sql`0`),
+    status: orderStatusEnum('status').notNull().default('open'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('stock_orders_book_idx').on(t.listingId, t.side, t.status, t.price, t.createdAt),
+    index('stock_orders_user_idx').on(t.userId, t.createdAt),
+    check('stock_orders_filled', sql`${t.filled} between 0 and ${t.shares}`),
+  ],
+);
+
+export const stockTrades = pgTable(
+  'stock_trades',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    listingId: uuid('listing_id')
+      .notNull()
+      .references(() => stockListings.id),
+    buyOrderId: uuid('buy_order_id')
+      .notNull()
+      .references(() => stockOrders.id),
+    sellOrderId: uuid('sell_order_id')
+      .notNull()
+      .references(() => stockOrders.id),
+    buyerId: uuid('buyer_id')
+      .notNull()
+      .references(() => users.id),
+    sellerId: uuid('seller_id')
+      .notNull()
+      .references(() => users.id),
+    takerSide: orderSideEnum('taker_side').notNull(),
+    price: money('price').notNull(),
+    shares: bigint('shares', { mode: 'bigint' }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('stock_trades_listing_idx').on(t.listingId, t.createdAt)],
+);
+
+/** Investors who accepted a version of the risk disclosure. */
+export const riskAcknowledgements = pgTable(
+  'risk_acknowledgements',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    version: varchar('version', { length: 16 }).notNull(),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.version] })],
+);
+
+/** A dividend: the company pays every shareholder the same amount per share. */
+export const dividends = pgTable(
+  'dividends',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    listingId: uuid('listing_id')
+      .notNull()
+      .references(() => stockListings.id),
+    walletId: uuid('wallet_id')
+      .notNull()
+      .references(() => wallets.id),
+    perShare: money('per_share').notNull(),
+    shares: bigint('shares', { mode: 'bigint' }).notNull(),
+    holders: integer('holders').notNull(),
+    total: money('total').notNull(),
+    note: varchar('note', { length: 200 }).notNull().default(''),
+    status: payrollStatusEnum('status').notNull(),
+    /** Holders and their shares when it was declared: who gets paid. */
+    recipients: jsonb('recipients').$type<{ userId: string; shares: string }[]>().notNull(),
+    approvalId: uuid('approval_id'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+    paidAt: timestamp('paid_at', { withTimezone: true }),
+  },
+  (t) => [index('dividends_listing_idx').on(t.listingId, t.createdAt)],
+);
+
+/** A shareholder vote; weights are the shares each holder had when it opened. */
+export const proposals = pgTable(
+  'proposals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    listingId: uuid('listing_id')
+      .notNull()
+      .references(() => stockListings.id),
+    title: varchar('title', { length: 200 }).notNull(),
+    description: text('description').notNull(),
+    options: jsonb('options').$type<{ key: string; label: string }[]>().notNull(),
+    closesAt: timestamp('closes_at', { withTimezone: true }).notNull(),
+    closedEarlyAt: timestamp('closed_early_at', { withTimezone: true }),
+    totalShares: bigint('total_shares', { mode: 'bigint' }).notNull(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index('proposals_listing_idx').on(t.listingId, t.createdAt)],
+);
+
+export const proposalVoters = pgTable(
+  'proposal_voters',
+  {
+    proposalId: uuid('proposal_id')
+      .notNull()
+      .references(() => proposals.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    shares: bigint('shares', { mode: 'bigint' }).notNull(),
+    option: varchar('option', { length: 16 }),
+    votedAt: timestamp('voted_at', { withTimezone: true }),
+  },
+  (t) => [primaryKey({ columns: [t.proposalId, t.userId] })],
+);
+
+/** Quarterly (or other) results published on the listing page. */
+export const companyReports = pgTable(
+  'company_reports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    period: varchar('period', { length: 16 }).notNull(),
+    title: varchar('title', { length: 200 }).notNull(),
+    body: text('body').notNull(),
+    currency: char('currency', { length: 3 }).notNull(),
+    revenue: money('revenue'),
+    profit: money('profit'),
+    authorId: uuid('author_id')
+      .notNull()
+      .references(() => users.id),
+    publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('company_reports_org_idx').on(t.organizationId, t.publishedAt)],
+);
+
 // ---------------------------------------------------------------------------
 // Chats: direct, groups, news channels, tech support, council & moderation
 // ---------------------------------------------------------------------------
@@ -401,6 +1099,8 @@ export const chats = pgTable(
     handle: varchar('handle', { length: 32 }).unique(),
     isPublic: boolean('is_public').notNull().default(false),
     supportStatus: supportStatusEnum('support_status'),
+    /** Channels: subscribers may comment on posts. */
+    commentsEnabled: boolean('comments_enabled').notNull().default(true),
     createdAt: createdAt(),
     lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
   },
@@ -436,11 +1136,43 @@ export const messages = pgTable(
     body: text('body').notNull(),
     meta: jsonb('meta').$type<Record<string, unknown>>().notNull().default({}),
     replyToId: bigint('reply_to_id', { mode: 'number' }),
+    /** Comments under a channel post point at the post. */
+    threadId: bigint('thread_id', { mode: 'number' }),
+    /** Files (scope "chat") shown with the message. */
+    attachmentIds: uuid('attachment_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
+    /** Chat members mentioned with @username. */
+    mentions: uuid('mentions')
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
     editedAt: timestamp('edited_at', { withTimezone: true }),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
-  (t) => [index('messages_chat_idx').on(t.chatId, t.id)],
+  (t) => [
+    index('messages_chat_idx').on(t.chatId, t.id),
+    index('messages_thread_idx').on(t.threadId, t.id),
+    index('messages_search_idx').using('gin', sql`to_tsvector('simple', ${t.body})`),
+    index('messages_mentions_idx').using('gin', t.mentions),
+  ],
+);
+
+export const messageReactions = pgTable(
+  'message_reactions',
+  {
+    messageId: bigint('message_id', { mode: 'number' })
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    emoji: varchar('emoji', { length: 32 }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.messageId, t.userId, t.emoji] })],
 );
 
 // ---------------------------------------------------------------------------
@@ -495,4 +1227,109 @@ export const auditLogs = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('audit_logs_created_idx').on(t.createdAt)],
+);
+
+// ---------------------------------------------------------------------------
+// Notification center and push notifications
+// ---------------------------------------------------------------------------
+
+/**
+ * Written in the same transaction as what they are about; `deliveredAt` is set once they went
+ * out over realtime and push (right after the request, or by the scheduler).
+ */
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    type: varchar('type', { length: 32 }).notNull(),
+    title: varchar('title', { length: 200 }).notNull(),
+    body: text('body').notNull().default(''),
+    link: varchar('link', { length: 300 }),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('notifications_user_idx').on(t.userId, t.createdAt),
+    index('notifications_undelivered_idx')
+      .on(t.createdAt)
+      .where(sql`${t.deliveredAt} is null`),
+  ],
+);
+
+/** A device that receives push notifications: a browser (Web Push), an Android (FCM) or Apple (APNs) app. */
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: varchar('kind', { length: 12 }).notNull(),
+    /** The Web Push endpoint URL, or the FCM / APNs device token. */
+    endpoint: text('endpoint').notNull().unique(),
+    keys: jsonb('keys').$type<{ p256dh?: string; auth?: string }>().notNull().default({}),
+    label: varchar('label', { length: 100 }).notNull().default(''),
+    failures: integer('failures').notNull().default(0),
+    createdAt: createdAt(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  },
+  (t) => [index('push_subscriptions_user_idx').on(t.userId)],
+);
+
+// ---------------------------------------------------------------------------
+// Running several server instances
+// ---------------------------------------------------------------------------
+
+/** Who has an open realtime connection on which instance (instances refresh `seenAt`). */
+export const realtimePresence = pgTable(
+  'realtime_presence',
+  {
+    instanceId: varchar('instance_id', { length: 64 }).notNull(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    seenAt: timestamp('seen_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.instanceId, t.userId] }),
+    index('realtime_presence_user_idx').on(t.userId),
+  ],
+);
+
+/** Realtime events too large for a NOTIFY payload; instances read them by id, then they expire. */
+export const realtimeEvents = pgTable('realtime_events', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  payload: jsonb('payload').notNull(),
+  createdAt: createdAt(),
+});
+
+/** Rate-limit counters shared by all instances (RATE_LIMIT_STORE=postgres). */
+export const rateLimits = pgTable('rate_limits', {
+  key: varchar('key', { length: 300 }).primaryKey(),
+  count: integer('count').notNull(),
+  resetAt: timestamp('reset_at', { withTimezone: true }).notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// Transparency
+// ---------------------------------------------------------------------------
+
+/** Published statistics about how the platform was governed in a period (a snapshot). */
+export const transparencyReports = pgTable(
+  'transparency_reports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    title: varchar('title', { length: 200 }).notNull(),
+    periodStart: timestamp('period_start', { withTimezone: true }).notNull(),
+    periodEnd: timestamp('period_end', { withTimezone: true }).notNull(),
+    notes: text('notes').notNull().default(''),
+    stats: jsonb('stats').$type<Record<string, unknown>>().notNull(),
+    publishedBy: uuid('published_by').references(() => users.id, { onDelete: 'set null' }),
+    publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('transparency_reports_period_idx').on(t.periodEnd)],
 );

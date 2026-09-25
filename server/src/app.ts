@@ -4,7 +4,7 @@ import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import websocket from '@fastify/websocket';
-import { MoneyError, PLATFORM_NAME } from '@ovl/shared';
+import { MoneyError, msg, PLATFORM_NAME } from '@ovl/shared';
 import { sql } from 'drizzle-orm';
 import Fastify, { type FastifyInstance } from 'fastify';
 import {
@@ -18,15 +18,47 @@ import {
 import type { Config } from './config';
 import { createDatabase, type Database } from './db/client';
 import { HttpError, isUniqueViolation } from './lib/errors';
+import { createMailer, type Mailer } from './lib/mailer';
+import { createStorage, type Storage } from './lib/storage';
+import { ipAllowlist } from './lib/ip-allowlist';
 import { adminRoutes } from './modules/admin';
 import { apiKeyRoutes } from './modules/api-keys';
 import { applicationRoutes } from './modules/applications/routes';
 import { authRoutes } from './modules/auth';
+import { emailRoutes } from './modules/email';
+import { passkeyRoutes } from './modules/passkeys';
+import { ssoRoutes } from './modules/sso';
+import { fileRoutes } from './modules/files';
+import { identityRoutes } from './modules/identity';
+import { cashRoutes } from './modules/cash';
+import { statementRoutes } from './modules/statements';
+import { cashApprovalRoutes } from './modules/cash-approvals';
+import { invoiceRoutes } from './modules/invoices';
+import { exchangeRoutes } from './modules/exchange';
+import { orgPaymentRoutes } from './modules/org-payments';
+import { invoiceScheduleRoutes } from './modules/invoice-schedules';
+import { payrollRoutes } from './modules/payroll';
+import { webhookRoutes } from './modules/webhooks';
+import { notificationRoutes } from './modules/notifications';
+import { operationsRoutes } from './modules/operations';
+import { governanceRoutes } from './modules/governance';
+import { deliverNotifications, hasQueuedNotifications } from './lib/notify';
+import { PushService } from './lib/push';
+import { registerObservability, traceIdFor } from './plugins/observability';
+import {
+  loadVirtualCurrencies,
+  refreshVirtualCurrencies,
+  virtualCurrencyRoutes,
+} from './modules/virtual-currencies';
+import { sessionRoutes } from './modules/sessions';
+import { twoFactorRoutes } from './modules/two-factor';
 import { chatRoutes } from './modules/chats/routes';
 import { metaRoutes } from './modules/meta';
 import { organizationRoutes } from './modules/organizations';
 import { registryRoutes } from './modules/registry';
 import { stockRoutes } from './modules/stock/routes';
+import { protectionRoutes } from './modules/stock/protection';
+import { shareholderRoutes } from './modules/stock/shareholders';
 import { storyRoutes } from './modules/stories';
 import { supportRoutes } from './modules/chats/support';
 import { userRoutes } from './modules/users';
@@ -34,12 +66,20 @@ import { walletRoutes } from './modules/wallets/routes';
 import { registerAuth } from './plugins/auth';
 import { realtimeRoutes } from './realtime/routes';
 import { RealtimeHub } from './realtime/hub';
+import { PostgresBroker } from './realtime/postgres-broker';
+import { cleanRateLimits, postgresRateLimitStore } from './lib/rate-limit-store';
+import { Scheduler } from './lib/scheduler';
+import { requestLocale, say } from './lib/i18n';
 
 declare module 'fastify' {
   interface FastifyInstance {
     config: Config;
     db: Database;
     hub: RealtimeHub;
+    mailer: Mailer;
+    push: PushService;
+    scheduler: Scheduler;
+    storage: Storage;
   }
 }
 
@@ -68,6 +108,9 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
           },
     // Only trust X-Forwarded-* when running behind the reverse proxy.
     trustProxy: config.TRUST_PROXY ?? true,
+    // Request ids are W3C trace ids (from an incoming traceparent, or new), logged as traceId.
+    genReqId: (req) => traceIdFor(req),
+    requestIdLogLabel: 'traceId',
     bodyLimit: 1024 * 1024,
   }).withTypeProvider<ZodTypeProvider>();
 
@@ -76,43 +119,72 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
 
   app.decorate('config', config);
   app.decorate('db', db);
-  app.decorate('hub', new RealtimeHub());
+  const hub = new RealtimeHub();
+  app.decorate('hub', hub);
+  const broker = config.REALTIME_BROKER === 'postgres' ? new PostgresBroker(client, db, hub, app.log) : null;
+  if (broker) {
+    hub.useBroker(broker);
+    app.addHook('onReady', async () => broker.start());
+  }
+  app.decorate('mailer', createMailer(config, app.log));
+  app.decorate('storage', createStorage(config));
+  app.decorate('scheduler', new Scheduler(app.log));
+  app.decorate('push', new PushService(app));
+  await registerObservability(app);
 
+  if (config.SCHEDULER_ENABLED) app.addHook('onReady', async () => app.scheduler.start());
+  // Virtual-country currencies live in the database; every instance keeps its table fresh.
+  app.addHook('onReady', async () => loadVirtualCurrencies(db));
+  app.addHook('onRequest', async () => refreshVirtualCurrencies(db));
+  // Notifications written while handling a request go out as soon as it is answered (and committed).
+  app.addHook('onResponse', async () => {
+    if (hasQueuedNotifications()) app.push.track(deliverNotifications(app));
+  });
   app.addHook('onClose', async () => {
+    await app.scheduler.stop();
+    await app.push.flush();
     app.hub.closeAll();
+    await broker?.stop();
     await client.end({ timeout: 5 });
   });
 
   app.setErrorHandler((error, req, reply) => {
+    const locale = requestLocale(req);
     if (error instanceof HttpError) {
       return reply
         .status(error.statusCode)
-        .send({ error: error.code, message: error.message, details: error.details });
+        .send({ error: error.code, message: say(locale, error.text), details: error.details });
     }
     if (hasZodFastifySchemaValidationErrors(error)) {
       return reply.status(400).send({
         error: 'validation_error',
-        message: 'Request validation failed',
+        message: say(locale, 'Request validation failed'),
         details: error.validation.map((v) => ({ path: v.instancePath, message: v.message })),
       });
     }
     if (error instanceof MoneyError) {
-      return reply.status(400).send({ error: 'invalid_amount', message: error.message });
+      return reply.status(400).send({ error: 'invalid_amount', message: say(locale, error.message) });
     }
     if (isUniqueViolation(error)) {
-      return reply.status(409).send({ error: 'conflict', message: 'This value is already taken' });
+      return reply
+        .status(409)
+        .send({ error: 'conflict', message: say(locale, 'This value is already taken') });
     }
     if (isResponseSerializationError(error)) {
       req.log.error({ err: error, issues: error.cause.issues }, 'response serialization failed');
-      return reply.status(500).send({ error: 'internal_error', message: 'Something went wrong' });
+      return reply
+        .status(500)
+        .send({ error: 'internal_error', message: say(locale, 'Something went wrong') });
     }
     const status = (error as { statusCode?: number }).statusCode;
     if (status && status >= 400 && status < 500) {
       const e = error as { code?: string; message: string };
-      return reply.status(status).send({ error: e.code?.toLowerCase() ?? 'error', message: e.message });
+      return reply
+        .status(status)
+        .send({ error: e.code?.toLowerCase() ?? 'error', message: say(locale, e.message) });
     }
     req.log.error({ err: error }, 'unhandled error');
-    return reply.status(500).send({ error: 'internal_error', message: 'Something went wrong' });
+    return reply.status(500).send({ error: 'internal_error', message: say(locale, 'Something went wrong') });
   });
 
   await app.register(helmet, {
@@ -129,11 +201,21 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
 
+  const sharedLimits = config.RATE_LIMIT_STORE === 'postgres';
   await app.register(rateLimit, {
     max: config.GLOBAL_RATE_LIMIT,
     timeWindow: '1 minute',
     allowList: () => config.NODE_ENV === 'test',
+    errorResponseBuilder: (_req, context) => ({
+      statusCode: context.statusCode,
+      code: 'too_many_requests',
+      message: msg('Too many requests. Wait a minute and try again.'),
+    }),
+    // A database hiccup should not lock everyone out.
+    ...(sharedLimits ? { store: postgresRateLimitStore(db), skipOnError: true } : {}),
   });
+  if (sharedLimits)
+    app.scheduler.add({ name: 'rate-limit-cleanup', everySeconds: 600, run: () => cleanRateLimits(db) });
 
   await app.register(swagger, {
     openapi: {
@@ -160,6 +242,15 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
 
   registerAuth(app);
 
+  // The admin API answers only from the allowed networks (when a list is configured).
+  const adminAllowed = ipAllowlist(config.ADMIN_IP_ALLOWLIST);
+  if (adminAllowed) {
+    app.addHook('onRequest', async (req) => {
+      if (req.url.startsWith('/api/v1/admin/') && !adminAllowed(req.ip))
+        throw new HttpError(403, 'ip_not_allowed', 'The admin API is not available from this network');
+    });
+  }
+
   app.get('/health', { schema: { hide: true } }, async () => {
     await db.execute(sql`select 1`);
     return { status: 'ok', online: app.hub.onlineCount };
@@ -169,16 +260,38 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
     async (api) => {
       await api.register(metaRoutes);
       await api.register(authRoutes);
+      await api.register(emailRoutes);
+      await api.register(passkeyRoutes);
+      await api.register(ssoRoutes);
+      await api.register(fileRoutes);
+      await api.register(identityRoutes);
+      await api.register(sessionRoutes);
+      await api.register(twoFactorRoutes);
       await api.register(userRoutes);
       await api.register(walletRoutes);
+      await api.register(cashRoutes);
+      await api.register(statementRoutes);
+      await api.register(cashApprovalRoutes);
+      await api.register(invoiceRoutes);
+      await api.register(exchangeRoutes);
+      await api.register(orgPaymentRoutes);
+      await api.register(invoiceScheduleRoutes);
+      await api.register(payrollRoutes);
+      await api.register(virtualCurrencyRoutes);
       await api.register(organizationRoutes);
       await api.register(applicationRoutes);
       await api.register(registryRoutes);
       await api.register(stockRoutes);
+      await api.register(shareholderRoutes);
+      await api.register(protectionRoutes);
       await api.register(chatRoutes);
       await api.register(supportRoutes);
       await api.register(storyRoutes);
       await api.register(apiKeyRoutes);
+      await api.register(webhookRoutes);
+      await api.register(notificationRoutes);
+      await api.register(operationsRoutes);
+      await api.register(governanceRoutes);
       await api.register(adminRoutes);
       await api.register(realtimeRoutes);
     },

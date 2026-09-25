@@ -1,4 +1,4 @@
-import { ErrorAlert, Field, formatDate, PageHeader, Spinner } from '@ovl/ui';
+import { ErrorAlert, Field, formatDate, PageHeader, Spinner, t } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../api';
@@ -34,8 +34,8 @@ export function StoriesPage() {
     <div className="page stack-lg">
       <PageHeader
         icon="sparkles"
-        title="Service stories"
-        subtitle="Short announcements shown in every client (web, mobile, desktop) until they expire."
+        title={t('Service stories')}
+        subtitle={t('Short announcements shown in every client (web, mobile, desktop) until they expire.')}
       />
       <div className="grid-2" style={{ alignItems: 'start' }}>
         <form
@@ -45,8 +45,8 @@ export function StoriesPage() {
             publish.mutate();
           }}
         >
-          <h3>Publish</h3>
-          <Field label="Text">
+          <h3>{t('Publish')}</h3>
+          <Field label={t('Text')}>
             <textarea
               className="textarea"
               maxLength={500}
@@ -55,7 +55,7 @@ export function StoriesPage() {
               required
             />
           </Field>
-          <Field label="Image URL (optional)">
+          <Field label={t('Image URL (optional)')}>
             <input
               className="input"
               type="url"
@@ -63,7 +63,7 @@ export function StoriesPage() {
               onChange={(e) => setForm({ ...form, mediaUrl: e.target.value })}
             />
           </Field>
-          <Field label="Link (optional)">
+          <Field label={t('Link (optional)')}>
             <input
               className="input"
               type="url"
@@ -72,7 +72,7 @@ export function StoriesPage() {
             />
           </Field>
           <div className="grid-2">
-            <Field label="Background">
+            <Field label={t('Background')}>
               <input
                 className="input"
                 type="color"
@@ -80,7 +80,7 @@ export function StoriesPage() {
                 onChange={(e) => setForm({ ...form, background: e.target.value })}
               />
             </Field>
-            <Field label="Hours visible">
+            <Field label={t('Hours visible')}>
               <input
                 className="input"
                 type="number"
@@ -93,7 +93,7 @@ export function StoriesPage() {
           </div>
           <ErrorAlert error={publish.error} />
           <button className="btn primary" disabled={publish.isPending}>
-            Publish story
+            {t('Publish story')}
           </button>
         </form>
         <div className="stack">
@@ -104,16 +104,16 @@ export function StoriesPage() {
               <div className="spread">
                 <b>{s.author.displayName}</b>
                 <button className="btn sm ghost" onClick={() => remove.mutate(s.id)}>
-                  Delete
+                  {t('Delete')}
                 </button>
               </div>
               <p>{s.text}</p>
               <span className="small muted">
-                {s.viewsCount} views · expires {formatDate(s.expiresAt)}
+                {t('{0} views · expires {1}', s.viewsCount, formatDate(s.expiresAt))}
               </span>
             </div>
           ))}
-          {stories.data?.length === 0 && <p className="muted">No active stories.</p>}
+          {stories.data?.length === 0 && <p className="muted">{t('No active stories.')}</p>}
         </div>
       </div>
     </div>

@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
-import { ADMIN_URL, OWNER_PASSWORD } from '../constants';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { ADMIN_URL, API_URL, OWNER_PASSWORD } from '../constants';
 import {
   bubble,
   greeting,
@@ -10,6 +12,7 @@ import {
   register,
   send,
   skipOnboarding,
+  totp,
 } from './helpers';
 
 /**
@@ -130,6 +133,47 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(maria.getByText('Available: 380.00 USD')).toBeVisible();
     await ivan.goto('./#/wallet');
     await expect(ivan.getByText('Transfer from @maria — Share of the registration fee')).toBeVisible();
+    // The notification center counts it and leads back to the wallet.
+    const nav = ivan.getByRole('navigation', { name: 'Main' });
+    await expect(nav.getByRole('link', { name: /Notifications\s*1/ })).toBeVisible();
+    await ivan.goto('./#/notifications');
+    await ivan.locator('.notification-open', { hasText: 'Money received: 120.00 USD' }).click();
+    await expect(ivan).toHaveURL(/#\/wallet$/);
+    await expect(nav.getByRole('link', { name: 'Notifications', exact: true })).toBeVisible();
+  });
+
+  test('a payout request holds the money until the cash desk pays it out; statement export', async () => {
+    await ivan.getByRole('button', { name: 'Withdraw' }).click();
+    await ivan.getByLabel('Amount (USD)').fill('20');
+    await ivan.getByLabel('Note for the finance manager (optional)').fill('IBAN DE02 1203 0000 0000 2020 51');
+    await ivan.getByRole('button', { name: 'Request payout' }).click();
+    await expect(ivan.getByText('20.00 frozen')).toBeVisible();
+    await expect(ivan.getByText('Available: 100.00 USD')).toBeVisible();
+    await expect(ivan.getByText('Waiting for a finance manager · amount held')).toBeVisible();
+
+    await admin.reload();
+    const request = admin.locator('tr', { hasText: 'Ivan Sokolov' });
+    await request.getByRole('button', { name: 'Pay out' }).click();
+    await admin.getByLabel('Reference').fill('SEPA-0077');
+    await admin.getByRole('button', { name: 'Confirm payout' }).click();
+    await expect(admin.getByText('Nothing is waiting')).toBeVisible();
+
+    // The person sees the outcome live.
+    await expect(ivan.getByText('Done by Owner · ref. SEPA-0077')).toBeVisible();
+    await expect(ivan.getByText('20.00 frozen')).toBeHidden();
+    await expect(ivan.locator('.bank-card').getByText('Available: 100.00 USD')).toBeVisible();
+
+    await ivan.getByRole('button', { name: 'Export', exact: true }).click();
+    await ivan.getByRole('tab', { name: 'All time' }).click();
+    const [download] = await Promise.all([
+      ivan.waitForEvent('download'),
+      ivan.getByRole('button', { name: 'Download CSV' }).click(),
+    ]);
+    expect(download.suggestedFilename()).toMatch(/^ovl-statement-usd-\d{4}-\d{2}-\d{2}\.csv$/);
+    const csv = await (await download.createReadStream()).toArray();
+    const text = Buffer.concat(csv).toString('utf8');
+    expect(text).toContain('Date,Operation,Description,Amount,Balance after,Currency,Entry');
+    expect(text).toContain('Withdrawal via manager transfer (ref. SEPA-0077),-20.00,100.00,USD');
   });
 
   test('company application: moderation checklist, approval, registry and exchange', async () => {
@@ -141,11 +185,34 @@ test.describe.serial('OVL For Business end to end', () => {
     await maria.getByLabel('Ticker').fill('NWS');
     await maria.getByLabel('Share price (USD)').fill('5');
     await maria.getByLabel('Total shares').fill('1000');
+    await maria.locator('input[type=file]').setInputFiles({
+      name: 'business-plan.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4 Northwind business plan'),
+    });
+    await expect(maria.getByText('business-plan.pdf')).toBeVisible();
     await maria.getByRole('button', { name: 'Submit application' }).click();
     await maria.getByRole('heading', { name: 'Your applications' }).waitFor();
 
+    // A first round: the reviewer reads the attached document and asks for one more detail.
     await owner.goto('./#/review');
     await owner.getByText('Northwind Studio').first().click();
+    await expect(owner.getByRole('link', { name: /business-plan\.pdf/ })).toBeVisible();
+    await owner.getByLabel(/^Comment/).fill('Please add a contact email for investors.');
+    await owner.getByRole('button', { name: 'Request changes' }).click();
+    await expect(owner.getByText('Changes requested', { exact: true }).first()).toBeVisible();
+
+    await expect(
+      maria.getByText('Changes requested: Please add a contact email for investors.'),
+    ).toBeVisible();
+    await maria.getByRole('button', { name: 'Edit and resubmit' }).click();
+    await maria.getByLabel('Contact email (optional)').fill('invest@northwind.example');
+    await maria.getByRole('button', { name: 'Send the changes' }).click();
+    await expect(maria.getByText('Changes requested:')).toBeHidden();
+
+    await owner.goto('./#/review');
+    await owner.getByText('Northwind Studio').first().click();
+    await expect(owner.getByText('invest@northwind.example')).toBeVisible();
     await expect(owner.getByRole('button', { name: 'Approve' })).toBeDisabled();
     for (const item of [
       'Applicant identity',
@@ -171,10 +238,96 @@ test.describe.serial('OVL For Business end to end', () => {
     await ivan.getByText('NWS').first().click();
     await ivan.getByLabel('Amount (USD)').fill('100');
     await ivan.getByRole('button', { name: 'Invest', exact: true }).click();
+    // The risk disclosure comes first, once.
+    const disclosure = ivan.getByRole('dialog');
+    await expect(disclosure.getByText('Before you invest')).toBeVisible();
+    await expect(disclosure.getByText(/can lose all their value/)).toBeVisible();
+    await disclosure.getByRole('button', { name: 'I understand, continue' }).click();
     await expect(ivan.getByText('Bought 20 shares')).toBeVisible();
+    await expect(ivan.getByText(/at most 25% of a company/)).toBeVisible();
     await maria.goto('./#/companies/northwind-studio');
     await expect(maria.getByText('30.00 frozen')).toBeVisible();
     await expect(maria.getByText('Available: 70.00 USD')).toBeVisible();
+  });
+
+  test('secondary market: a buy order rests in the book and can be cancelled', async () => {
+    await maria.goto('./#/exchange/NWS');
+    await maria.getByLabel('Shares', { exact: true }).fill('4');
+    await maria.getByLabel('Limit price (USD)').fill('4.50');
+    await expect(maria.getByText('18.00 USD')).toBeVisible();
+    await maria.getByRole('button', { name: 'Place buy order' }).click();
+    await maria.getByRole('dialog').getByRole('button', { name: 'I understand, continue' }).click();
+    await expect(maria.getByText('Buy order placed: 4 NWS at 4.50 USD')).toBeVisible();
+    const bids = maria.getByRole('table', { name: 'Buy orders' });
+    await expect(bids.locator('tr', { hasText: '4.50' })).toContainText('4');
+    // Ivan sees the bid live, and his shares are still in their lock period.
+    await ivan.goto('./#/exchange/NWS');
+    await expect(
+      ivan.getByRole('table', { name: 'Buy orders' }).locator('tr', { hasText: '4.50' }),
+    ).toBeVisible();
+    await expect(ivan.getByText(/You hold 20 NWS: 0 can be sold, 20 still locked/)).toBeVisible();
+
+    await maria.getByRole('button', { name: 'Cancel' }).click();
+    await expect(bids.getByText('No buy orders')).toBeVisible();
+    await expect(ivan.getByRole('table', { name: 'Buy orders' }).getByText('No buy orders')).toBeVisible();
+  });
+
+  test('invoices: a person bills a company, which pays from its business balance', async () => {
+    await ivan.goto('./#/invoices');
+    await ivan.getByRole('button', { name: 'New invoice' }).click();
+    await ivan.getByLabel('Recipient', { exact: true }).fill('northwind-studio');
+    await ivan.getByLabel('Line 1 description').fill('Logo design');
+    await ivan.getByLabel('Line 1 unit price').fill('20');
+    await ivan.getByRole('button', { name: 'Add line' }).click();
+    await ivan.getByLabel('Line 2 description').fill('Business cards');
+    await ivan.getByLabel('Line 2 quantity').fill('2');
+    await ivan.getByLabel('Line 2 unit price').fill('2.50');
+    await expect(ivan.getByText('25.00 USD')).toBeVisible();
+    await ivan.getByRole('button', { name: 'Send invoice' }).click();
+    const invoice = ivan.locator('.invoice-doc');
+    await expect(invoice.getByText(/^INV-\d{4}-0001$/)).toBeVisible();
+    await expect(invoice.getByText('Northwind Studio')).toBeVisible();
+
+    // The company's owner sees it waiting in the sidebar and pays it.
+    await maria.goto('./#/invoices');
+    await expect(maria.getByRole('link', { name: /Invoices\s*1/ })).toBeVisible();
+    await maria.locator('tr', { hasText: 'Ivan Sokolov' }).click();
+    await expect(maria.getByLabel('Pay from')).toContainText('Northwind Studio USD');
+    await maria.getByRole('button', { name: 'Pay 25.00 USD' }).click();
+    await expect(maria.getByText('Paid 25.00 USD to Ivan Sokolov')).toBeVisible();
+
+    // Ivan's open invoice turns paid live.
+    await expect(invoice.getByText(/^Paid on .* by Maria Petrova\.$/)).toBeVisible();
+    await ivan.goto('./#/wallet');
+    await expect(ivan.getByText('Invoice INV-', { exact: false }).first()).toBeVisible();
+  });
+
+  test('identity: the owner is verified and the company shows the verified business badge', async () => {
+    await maria.goto('./#/settings?section=identity');
+    await maria.getByLabel(/^Full legal name/).fill('Maria Petrova');
+    await maria.getByLabel('Date of birth').fill('1991-03-02');
+    await maria.getByLabel('Country or virtual country').fill('Estonia');
+    await maria.getByLabel('Document number').fill('EE 1234 5678');
+    await maria
+      .locator('input[type=file]')
+      .first()
+      .setInputFiles({ name: 'passport.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('jpeg passport') });
+    await expect(maria.getByText('passport.jpg')).toBeVisible();
+    await maria.getByRole('button', { name: 'Send for checking' }).click();
+    await expect(maria.getByText(/Passport ending in 5678/)).toBeVisible();
+
+    await admin
+      .getByRole('navigation', { name: 'Admin' })
+      .getByRole('link', { name: /Identity checks/ })
+      .click();
+    const check = admin.locator('.identity-check', { hasText: 'Maria Petrova' });
+    await expect(check.getByText('@maria')).toBeVisible();
+    await check.getByRole('button', { name: 'Verify' }).click();
+    await expect(admin.getByText('Maria Petrova is verified')).toBeVisible();
+
+    await expect(maria.getByText('Verified', { exact: false }).first()).toBeVisible();
+    await maria.goto('./#/companies/northwind-studio');
+    await expect(maria.getByText('Verified business')).toBeVisible();
   });
 
   test('tech support: the owner answers with the owner badge', async () => {
@@ -235,6 +388,51 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(bubble(ivan, 'Message deleted')).toBeVisible();
   });
 
+  test('messages: photos, mentions, reactions, read receipts and search', async () => {
+    await openChat(ivan, 'Founders Club');
+    await openChat(maria, 'Founders Club');
+    await maria.getByLabel('Choose files to attach').setInputFiles({
+      name: 'plan.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        'base64',
+      ),
+    });
+    await expect(maria.locator('.composer-files').getByText('plan.png')).toBeVisible();
+    // Typing "@iv" suggests Ivan; picking him completes the name.
+    await maria.getByPlaceholder('Write a message…').fill('Here is the launch plan @iv');
+    await maria.getByRole('option', { name: /Ivan Sokolov/ }).click();
+    await maria.getByPlaceholder('Write a message…').press('End');
+    await maria.keyboard.type('please check');
+    await maria.keyboard.press('Enter');
+
+    const photo = bubble(ivan, 'Here is the launch plan');
+    await expect(photo.getByRole('img', { name: 'plan.png' })).toBeVisible();
+    await expect(photo.locator('.mention.me')).toHaveText('@ivan');
+    // Ivan has the chat open, so Maria sees it was seen.
+    await expect(maria.getByText('Seen by 1')).toBeVisible();
+
+    await photo.locator('.bubble-meta').click();
+    await ivan.getByRole('button', { name: 'React 👍' }).click();
+    const row = maria.locator('.bubble-row', { hasText: 'Here is the launch plan' });
+    await expect(row.getByRole('button', { name: '👍 1' })).toBeVisible();
+
+    await maria.goto('./#/chats');
+    await maria.getByLabel('Search chats and messages').fill('launch pl');
+    await maria.locator('.chat-item', { hasText: 'Here is the launch plan' }).click();
+    await expect(bubble(maria, 'Here is the launch plan')).toBeVisible();
+    await maria.getByLabel('Search chats and messages').fill('');
+
+    // Direct chats show when the other person read a message.
+    await openChat(maria, 'Ivan Sokolov');
+    await send(maria, 'Did you see the plan?');
+    await expect(bubble(maria, 'Did you see the plan?').getByLabel('Sent')).toBeVisible();
+    await openChat(ivan, 'Maria Petrova');
+    await expect(bubble(maria, 'Did you see the plan?').getByLabel('Read')).toBeVisible();
+    await openChat(maria, 'Founders Club');
+  });
+
   test('unread title and background notifications', async () => {
     await ivan.goto('./#/wallet');
     await ivan.evaluate(() => {
@@ -267,6 +465,301 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(maria.getByRole('link', { name: 'https://northwind.example.com' })).toBeVisible();
   });
 
+  test('money: staff publish exchange rates and people convert between balances', async () => {
+    await admin
+      .getByRole('navigation', { name: 'Admin' })
+      .getByRole('link', { name: 'Exchange rates' })
+      .click();
+    await admin.getByLabel('Currency to add').selectOption('EUR');
+    await admin.getByRole('button', { name: 'Add currency' }).click();
+    await admin.getByLabel('EUR rate').fill('1.08');
+    await admin.getByRole('button', { name: 'Save rates' }).click();
+    await expect(admin.getByText('Exchange rates saved')).toBeVisible();
+
+    await maria.goto('./#/wallet');
+    await maria.getByRole('button', { name: 'Convert' }).click();
+    const dialog = maria.getByRole('dialog');
+    await dialog.getByLabel('Amount (USD)').fill('100');
+    await dialog.getByLabel('Into').selectOption('EUR');
+    await expect(dialog.getByText('1 USD = 0.925925 EUR')).toBeVisible();
+    await expect(dialog.getByText('92.12 EUR')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Convert' }).click();
+    await expect(maria.getByText('Converted to 92.12 EUR')).toBeVisible();
+    await expect(maria.locator('.bank-card', { hasText: 'EUR' })).toContainText('92.12');
+  });
+
+  test('multi-signature: a company payment above the limit waits for a second finance member', async () => {
+    await maria.goto('./#/companies/northwind-studio');
+    await maria.getByLabel('Username to add').fill('ivan');
+    await maria.getByLabel('Role', { exact: true }).selectOption('accountant');
+    await maria.getByRole('button', { name: 'Add / change role' }).click();
+    await expect(maria.locator('.list-item', { hasText: 'Ivan Sokolov' })).toContainText('Accountant');
+    await maria.getByRole('button', { name: 'Edit profile' }).click();
+    await maria.getByLabel('Approval limit (USD)').fill('20');
+    await maria.getByRole('button', { name: 'Save' }).click();
+    await expect(maria.getByText(/Payments of 20\.00 USD or more need a second/)).toBeVisible();
+
+    await maria.getByRole('button', { name: 'Send money' }).click();
+    const dialog = maria.getByRole('dialog');
+    await dialog.getByLabel('Username').fill('ivan');
+    await dialog.getByLabel('Amount (USD)').fill('30');
+    await dialog.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect(maria.getByText(/another finance member has to approve/)).toBeVisible();
+    const waiting = (page: Page) => page.locator('.list-item', { hasText: 'Transfer 30.00 USD to @ivan' });
+    await expect(waiting(maria)).toContainText('Pending');
+    // The investment's frozen 30.00 plus the 30.00 set aside for the payment.
+    await expect(maria.getByText('60.00 frozen')).toBeVisible();
+
+    await ivan.goto('./#/companies/northwind-studio');
+    await waiting(ivan).getByRole('button', { name: 'Approve' }).click();
+    await expect(ivan.getByText('Approved: Transfer 30.00 USD to @ivan')).toBeVisible();
+    // Maria's page follows live: nothing waits and the money has left.
+    await expect(maria.getByText('Nothing is waiting.')).toBeVisible();
+    await expect(maria.getByText('30.00 frozen')).toBeVisible();
+    await expect(maria.locator('.bank-card')).toContainText('45.00');
+  });
+
+  test('billing: pay an invoice in parts, recurring invoices and a payroll run', async () => {
+    await ivan.goto('./#/invoices');
+    await ivan.getByRole('button', { name: 'New invoice' }).click();
+    // Ivan is Northwind's accountant by now; this one is personal.
+    await ivan.getByLabel('From', { exact: true }).selectOption('me');
+    await ivan.getByLabel('Recipient type').selectOption('user');
+    await ivan.getByLabel('Recipient', { exact: true }).fill('maria');
+    await ivan.getByLabel('Line 1 description').fill('Consulting retainer');
+    await ivan.getByLabel('Line 1 unit price').fill('40');
+    await ivan.getByLabel('Repeat').selectOption('monthly');
+    await ivan.getByRole('button', { name: 'Set up recurring invoice' }).click();
+    await expect(ivan.getByText(/^First invoice sent to Maria Petrova; the next goes out on/)).toBeVisible();
+
+    // Maria pays part now and the rest later.
+    await maria.goto('./#/invoices');
+    await maria.locator('tr', { hasText: 'Ivan Sokolov' }).first().click();
+    const dialog = maria.getByRole('dialog');
+    await expect(dialog.getByText('Recurring invoice · every month')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Pay part of it' }).click();
+    await dialog.getByLabel(/^Amount to pay now/).fill('15');
+    await dialog.getByRole('button', { name: 'Pay 15.00 USD' }).click();
+    await expect(maria.getByText('Paid 15.00 USD to Ivan Sokolov')).toBeVisible();
+    await expect(dialog.getByText('Partly paid')).toBeVisible();
+    await expect(dialog.getByText('Still due')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Pay 25.00 USD' }).click();
+    await expect(maria.getByText('Paid 25.00 USD to Ivan Sokolov')).toBeVisible();
+    await expect(dialog.locator('.invoice-doc').getByText('Paid', { exact: true })).toBeVisible();
+    await maria.keyboard.press('Escape');
+
+    // Ivan manages the recurring invoice (behind the first invoice, which opened when it was sent).
+    await ivan.keyboard.press('Escape');
+    await ivan.getByRole('tab', { name: 'Recurring' }).click();
+    const schedule = ivan.locator('tr', { hasText: 'Maria Petrova' });
+    await expect(schedule).toContainText('Every month');
+    await expect(schedule).toContainText('1 invoice sent');
+    await schedule.getByRole('button', { name: 'Pause' }).click();
+    await expect(ivan.getByText('Recurring invoice paused')).toBeVisible();
+    await expect(schedule).toContainText('Paused');
+
+    // Northwind pays Ivan through payroll.
+    await maria.goto('./#/companies/northwind-studio');
+    await maria.getByRole('button', { name: 'New payroll run' }).click();
+    const payroll = maria.getByRole('dialog');
+    await payroll.getByLabel('Title').fill('Freelance fees');
+    await payroll.getByLabel('Person 1', { exact: true }).fill('ivan');
+    await payroll.getByLabel('Person 1 amount').fill('10');
+    await payroll.getByLabel('Person 1 note').fill('Logo revisions');
+    await expect(payroll.getByText('10.00 USD')).toBeVisible();
+    await payroll.getByRole('button', { name: 'Pay 1 person' }).click();
+    await expect(maria.getByText('Paid 10.00 USD to 1 person')).toBeVisible();
+    await expect(maria.locator('.list-item', { hasText: 'Freelance fees' })).toContainText('Paid');
+    await ivan.goto('./#/wallet');
+    await expect(ivan.getByText('Northwind Studio: Freelance fees — Logo revisions')).toBeVisible();
+  });
+
+  test('documents: PDF statements and a registry certificate that verifies publicly', async ({ browser }) => {
+    await maria.goto('./#/wallet');
+    await maria.getByRole('button', { name: 'Export', exact: true }).click();
+    const dialog = maria.getByRole('dialog');
+    await dialog.getByRole('tab', { name: 'PDF' }).click();
+    await dialog.getByRole('tab', { name: 'All time' }).click();
+    const [download] = await Promise.all([
+      maria.waitForEvent('download'),
+      dialog.getByRole('button', { name: 'Download PDF' }).click(),
+    ]);
+    expect(download.suggestedFilename()).toMatch(/^ovl-statement-[a-z]{3}-\d{4}-\d{2}-\d{2}\.pdf$/);
+    const pdf = Buffer.concat(await (await download.createReadStream()).toArray());
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+    await expect(maria.getByRole('heading', { name: 'Monthly statements' })).toBeVisible();
+
+    // Licences held through a company are listed with their validity.
+    await maria.goto('./#/applications');
+    const licence = maria.locator('tr', { hasText: 'Northwind Studio — business license' });
+    await expect(licence).toContainText('No expiry');
+    await expect(licence.getByRole('link', { name: 'Certificate' })).toBeVisible();
+
+    // The registry links each entry to its certificate and verification page.
+    await maria.goto('./#/registry');
+    await maria.getByText('Northwind Studio').first().click();
+    const entry = maria.getByRole('dialog');
+    const certificate = entry.getByRole('link', { name: 'Certificate (PDF)' });
+    const href = await certificate.getAttribute('href');
+    expect(href).toMatch(/\/api\/v1\/registry\/OVL-(ORG|LIC)-\d{6}\/certificate\.pdf$/);
+    const res = await maria.request.get(new URL(href!, maria.url()).toString());
+    expect(res.headers()['content-type']).toBe('application/pdf');
+    const number = href!.match(/OVL-(ORG|LIC)-\d{6}/)![0];
+
+    // Anyone can check it, signed in or not.
+    const strangerErrors: string[] = [];
+    const stranger = await newPage(browser, strangerErrors, 'stranger');
+    await stranger.goto(`./#/verify/${number}`);
+    await expect(stranger.getByText('Valid', { exact: true })).toBeVisible();
+    await expect(stranger.getByText(number)).toBeVisible();
+    await stranger.goto('./#/verify/OVL-LIC-999999');
+    await expect(stranger.getByRole('heading', { name: 'Not in the registry' })).toBeVisible();
+    // The unknown number's 404 is the only thing the browser may complain about.
+    expect(strangerErrors.filter((e) => !e.includes('status of 404'))).toEqual([]);
+    await stranger.context().close();
+  });
+
+  test('developers get signed webhooks for registry changes', async () => {
+    const received: { event: string; signature: string; body: string }[] = [];
+    const receiver = createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        received.push({
+          event: String(req.headers['x-ovl-event']),
+          signature: String(req.headers['x-ovl-signature']),
+          body,
+        });
+        res.end('ok');
+      });
+    });
+    await new Promise<void>((done) => receiver.listen(0, '127.0.0.1', done));
+    const url = `http://127.0.0.1:${(receiver.address() as AddressInfo).port}/ovl`;
+    try {
+      await ivan.goto('./#/settings?section=developer');
+      await ivan.getByLabel('Webhook URL').fill(url);
+      await ivan.getByLabel('Webhook description').fill('Registry mirror');
+      await ivan.getByRole('button', { name: 'Add webhook' }).click();
+      await expect(ivan.getByText('Copy the signing secret now')).toBeVisible();
+      await expect(ivan.locator('code', { hasText: /^whsec_/ })).toBeVisible();
+
+      const row = ivan.locator('.list-item', { hasText: 'Registry mirror' });
+      await row.getByRole('button', { name: 'Test' }).click();
+      await expect(ivan.getByText('Ping delivered (HTTP 200)')).toBeVisible();
+      expect(received.at(-1)).toMatchObject({
+        event: 'ping',
+        signature: expect.stringMatching(/^t=\d+,v1=[0-9a-f]{64}$/),
+      });
+
+      // A registry change in the admin panel reaches the endpoint (the scheduler sends it).
+      await admin.goto(`${ADMIN_URL}#/registry`);
+      await admin
+        .locator('tr', { hasText: 'Northwind Studio — business license' })
+        .getByRole('combobox')
+        .selectOption('suspended');
+      await expect
+        .poll(() => received.some((r) => r.event === 'registry.updated'), { timeout: 20_000 })
+        .toBe(true);
+      const update = JSON.parse(received.find((r) => r.event === 'registry.updated')!.body);
+      expect(update.data).toMatchObject({
+        title: 'Northwind Studio — business license',
+        status: 'suspended',
+      });
+      // Put it back (it now shows under "Suspended").
+      await admin.getByLabel('Status filter').selectOption('suspended');
+      await admin
+        .locator('tr', { hasText: 'Northwind Studio — business license' })
+        .getByRole('combobox')
+        .selectOption('active');
+
+      await row.getByRole('button', { name: 'Log' }).click();
+      await expect(
+        ivan.locator('tr', { hasText: 'registry.updated' }).filter({ hasText: 'Delivered' }).first(),
+      ).toBeVisible();
+    } finally {
+      await new Promise((done) => receiver.close(done));
+    }
+  });
+
+  test('shareholders: results, a vote and a dividend', async () => {
+    await maria.goto('./#/companies/northwind-studio');
+    const card = maria.locator('.card', { has: maria.getByRole('heading', { name: 'Shareholders' }) });
+    await expect(card.locator('tr', { hasText: 'Ivan Sokolov' })).toContainText('100%');
+
+    await card.getByRole('button', { name: 'Publish results' }).click();
+    const report = maria.getByRole('dialog');
+    await report.getByLabel('Title').fill('First results');
+    await report.getByLabel('Revenue (optional)').fill('1250');
+    await report.getByLabel('What happened').fill('Our first strategy game shipped to 4,000 players.');
+    await report.getByRole('button', { name: 'Publish' }).click();
+    await expect(maria.getByText('Results published on the listing page')).toBeVisible();
+
+    await card.getByRole('button', { name: 'Ask shareholders' }).click();
+    const vote = maria.getByRole('dialog');
+    await vote.getByLabel('Question').fill('Make a sequel?');
+    await vote.getByLabel('Details').fill('A sequel next year, funded from profits.');
+    await vote.getByRole('button', { name: 'Open the vote' }).click();
+    await expect(maria.getByText('Shareholders can vote now')).toBeVisible();
+
+    await card.getByRole('button', { name: 'Pay a dividend' }).click();
+    const dividend = maria.getByRole('dialog');
+    await dividend.getByLabel('Per share (USD)').fill('0.10');
+    await expect(dividend.getByText('2.00 USD')).toBeVisible();
+    await dividend.getByRole('button', { name: 'Pay dividend' }).click();
+    await expect(maria.getByText('Paid 2.00 USD to 1 shareholder')).toBeVisible();
+
+    // Ivan reads the results, votes and sees the dividend.
+    await ivan.goto('./#/exchange/NWS');
+    await expect(ivan.getByText('First results')).toBeVisible();
+    await expect(ivan.getByText('1,250.00 USD')).toBeVisible();
+    await ivan.getByRole('tab', { name: /Votes/ }).click();
+    await ivan.getByRole('button', { name: 'Vote For' }).click();
+    await expect(ivan.getByText('Voted “For” with 20 shares')).toBeVisible();
+    await expect(ivan.getByText('Turnout 100% of 20 shares')).toBeVisible();
+    await ivan.getByRole('tab', { name: 'Dividends' }).click();
+    await expect(ivan.locator('tr', { hasText: '0.10 USD' })).toContainText('Paid');
+    await ivan.goto('./#/wallet');
+    await expect(ivan.getByText(/Dividend from Northwind Studio: 20 × 0\.10 USD a share/)).toBeVisible();
+  });
+
+  test('governance: the owner sets the council rule and publishes a transparency report', async ({
+    browser,
+  }) => {
+    await admin.goto(`${ADMIN_URL}#/governance`);
+    const rules = admin.getByRole('form', { name: 'Council rules' });
+    await rules.getByLabel('A council stage passes with').selectOption('majority');
+    await rules.getByLabel('Council term (months)').fill('12');
+    await rules.getByRole('button', { name: 'Save rules' }).click();
+    await expect(admin.getByText('Governance rules saved')).toBeVisible();
+
+    const report = admin.getByRole('form', { name: 'New transparency report' });
+    const today = new Date();
+    const tomorrow = new Date(today.getTime() + 86_400_000);
+    await report
+      .getByLabel('From')
+      .fill(new Date(today.getTime() - 30 * 86_400_000).toISOString().slice(0, 10));
+    await report.getByLabel('Until (not included)').fill(tomorrow.toISOString().slice(0, 10));
+    await report.getByLabel('Title').fill('Launch month');
+    await report.getByLabel('Notes (optional)').fill('How the first month went.');
+    await expect(report.getByText(/received · \d+ approved/)).toBeVisible();
+    await report.getByRole('button', { name: 'Publish report' }).click();
+    await expect(admin.getByText('Report published')).toBeVisible();
+
+    await ivan.goto('./#/transparency');
+    await expect(
+      ivan.getByText('More than half of the council'.toLowerCase(), { exact: false }),
+    ).toBeVisible();
+    const published = ivan.getByRole('article', { name: 'Launch month' });
+    await expect(published.getByText('How the first month went.')).toBeVisible();
+
+    // The reports are public: no account needed.
+    const context = await browser.newContext();
+    const visitor = await context.newPage();
+    await visitor.goto('./#/transparency');
+    await expect(visitor.getByRole('article', { name: 'Launch month' })).toBeVisible();
+    await context.close();
+  });
+
   test('settings: switching the theme applies instantly and is saved', async () => {
     await maria.goto('./#/settings?section=appearance');
     await maria.getByRole('radio', { name: 'Midnight' }).click();
@@ -278,6 +771,36 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(maria.locator('html')).toHaveAttribute('data-theme', 'daylight');
   });
 
+  test('language: Russian from settings, kept by the account on every device', async ({ browser }) => {
+    const lena = await newPage(browser, errors, 'lena');
+    await register(lena, 'Lena Petrova', 'lena');
+    await lena.goto('./#/settings?section=appearance');
+    await lena.getByRole('combobox', { name: 'Language / Язык' }).selectOption('ru');
+    await expect(lena.getByRole('link', { name: 'Чаты' })).toBeVisible();
+    await expect(lena.getByRole('heading', { name: 'Настройки' })).toBeVisible();
+    await expect(lena.locator('html')).toHaveAttribute('lang', 'ru');
+
+    // A Russian browser shows the sign-in page in Russian, and the server answers in Russian too.
+    const ruContext = await browser.newContext({ locale: 'ru-RU' });
+    const phone = await ruContext.newPage();
+    await phone.goto('./');
+    await phone.getByLabel('Логин или почта').fill('lena');
+    await phone.getByLabel('Пароль').fill('not-the-password');
+    await phone.getByRole('button', { name: 'Войти', exact: true }).click();
+    await expect(phone.getByText('Неверное имя пользователя / почта или пароль')).toBeVisible();
+    await ruContext.close();
+
+    // An English browser switches once Lena signs in: the language is saved with the account.
+    const laptop = await newPage(browser, [], 'lena-laptop');
+    await login(laptop, 'lena');
+    await expect(laptop.getByRole('link', { name: 'Чаты' })).toBeVisible();
+    await laptop.context().close();
+
+    await lena.getByRole('combobox', { name: 'Language / Язык' }).selectOption('en');
+    await expect(lena.getByRole('link', { name: 'Chats' })).toBeVisible();
+    await lena.context().close();
+  });
+
   test('multi-account: add a second account and switch between them', async () => {
     await maria
       .getByRole('button', { name: /Maria Petrova/ })
@@ -287,7 +810,7 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(maria.getByRole('heading', { name: 'Add another account' })).toBeVisible();
     await maria.getByLabel('Username or email').fill('ivan');
     await maria.getByLabel('Password').fill(PASSWORD);
-    await maria.getByRole('button', { name: 'Sign in' }).click();
+    await maria.getByRole('button', { name: 'Sign in', exact: true }).click();
     await greeting(maria, 'Ivan').waitFor();
 
     await maria
@@ -314,8 +837,134 @@ test.describe.serial('OVL For Business end to end', () => {
     await maria.getByRole('button', { name: 'Add another account' }).click();
     await maria.getByLabel('Username or email').fill('maria');
     await maria.getByLabel('Password').fill(PASSWORD);
-    await maria.getByRole('button', { name: 'Sign in' }).click();
+    await maria.getByRole('button', { name: 'Sign in', exact: true }).click();
     await greeting(maria, 'Maria').waitFor();
+  });
+
+  test('security: signed-in devices can be signed out remotely', async ({ browser }) => {
+    // The laptop's own console will show the expected 401s after it is signed out.
+    const laptop = await newPage(browser, [], 'maria-laptop');
+    await login(laptop, 'maria');
+    await greeting(laptop, 'Maria').waitFor();
+
+    await maria.goto('./#/settings?section=security');
+    await expect(maria.getByRole('heading', { name: 'Signed-in devices' })).toBeVisible();
+    await expect(maria.getByText('This device')).toBeVisible();
+    await maria.getByRole('button', { name: 'Sign out all other devices' }).click();
+    await expect(maria.getByText(/Signed out \d+ other devices?/)).toBeVisible();
+
+    // The live connection is closed and the laptop lands on the sign-in screen by itself.
+    await expect(laptop.getByLabel('Username or email')).toBeVisible({ timeout: 15_000 });
+    await expect(maria.getByRole('button', { name: 'Sign out all other devices' })).toHaveCount(0);
+    await laptop.context().close();
+  });
+
+  test('security: two-step verification with an authenticator app', async ({ browser }) => {
+    const kim = await newPage(browser, errors, 'kim');
+    await register(kim, 'Kim Park', 'kim');
+    await kim.goto('./#/settings?section=security');
+    await kim.getByRole('button', { name: 'Turn on' }).click();
+    const dialog = kim.getByRole('dialog', { name: 'Turn on two-step verification' });
+    await expect(dialog.getByRole('img', { name: 'QR code for your authenticator app' })).toBeVisible();
+    const secret = (await dialog.locator('code.secret').innerText()).replace(/\s/g, '');
+    await dialog.getByLabel('Code from the app').fill(await totp(secret));
+    await dialog.getByRole('button', { name: 'Turn on' }).click();
+    const saved = kim.getByRole('dialog', { name: 'Save your recovery codes' });
+    await expect(saved.locator('.recovery-grid code')).toHaveCount(10);
+    const recovery = await saved.locator('.recovery-grid code').first().innerText();
+    await saved.getByRole('button', { name: 'I saved them' }).click();
+    await expect(kim.getByText('10 recovery codes left')).toBeVisible();
+    await kim.context().close();
+
+    // Signing in on a new device now asks for the code (its console shows the expected 401s).
+    const laptop = await newPage(browser, [], 'kim-laptop');
+    await login(laptop, 'kim');
+    await expect(laptop.getByText('Two-step verification')).toBeVisible();
+    await laptop.getByLabel('Authentication code').fill('000000');
+    await laptop.getByRole('button', { name: 'Verify' }).click();
+    await expect(laptop.getByText('That code is not valid')).toBeVisible();
+    await laptop.getByLabel('Authentication code').fill(await totp(secret, 1));
+    await laptop.getByRole('button', { name: 'Verify' }).click();
+    await greeting(laptop, 'Kim').waitFor();
+    await laptop.context().close();
+
+    // The admin panel asks for it too (then refuses: Kim is not staff). A recovery code works.
+    const panel = await newPage(browser, [], 'kim-admin');
+    await login(panel, 'kim', undefined, ADMIN_URL);
+    await panel.getByRole('button', { name: 'Use a recovery code' }).click();
+    await panel.getByLabel('Recovery code').fill(recovery);
+    await panel.getByRole('button', { name: 'Verify' }).click();
+    await expect(panel.getByText('This account has no access to the admin panel.')).toBeVisible();
+    await panel.context().close();
+  });
+
+  test('account: confirm the email and reset a forgotten password through emailed links', async ({
+    browser,
+  }) => {
+    const nina = await newPage(browser, errors, 'nina');
+    await register(nina, 'Nina Park', 'nina');
+    await expect(nina.getByText('Confirm your email address: we sent a link to')).toBeVisible();
+    const link = async (to: string, path: string) => {
+      const mails = (await (await fetch(`${API_URL}dev/outbox`)).json()) as { to: string; text: string }[];
+      return mails.find((m) => m.to === to && m.text.includes(path))!.text.match(/https?:\S+/)![0];
+    };
+    await nina.goto(await link('nina@example.test', 'verify-email'));
+    await expect(nina.getByRole('heading', { name: 'Email confirmed' })).toBeVisible();
+    await nina.getByRole('button', { name: 'Continue' }).click();
+    await greeting(nina, 'Nina').waitFor();
+    await expect(nina.getByText('Confirm your email address: we sent a link to')).toBeHidden();
+    const outbox = await link('nina@example.test', 'verify-email');
+    expect(outbox).toContain('/#/verify-email?token=');
+    // The reset below signs out every device, this one included.
+    await nina.context().close();
+
+    const guest = await newPage(browser, errors, 'guest');
+    await guest.goto('./');
+    await guest.getByRole('button', { name: 'Forgot password?' }).click();
+    await guest.getByLabel('Email').fill('nina@example.test');
+    await guest.getByRole('button', { name: 'Send reset link' }).click();
+    await expect(guest.getByText('Check your inbox')).toBeVisible();
+    await guest.goto(await link('nina@example.test', 'reset-password'));
+    await guest.getByLabel(/^New password/).fill('a-brand-new-password');
+    await guest.getByLabel('Repeat the new password').fill('a-brand-new-password');
+    await guest.getByRole('button', { name: 'Set new password' }).click();
+    await expect(guest.getByRole('heading', { name: 'Password changed' })).toBeVisible();
+    await guest.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await login(guest, 'nina', 'a-brand-new-password');
+    await greeting(guest, 'Nina').waitFor();
+  });
+
+  test('security: add a passkey and sign in with it', async ({ browser }) => {
+    const omar = await newPage(browser, errors, 'omar');
+    // Chrome's virtual authenticator stands in for Touch ID, Windows Hello or a phone.
+    const cdp = await omar.context().newCDPSession(omar);
+    await cdp.send('WebAuthn.enable');
+    await cdp.send('WebAuthn.addVirtualAuthenticator', {
+      options: {
+        protocol: 'ctap2',
+        transport: 'internal',
+        hasResidentKey: true,
+        hasUserVerification: true,
+        isUserVerified: true,
+        automaticPresenceSimulation: true,
+      },
+    });
+    await register(omar, 'Omar Haddad', 'omar');
+    await omar.goto('./#/settings?section=security');
+    await omar.getByLabel('Passkey name').fill('Work laptop');
+    await omar.getByRole('button', { name: 'Add a passkey' }).click();
+    await expect(omar.getByText('Passkey "Work laptop" added')).toBeVisible();
+    await expect(omar.getByText('not used yet')).toBeVisible();
+
+    // Forget the account on this device, then come back with the passkey alone.
+    await omar.evaluate(() => localStorage.clear());
+    await omar.goto('./');
+    await omar.reload();
+    await omar.getByRole('button', { name: 'Sign in with a passkey' }).click();
+    await greeting(omar, 'Omar').waitFor();
+    await omar.goto('./#/settings?section=security');
+    await expect(omar.getByText(/last used/)).toBeVisible();
+    await omar.context().close();
   });
 
   test('phone layout: bottom bar with a More sheet', async ({ browser }) => {

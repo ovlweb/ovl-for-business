@@ -3,19 +3,28 @@ import {
   licenseApplicationSchema,
   newsChannelApplicationSchema,
   parseAmount,
+  renewalApplicationSchema,
   type Role,
 } from '@ovl/shared';
 import { eq, like } from 'drizzle-orm';
 import type { Config } from '../../config';
 import type { Db } from '../../db/client';
-import { applications, chats, organizationMembers, organizations, users } from '../../db/schema';
+import {
+  applications,
+  chats,
+  organizationMembers,
+  organizations,
+  registryEntries,
+  users,
+} from '../../db/schema';
 import { conflict } from '../../lib/errors';
 import { slugify } from '../../lib/slug';
 import { createChannel } from '../chats/service';
-import { issueRegistryEntry } from '../registry';
+import { emitRegistryEvent, issueRegistryEntry, licenceExpiry } from '../registry';
 import { changeRole } from '../roles';
 import { createListing } from '../stock/service';
 import { getOrCreateWallet } from '../wallets/service';
+import { text } from '../../lib/i18n';
 
 type ApplicationRow = typeof applications.$inferSelect;
 
@@ -45,6 +54,10 @@ export async function applyApprovedApplication(
     case 'company': {
       const p = companyApplicationSchema.parse(application.payload);
       const slug = await uniqueSlug(db, p.name);
+      const [founder] = await db
+        .select({ identityVerifiedAt: users.identityVerifiedAt })
+        .from(users)
+        .where(eq(users.id, application.applicantId));
       const [org] = await db
         .insert(organizations)
         .values({
@@ -56,6 +69,8 @@ export async function applyApprovedApplication(
           baseCurrency: p.baseCurrency,
           ownerId: application.applicantId,
           applicationId: application.id,
+          // A verified business from day one when its owner already passed an identity check.
+          verifiedAt: founder?.identityVerifiedAt ? new Date() : null,
         })
         .returning();
       await db
@@ -112,6 +127,7 @@ export async function applyApprovedApplication(
     case 'license': {
       const p = licenseApplicationSchema.parse(application.payload);
       const entry = await issueRegistryEntry(db, {
+        expiresAt: licenceExpiry(config),
         kind: p.licenseType === 'virtual_country' ? 'virtual_country' : 'license',
         licenseType: p.licenseType,
         title: p.title,
@@ -132,7 +148,7 @@ export async function applyApprovedApplication(
       const allowedFrom: Role[] = application.type === 'moderator' ? ['user'] : ['user', 'moderator'];
       if (!user || !allowedFrom.includes(user.role)) {
         throw conflict(
-          `The applicant's role changed to ${user?.role ?? 'unknown'}; reject this application instead`,
+          text`The applicant's role changed to ${user?.role ?? 'unknown'}; reject this application instead`,
         );
       }
       await changeRole(db, user.id, application.type);
@@ -142,12 +158,39 @@ export async function applyApprovedApplication(
       };
     }
 
+    case 'renewal': {
+      const p = renewalApplicationSchema.parse(application.payload);
+      const [entry] = await db
+        .select()
+        .from(registryEntries)
+        .where(eq(registryEntries.id, p.registryEntryId))
+        .for('update');
+      if (!entry || (entry.status !== 'active' && entry.status !== 'expired'))
+        throw conflict(text`This licence is ${entry?.status ?? 'gone'}; reject the renewal instead`);
+      // A new term from the old expiry date (renewed early) or from today (renewed late).
+      const base = entry.expiresAt && entry.expiresAt > new Date() ? entry.expiresAt : new Date();
+      const expiresAt = licenceExpiry(config, base);
+      await db
+        .update(registryEntries)
+        .set({ status: 'active', expiresAt, reminderStage: 0, updatedAt: new Date() })
+        .where(eq(registryEntries.id, entry.id));
+      await emitRegistryEvent(db, 'registry.updated', entry.id);
+      return {
+        result: {
+          registryNumber: entry.number,
+          registryEntryId: entry.id,
+          expiresAt: expiresAt?.toISOString() ?? null,
+        },
+        roleChanges: [],
+      };
+    }
+
     case 'news_channel': {
       const p = newsChannelApplicationSchema.parse(application.payload);
       const [taken] = await db.select({ id: chats.id }).from(chats).where(eq(chats.handle, p.handle));
       if (taken)
         throw conflict(
-          `The channel handle @${p.handle} was taken meanwhile; reject this application instead`,
+          text`The channel handle @${p.handle} was taken meanwhile; reject this application instead`,
         );
       const channel = await createChannel(db, { ...p, ownerId: application.applicantId });
       return { result: { chatId: channel.id, handle: p.handle }, roleChanges: [] };

@@ -1,4 +1,6 @@
 import type { AuthResult } from '@ovl/shared';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app';
@@ -19,6 +21,16 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
     OWNER_EMAIL: 'owner@example.test',
     OWNER_PASSWORD: OWNER.password,
     COUNCIL_QUORUM: '3',
+    // Most tests are not about these rules; security.test.ts turns them on.
+    REQUIRE_2FA_FOR_STAFF: 'false',
+    REQUIRE_2FA_FOR_COMPANY_FINANCE: 'false',
+    REQUIRE_VERIFIED_EMAIL: 'false',
+    SCHEDULER_ENABLED: 'false',
+    STOCK_REQUIRE_RISK_ACK: 'false',
+    REALTIME_BROKER: 'memory',
+    REQUIRE_IDENTITY_FOR_COMPANIES: 'false',
+    CASH_FOUR_EYES_AMOUNT: '0',
+    STORAGE_DIR: join(tmpdir(), 'ovl-test-uploads'),
     ...overrides,
   });
   const app = await buildApp(config);
@@ -37,7 +49,7 @@ export interface Session {
   username: string;
 }
 
-type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /** Small typed wrapper around app.inject. */
 export function client(app: FastifyInstance) {
@@ -62,6 +74,7 @@ export function client(app: FastifyInstance) {
     call,
     get: <T = any>(url: string, s?: Session | null) => call<T>('GET', url, s),
     post: <T = any>(url: string, s: Session | null, body?: unknown) => call<T>('POST', url, s, body ?? {}),
+    put: <T = any>(url: string, s: Session | null, body?: unknown) => call<T>('PUT', url, s, body ?? {}),
     patch: <T = any>(url: string, s: Session | null, body?: unknown) => call<T>('PATCH', url, s, body ?? {}),
     del: <T = any>(url: string, s: Session | null) => call<T>('DELETE', url, s),
 

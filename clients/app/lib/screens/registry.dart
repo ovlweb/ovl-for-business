@@ -13,6 +13,7 @@ import '../theme/theme.dart';
 import '../ui/format.dart';
 import '../ui/widgets.dart';
 import 'contacts.dart';
+import '../i18n/i18n.dart';
 
 class RegistryScreen extends StatefulWidget {
   const RegistryScreen({super.key, this.initialQuery});
@@ -49,10 +50,12 @@ class _RegistryScreenState extends State<RegistryScreen> {
         bottom: false,
         child: PageBody(
           children: [
-            const PageTitle(
+            PageTitle(
               icon: LucideIcons.bookOpen,
-              title: 'Public registry',
-              subtitle: 'Every approved license, organization and virtual country. Also available to other services through the public API.',
+              title: tr('Public registry'),
+              subtitle: tr(
+                'Every approved license, organization and virtual country. Also available to other services through the public API.',
+              ),
             ),
             const SizedBox(height: 18),
             OvlCard(
@@ -65,8 +68,8 @@ class _RegistryScreenState extends State<RegistryScreen> {
                       _debounce?.cancel();
                       _debounce = Timer(const Duration(milliseconds: 300), () => setState(() => _search = v.trim()));
                     },
-                    decoration: const InputDecoration(
-                      hintText: 'Search by name, registry number, holder…',
+                    decoration: InputDecoration(
+                      hintText: tr('Search by name, registry number, holder…'),
                       prefixIcon: Icon(LucideIcons.search, size: 18),
                     ),
                   ),
@@ -77,7 +80,7 @@ class _RegistryScreenState extends State<RegistryScreen> {
                     children: [
                       for (final k in kinds)
                         ChoiceChip(
-                          label: Text(k.$2),
+                          label: Text(tr(k.$2)),
                           selected: _kind == k.$1,
                           onSelected: (_) => setState(() => _kind = k.$1),
                         ),
@@ -94,7 +97,7 @@ class _RegistryScreenState extends State<RegistryScreen> {
               builder: (context, s) {
                 if (!s.hasData) return const SkeletonList();
                 final items = s.data!.items;
-                if (items.isEmpty) return const EmptyState(icon: LucideIcons.searchX, title: 'Nothing found');
+                if (items.isEmpty) return EmptyState(icon: LucideIcons.searchX, title: tr('Nothing found'));
                 return OvlCard(
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   child: Column(
@@ -120,7 +123,7 @@ class _RegistryScreenState extends State<RegistryScreen> {
                                 _KindChip(e.kindLabel),
                               ],
                             ),
-                            subtitle: Text('${e.holder.name} · issued ${date(e.issuedAt)}'),
+                            subtitle: Text(tr('{0} · issued {1}', [e.holder.name, date(e.issuedAt)])),
                             trailing: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               crossAxisAlignment: CrossAxisAlignment.end,
@@ -160,7 +163,7 @@ class _RegistryScreenState extends State<RegistryScreen> {
             InkWell(
               onTap: () {
                 Clipboard.setData(ClipboardData(text: e.number));
-                toast(sheet, 'Registry number copied');
+                toast(sheet, tr('Registry number copied'));
               },
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -175,18 +178,42 @@ class _RegistryScreenState extends State<RegistryScreen> {
             if (e.description.isNotEmpty) Text(e.description, style: sheet.text.bodyLarge),
             const SizedBox(height: 14),
             Text(
-              'Holder: ${e.holder.name} (${e.holder.type == 'user' ? '@' : ''}${e.holder.handle})',
+              tr('Holder: {0} ({1}{2})', [e.holder.name, e.holder.type == 'user' ? '@' : '', e.holder.handle]),
               style: sheet.text.bodyMedium,
             ),
-            Text('Issued ${date(e.issuedAt)}', style: sheet.text.bodyMedium),
-            if (e.website != null) ...[
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: () => launchUrl(Uri.parse(e.website!)),
-                icon: const Icon(LucideIcons.externalLink, size: 16),
-                label: Text(e.website!),
-              ),
-            ],
+            if (e.holder.verified) ...[const SizedBox(height: 6), const VerifiedBadge()],
+            Text(
+              [
+                'Issued ${date(e.issuedAt)}',
+                if (e.expiresAt != null)
+                  e.status == 'expired'
+                      ? tr('expired {0}', [date(e.expiresAt!)])
+                      : tr('valid until {0}', [date(e.expiresAt!)]),
+                if (e.currency != null) 'currency ${e.currency}',
+              ].join(' · '),
+              style: sheet.text.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.tonalIcon(
+                  onPressed: () => launchUrl(
+                    context.read<Session>().api.certificateUrl(e.number),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                  icon: const Icon(LucideIcons.award, size: 16),
+                  label: Text(tr('Certificate (PDF)')),
+                ),
+                if (e.website != null)
+                  OutlinedButton.icon(
+                    onPressed: () => launchUrl(Uri.parse(e.website!)),
+                    icon: const Icon(LucideIcons.externalLink, size: 16),
+                    label: Text(e.website!),
+                  ),
+              ],
+            ),
           ],
         ),
       ),

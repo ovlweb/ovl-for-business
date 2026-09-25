@@ -9,6 +9,8 @@ import {
   Logo,
   ThemeGallery,
   type IconName,
+  t,
+  msg,
 } from '@ovl/ui';
 import { AnimatePresence, motion } from 'motion/react';
 import { useState } from 'react';
@@ -22,45 +24,45 @@ type Goal = (typeof GOALS)[number];
 const GOAL_INFO: Record<Goal, { icon: IconName; title: string; text: string; to: string; cta: string }> = {
   company: {
     icon: 'building',
-    title: 'Register a company',
-    text: 'Business account, license and an optional stock listing.',
+    title: msg('Register a company'),
+    text: msg('Business account, license and an optional stock listing.'),
     to: '/applications?new=company',
-    cta: 'Start a company application',
+    cta: msg('Start a company application'),
   },
   invest: {
     icon: 'chart',
-    title: 'Invest in companies',
-    text: 'Buy shares on the exchange and follow your portfolio.',
+    title: msg('Invest in companies'),
+    text: msg('Buy shares on the exchange and follow your portfolio.'),
     to: '/exchange',
-    cta: 'Open the exchange',
+    cta: msg('Open the exchange'),
   },
   license: {
     icon: 'award',
-    title: 'Get a license',
-    text: 'Projects, channels, websites, virtual countries…',
+    title: msg('Get a license'),
+    text: msg('Projects, channels, websites, virtual countries…'),
     to: '/applications?new=license',
-    cta: 'Request a license',
+    cta: msg('Request a license'),
   },
   chat: {
     icon: 'chat',
-    title: 'Talk to partners',
-    text: 'Direct chats and groups with your contacts.',
+    title: msg('Talk to partners'),
+    text: msg('Direct chats and groups with your contacts.'),
     to: '/contacts',
-    cta: 'Find people',
+    cta: msg('Find people'),
   },
   channel: {
     icon: 'channel',
-    title: 'Run a news channel',
-    text: 'Publish updates to your subscribers.',
+    title: msg('Run a news channel'),
+    text: msg('Publish updates to your subscribers.'),
     to: '/applications?new=news_channel',
-    cta: 'Apply for a channel',
+    cta: msg('Apply for a channel'),
   },
   staff: {
     icon: 'shield',
-    title: 'Join the staff',
-    text: 'Moderation team or the council.',
+    title: msg('Join the staff'),
+    text: msg('Moderation team or the council.'),
     to: '/applications',
-    cta: 'See staff applications',
+    cta: msg('See staff applications'),
   },
 };
 
@@ -130,15 +132,15 @@ export function OnboardingPage() {
       <div className="oobe-top">
         <div className="row">
           <Logo size={30} />
-          <b className="display">OVL For Business</b>
+          <b className="display">{t('OVL For Business')}</b>
         </div>
         {step !== 'done' && (
           <button className="btn ghost sm" onClick={() => finish()} disabled={saving}>
-            Skip setup
+            {t('Skip setup')}
           </button>
         )}
       </div>
-      <div className="oobe-progress" aria-label={`Step ${index + 1} of ${STEPS.length}`}>
+      <div className="oobe-progress" aria-label={t('Step {0} of {1}', index + 1, STEPS.length)}>
         <motion.span
           animate={{ width: `${((index + 1) / STEPS.length) * 100}%` }}
           transition={{ duration: 0.5, ease }}
@@ -169,14 +171,16 @@ export function OnboardingPage() {
                   <Logo size={88} animated />
                 </motion.div>
                 <div className="stack-sm">
-                  <h1>Welcome, {me.displayName.split(' ')[0]}!</h1>
-                  <p className="muted">Let’s set up your workspace. It takes less than a minute.</p>
+                  <h1>
+                    {t('Welcome,')} {me.displayName.split(' ')[0]}!
+                  </h1>
+                  <p className="muted">{t('Let’s set up your workspace. It takes less than a minute.')}</p>
                 </div>
                 <div className="grid-3 oobe-highlights">
                   {[
-                    { icon: 'wallet' as const, title: 'Balances', text: 'Any currency, one place' },
-                    { icon: 'building' as const, title: 'Companies', text: 'Register and grow' },
-                    { icon: 'chat' as const, title: 'Chats', text: 'Partners, groups, channels' },
+                    { icon: 'wallet' as const, title: t('Balances'), text: t('Any currency, one place') },
+                    { icon: 'building' as const, title: t('Companies'), text: t('Register and grow') },
+                    { icon: 'chat' as const, title: t('Chats'), text: t('Partners, groups, channels') },
                   ].map((f, i) => (
                     <motion.div
                       key={f.title}
@@ -194,7 +198,7 @@ export function OnboardingPage() {
                   ))}
                 </div>
                 <button className="btn gradient lg" style={{ alignSelf: 'center' }} onClick={() => go(1)}>
-                  Get started <Icon name="arrowRight" size={18} />
+                  {t('Get started')} <Icon name="arrowRight" size={18} />
                 </button>
               </div>
             )}
@@ -203,11 +207,11 @@ export function OnboardingPage() {
               <div className="stack-lg">
                 <div className="stack-sm">
                   <span className="section-title">
-                    <Icon name="palette" size={14} /> Appearance
+                    <Icon name="palette" size={14} /> {t('Appearance')}
                   </span>
-                  <h2>Pick your look</h2>
+                  <h2>{t('Pick your look')}</h2>
                   <p className="muted">
-                    Themes follow your account to every device. You can change it any time in Settings.
+                    {t('Themes follow your account to every device. You can change it any time in Settings.')}
                   </p>
                 </div>
                 <ThemeGallery
@@ -225,10 +229,12 @@ export function OnboardingPage() {
               <div className="stack-lg">
                 <div className="stack-sm">
                   <span className="section-title">
-                    <Icon name="user" size={14} /> Profile
+                    <Icon name="user" size={14} /> {t('Profile')}
                   </span>
-                  <h2>How others see you</h2>
-                  <p className="muted">Your name and badges appear in chats, contacts and the registry.</p>
+                  <h2>{t('How others see you')}</h2>
+                  <p className="muted">
+                    {t('Your name and badges appear in chats, contacts and the registry.')}
+                  </p>
                 </div>
                 <div className="row" style={{ gap: 18, alignItems: 'flex-start' }}>
                   <motion.div
@@ -243,7 +249,7 @@ export function OnboardingPage() {
                     />
                   </motion.div>
                   <div className="grow stack">
-                    <Field label="Display name">
+                    <Field label={t('Display name')}>
                       <input
                         className="input"
                         value={profile.displayName}
@@ -251,16 +257,16 @@ export function OnboardingPage() {
                         onChange={(e) => setProfile({ ...profile, displayName: e.target.value })}
                       />
                     </Field>
-                    <Field label="About you (optional)">
+                    <Field label={t('About you (optional)')}>
                       <textarea
                         className="textarea"
                         maxLength={500}
-                        placeholder="Founder of…, investor in…, moderator of…"
+                        placeholder={t('Founder of…, investor in…, moderator of…')}
                         value={profile.bio}
                         onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
                       />
                     </Field>
-                    <Field label="Avatar image URL (optional)">
+                    <Field label={t('Avatar image URL (optional)')}>
                       <input
                         className="input"
                         type="url"
@@ -282,11 +288,11 @@ export function OnboardingPage() {
               <div className="stack-lg">
                 <div className="stack-sm">
                   <span className="section-title">
-                    <Icon name="sparkles" size={14} /> Goals
+                    <Icon name="sparkles" size={14} /> {t('Goals')}
                   </span>
-                  <h2>What brings you here?</h2>
+                  <h2>{t('What brings you here?')}</h2>
                   <p className="muted">
-                    Pick as many as you like — we will put the right shortcuts on your home screen.
+                    {t('Pick as many as you like — we will put the right shortcuts on your home screen.')}
                   </p>
                 </div>
                 <div className="grid-3">
@@ -308,8 +314,8 @@ export function OnboardingPage() {
                         <span className="goal-icon">
                           <Icon name={info.icon} size={20} />
                         </span>
-                        <b>{info.title}</b>
-                        <span className="small muted">{info.text}</span>
+                        <b>{t(info.title)}</b>
+                        <span className="small muted">{t(info.text)}</span>
                         <AnimatePresence>
                           {selected && (
                             <motion.span
@@ -340,10 +346,11 @@ export function OnboardingPage() {
                   <Icon name="bell" size={40} />
                 </motion.div>
                 <div className="stack-sm">
-                  <h2>Stay in the loop</h2>
+                  <h2>{t('Stay in the loop')}</h2>
                   <p className="muted">
-                    Get a notification for new messages, support answers and application decisions while the
-                    app is in the background.
+                    {t(
+                      'Get a notification for new messages, support answers and application decisions while the app is in the background.',
+                    )}
                   </p>
                 </div>
                 {notificationsSupported() ? (
@@ -354,20 +361,22 @@ export function OnboardingPage() {
                     onClick={async () => setNotify((await enableNotifications()) ? 'on' : 'blocked')}
                   >
                     <Icon name={notify === 'on' ? 'check' : 'bell'} size={18} />
-                    {notify === 'on' ? 'Notifications are on' : 'Turn on notifications'}
+                    {notify === 'on' ? t('Notifications are on') : t('Turn on notifications')}
                   </button>
                 ) : (
-                  <p className="small muted">This browser does not support notifications.</p>
+                  <p className="small muted">{t('This browser does not support notifications.')}</p>
                 )}
                 {notify === 'blocked' && (
                   <div className="alert warning small">
-                    Notifications are blocked for this site. You can allow them later in the browser settings.
+                    {t(
+                      'Notifications are blocked for this site. You can allow them later in the browser settings.',
+                    )}
                   </div>
                 )}
                 <StepButtons
                   onBack={() => go(-1)}
                   onNext={() => go(1)}
-                  nextLabel={notify === 'on' ? 'Continue' : 'Maybe later'}
+                  nextLabel={notify === 'on' ? t('Continue') : t('Maybe later')}
                 />
               </div>
             )}
@@ -394,8 +403,8 @@ export function OnboardingPage() {
                   </motion.span>
                 </div>
                 <div className="stack-sm">
-                  <h1>You’re all set</h1>
-                  <p className="muted">Your workspace is ready. Here is where you might start:</p>
+                  <h1>{t('You’re all set')}</h1>
+                  <p className="muted">{t('Your workspace is ready. Here is where you might start:')}</p>
                 </div>
                 <div className="stack-sm" style={{ textAlign: 'left' }}>
                   {(goals.length ? goals : (['invest', 'chat'] as Goal[])).map((g, i) => (
@@ -411,7 +420,7 @@ export function OnboardingPage() {
                       <span className="goal-icon">
                         <Icon name={GOAL_INFO[g].icon} size={18} />
                       </span>
-                      <span className="grow bold">{GOAL_INFO[g].cta}</span>
+                      <span className="grow bold">{t(GOAL_INFO[g].cta)}</span>
                       <Icon name="chevronRight" size={18} />
                     </motion.button>
                   ))}
@@ -422,7 +431,7 @@ export function OnboardingPage() {
                   onClick={() => finish()}
                   disabled={saving}
                 >
-                  Enter my workspace <Icon name="arrowRight" size={18} />
+                  {t('Enter my workspace')} <Icon name="arrowRight" size={18} />
                 </button>
               </div>
             )}
@@ -447,7 +456,7 @@ function StepButtons({
   return (
     <div className="spread">
       <button className="btn ghost" onClick={onBack}>
-        <Icon name="back" size={16} /> Back
+        <Icon name="back" size={16} /> {t('Back')}
       </button>
       <button className="btn primary" onClick={onNext} disabled={nextDisabled}>
         {nextLabel} <Icon name="arrowRight" size={16} />

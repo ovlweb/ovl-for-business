@@ -1,9 +1,11 @@
-import { can, formatAmount, ORG_FINANCE_ROLES, type Role, type Wallet } from '@ovl/shared';
+import { can, formatAmount, msg, ORG_FINANCE_ROLES, type Role, type Wallet } from '@ovl/shared';
 import { and, eq, gt, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client';
 import { fundLocks, ledgerEntries, organizationMembers, wallets } from '../../db/schema';
-import { badRequest, forbidden, insufficientFunds, notFound } from '../../lib/errors';
+import { badRequest, forbidden, HttpError, insufficientFunds, notFound } from '../../lib/errors';
 import { iso } from '../../lib/mappers';
+import { queueNotification } from '../../lib/notify';
+import { label, text } from '../../lib/i18n';
 
 export type WalletRow = typeof wallets.$inferSelect;
 export type WalletOwner = { type: 'user'; id: string } | { type: 'organization'; id: string };
@@ -90,6 +92,14 @@ export async function lockWallet(db: Db, walletId: string): Promise<WalletRow> {
   return wallet;
 }
 
+/** Money arriving on a personal balance that people hear about (invoices notify on their own). */
+const MONEY_NEWS: Partial<Record<LedgerKind, string>> = {
+  transfer_in: msg('Money received'),
+  payroll_in: msg('Salary paid'),
+  dividend_in: msg('Dividend received'),
+  trade_in: msg('Shares sold'),
+};
+
 async function postEntry(db: Db, wallet: WalletRow, delta: bigint, kind: LedgerKind, options: EntryOptions) {
   const [updated] = await db
     .update(wallets)
@@ -107,6 +117,14 @@ async function postEntry(db: Db, wallet: WalletRow, delta: bigint, kind: LedgerK
     actorId: options.actorId ?? null,
     counterpartyWalletId: options.counterpartyWalletId ?? null,
   });
+  const news = MONEY_NEWS[kind];
+  if (delta > 0n && news && wallet.userId && options.referenceType !== 'invoice')
+    await queueNotification(db, [wallet.userId], {
+      type: 'money',
+      title: text`${label(news)}: ${formatAmount(delta, wallet.currency)} ${wallet.currency}`,
+      body: options.description ?? '',
+      link: '/wallet',
+    });
   return updated!;
 }
 
@@ -135,7 +153,7 @@ export async function debit(
   const frozen = (await frozenAmounts(db, [walletId])).get(walletId) ?? 0n;
   if (wallet.balance - frozen < amount) {
     throw insufficientFunds(
-      `Insufficient available funds: ${formatAmount(wallet.balance - frozen, wallet.currency)} ${wallet.currency} available`,
+      text`Insufficient available funds: ${formatAmount(wallet.balance - frozen, wallet.currency)} ${wallet.currency} available`,
     );
   }
   return postEntry(db, wallet, -amount, kind, options);
@@ -183,13 +201,21 @@ export async function orgRoleOf(db: Db, organizationId: string, userId: string) 
 export async function assertWalletAccess(
   db: Db,
   wallet: WalletRow,
-  user: { id: string; role: Role },
+  user: { id: string; role: Role; companyMoneyLocked?: boolean },
   move = false,
 ): Promise<void> {
   if (wallet.ownerType === 'user' && wallet.userId === user.id) return;
   if (wallet.ownerType === 'organization') {
     const role = await orgRoleOf(db, wallet.organizationId!, user.id);
-    if (role && ORG_FINANCE_ROLES.includes(role)) return;
+    if (role && ORG_FINANCE_ROLES.includes(role)) {
+      if (move && user.companyMoneyLocked)
+        throw new HttpError(
+          403,
+          'two_factor_setup_required',
+          'Turn on two-step verification (Settings → Security) to move company money',
+        );
+      return;
+    }
   }
   if (!move && can(user.role, 'wallet.view_all')) return;
   throw forbidden('You do not have access to this wallet');

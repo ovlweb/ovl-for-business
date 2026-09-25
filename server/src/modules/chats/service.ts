@@ -4,14 +4,18 @@ import {
   MODERATION_CHAT_ROLES,
   type Chat,
   type Message,
+  type RealtimeEvent,
   type Role,
 } from '@ovl/shared';
-import { and, desc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { Db } from '../../db/client';
-import { chatMembers, chats, messages, users } from '../../db/schema';
+import { chatMembers, chats, files, messageReactions, messages, users } from '../../db/schema';
 import { forbidden, notFound } from '../../lib/errors';
 import { iso, isoOrNull, summaryColumns, toUserSummary } from '../../lib/mappers';
+import { fileDtos } from '../files';
+import { queueNotification } from '../../lib/notify';
+import { english, text, type LocalText, type Text } from '../../lib/i18n';
 
 export type ChatRow = typeof chats.$inferSelect;
 export type MessageRow = typeof messages.$inferSelect;
@@ -66,12 +70,54 @@ export async function requireReadable(db: Db, chatId: string, user: { id: string
 // Messages
 // ---------------------------------------------------------------------------
 
-export async function messageDtos(db: Db, rows: MessageRow[]): Promise<Message[]> {
-  const senderIds = [...new Set(rows.map((m) => m.senderId).filter((id): id is string => !!id))];
-  const senders = senderIds.length
-    ? await db.select(summaryColumns(users)).from(users).where(inArray(users.id, senderIds))
+/** Reactions of some messages, grouped by emoji in the order they were first used. */
+async function reactionsOf(db: Db, messageIds: number[]) {
+  const rows = messageIds.length
+    ? await db
+        .select()
+        .from(messageReactions)
+        .where(inArray(messageReactions.messageId, messageIds))
+        .orderBy(messageReactions.createdAt)
     : [];
+  const byMessage = new Map<number, Map<string, Set<string>>>();
+  for (const r of rows) {
+    const emojis = byMessage.get(r.messageId) ?? new Map<string, Set<string>>();
+    byMessage.set(r.messageId, emojis);
+    const users = emojis.get(r.emoji) ?? new Set<string>();
+    emojis.set(r.emoji, users);
+    users.add(r.userId);
+  }
+  return byMessage;
+}
+
+/** Message DTOs as `viewerId` sees them (their own reactions are marked). */
+export async function messageDtos(
+  app: FastifyInstance,
+  rows: MessageRow[],
+  viewerId: string | null,
+): Promise<Message[]> {
+  const db = app.db;
+  const senderIds = [...new Set(rows.map((m) => m.senderId).filter((id): id is string => !!id))];
+  const fileIds = [...new Set(rows.filter((m) => !m.deletedAt).flatMap((m) => m.attachmentIds))];
+  const postIds = rows.filter((m) => m.threadId === null).map((m) => m.id);
+  const [senders, attached, reactions, comments] = await Promise.all([
+    senderIds.length ? db.select(summaryColumns(users)).from(users).where(inArray(users.id, senderIds)) : [],
+    fileIds.length ? db.select().from(files).where(inArray(files.id, fileIds)) : [],
+    reactionsOf(
+      db,
+      rows.map((m) => m.id),
+    ),
+    postIds.length
+      ? db
+          .select({ threadId: messages.threadId, n: count() })
+          .from(messages)
+          .where(and(inArray(messages.threadId, postIds), isNull(messages.deletedAt)))
+          .groupBy(messages.threadId)
+      : [],
+  ]);
   const byId = new Map(senders.map((u) => [u.id, toUserSummary(u)]));
+  const fileById = new Map(fileDtos(app, attached).map((f) => [f.id, f]));
+  const commentsBy = new Map(comments.map((c) => [c.threadId, c.n]));
   return rows.map((m) => ({
     id: m.id,
     chatId: m.chatId,
@@ -80,10 +126,35 @@ export async function messageDtos(db: Db, rows: MessageRow[]): Promise<Message[]
     body: m.deletedAt ? '' : m.body,
     meta: m.meta,
     replyToId: m.replyToId,
+    threadId: m.threadId,
+    attachments: m.deletedAt ? [] : m.attachmentIds.flatMap((id) => fileById.get(id) ?? []),
+    mentions: m.deletedAt ? [] : m.mentions,
+    reactions: m.deletedAt
+      ? []
+      : [...(reactions.get(m.id) ?? new Map<string, Set<string>>())].map(([emoji, who]) => ({
+          emoji,
+          count: who.size,
+          mine: !!viewerId && who.has(viewerId),
+        })),
+    commentCount: commentsBy.get(m.id) ?? 0,
     editedAt: isoOrNull(m.editedAt),
     deleted: !!m.deletedAt,
     createdAt: iso(m.createdAt),
   }));
+}
+
+/** The chat members named with @username in a message body. */
+export async function mentionedMembers(db: Db, chatId: string, body: string, senderId: string | null) {
+  const names = [
+    ...new Set([...body.matchAll(/(?<![\w@])@([a-z][a-z0-9_]{2,31})\b/gi)].map((m) => m[1]!.toLowerCase())),
+  ];
+  if (!names.length) return [];
+  const rows = await db
+    .select({ id: users.id })
+    .from(users)
+    .innerJoin(chatMembers, and(eq(chatMembers.userId, users.id), eq(chatMembers.chatId, chatId)))
+    .where(inArray(users.username, names.slice(0, 20)));
+  return rows.map((r) => r.id).filter((id) => id !== senderId);
 }
 
 export async function insertMessage(
@@ -95,8 +166,12 @@ export async function insertMessage(
     kind?: 'text' | 'system';
     meta?: Record<string, unknown>;
     replyToId?: number;
+    threadId?: number;
+    attachmentIds?: string[];
   },
 ): Promise<MessageRow> {
+  const mentions =
+    input.kind === 'system' ? [] : await mentionedMembers(db, input.chatId, input.body, input.senderId);
   const [message] = await db
     .insert(messages)
     .values({
@@ -106,8 +181,13 @@ export async function insertMessage(
       kind: input.kind ?? 'text',
       meta: input.meta ?? {},
       replyToId: input.replyToId ?? null,
+      threadId: input.threadId ?? null,
+      attachmentIds: input.attachmentIds ?? [],
+      mentions,
     })
     .returning();
+  // Comments under a channel post neither move the channel up nor count as unread.
+  if (input.threadId) return message!;
   await db.update(chats).set({ lastMessageAt: message!.createdAt }).where(eq(chats.id, input.chatId));
   if (input.senderId) {
     await db
@@ -118,41 +198,75 @@ export async function insertMessage(
   return message!;
 }
 
-/** Everyone who should receive live events of a chat. */
+/** The members of a chat (support tickets also reach every connected support agent: see sendToChat). */
 export async function chatAudience(app: FastifyInstance, chat: ChatRow): Promise<string[]> {
   const rows = await app.db
     .select({ userId: chatMembers.userId })
     .from(chatMembers)
     .where(eq(chatMembers.chatId, chat.id));
-  const ids = rows.map((r) => r.userId);
-  if (chat.type === 'support') ids.push(...app.hub.supportStaffIds());
-  return ids;
+  return rows.map((r) => r.userId);
 }
 
+/** Send a live event to everyone in a chat (and to support staff on every instance, for tickets). */
+export async function sendToChat(
+  app: FastifyInstance,
+  chat: ChatRow,
+  event: RealtimeEvent,
+  except: string[] = [],
+) {
+  const members = (await chatAudience(app, chat)).filter((id) => !except.includes(id));
+  app.hub.sendToUsers(members, event);
+  if (chat.type === 'support') app.hub.sendToSupportStaff(event, [...except, ...members]);
+}
+
+/**
+ * Send a new or changed message to everyone in the chat. People who reacted to it get their own
+ * copy (with their reactions marked); the DTO for `viewerId` is returned.
+ */
 export async function publishMessage(
   app: FastifyInstance,
   chat: ChatRow,
   message: MessageRow,
-  type = 'message.created',
+  type: 'message.created' | 'message.updated' = 'message.created',
+  viewerId: string | null = null,
 ) {
-  const [dto] = await messageDtos(app.db, [message]);
-  app.hub.sendToUsers(await chatAudience(app, chat), {
-    type: type as 'message.created' | 'message.updated',
-    chatId: chat.id,
-    message: dto!,
-  });
-  return dto!;
+  const [base] = await messageDtos(app, [message], null);
+  const reactors = new Map<string, Set<string>>();
+  for (const [emoji, who] of (await reactionsOf(app.db, [message.id])).get(message.id) ?? [])
+    for (const userId of who) reactors.set(userId, (reactors.get(userId) ?? new Set()).add(emoji));
+  const viewFor = (userId: string | null) => {
+    const mine = userId ? reactors.get(userId) : undefined;
+    return mine
+      ? { ...base!, reactions: base!.reactions.map((r) => ({ ...r, mine: mine.has(r.emoji) })) }
+      : base!;
+  };
+  // Everyone gets the plain copy, except those who reacted: they get theirs.
+  await sendToChat(app, chat, { type, chatId: chat.id, message: base! }, [...reactors.keys()]);
+  for (const userId of reactors.keys())
+    app.hub.sendToUsers([userId], { type, chatId: chat.id, message: viewFor(userId) });
+  return viewFor(viewerId);
+}
+
+/** Whether someone shares read receipts (a preference, on unless turned off). */
+export async function receiptsAllowed(db: Db, userIds: string[]) {
+  if (!userIds.length) return new Set<string>();
+  const rows = await db
+    .select({ id: users.id, preferences: users.preferences })
+    .from(users)
+    .where(inArray(users.id, userIds));
+  return new Set(rows.filter((r) => r.preferences.readReceipts !== false).map((r) => r.id));
 }
 
 // ---------------------------------------------------------------------------
 // Chat list DTOs
 // ---------------------------------------------------------------------------
 
-export async function chatDtos(db: Db, rows: ChatRow[], viewerId: string): Promise<Chat[]> {
+export async function chatDtos(app: FastifyInstance, rows: ChatRow[], viewerId: string): Promise<Chat[]> {
   if (!rows.length) return [];
+  const db = app.db;
   const ids = rows.map((c) => c.id);
 
-  const [counts, mine, unread, lastMessages, peers, requesters] = await Promise.all([
+  const [counts, mine, unread, lastMessages, peers, requesters, mentioned] = await Promise.all([
     db
       .select({ chatId: chatMembers.chatId, n: sql<number>`count(*)::int` })
       .from(chatMembers)
@@ -171,6 +285,7 @@ export async function chatDtos(db: Db, rows: ChatRow[], viewerId: string): Promi
           inArray(messages.chatId, ids),
           sql`${messages.id} > ${chatMembers.lastReadMessageId}`,
           isNull(messages.deletedAt),
+          isNull(messages.threadId),
           or(isNull(messages.senderId), ne(messages.senderId, viewerId)),
         ),
       )
@@ -178,10 +293,14 @@ export async function chatDtos(db: Db, rows: ChatRow[], viewerId: string): Promi
     db
       .selectDistinctOn([messages.chatId])
       .from(messages)
-      .where(and(inArray(messages.chatId, ids), isNull(messages.deletedAt)))
+      .where(and(inArray(messages.chatId, ids), isNull(messages.deletedAt), isNull(messages.threadId)))
       .orderBy(messages.chatId, desc(messages.id)),
     db
-      .select({ chatId: chatMembers.chatId, ...summaryColumns(users) })
+      .select({
+        chatId: chatMembers.chatId,
+        lastRead: chatMembers.lastReadMessageId,
+        ...summaryColumns(users),
+      })
       .from(chatMembers)
       .innerJoin(users, eq(users.id, chatMembers.userId))
       .where(
@@ -202,14 +321,32 @@ export async function chatDtos(db: Db, rows: ChatRow[], viewerId: string): Promi
           rows.filter((c) => c.type === 'support' && c.ownerId).map((c) => c.ownerId!),
         ),
       ),
+    db
+      .select({ chatId: messages.chatId, n: sql<number>`count(*)::int` })
+      .from(messages)
+      .innerJoin(chatMembers, and(eq(chatMembers.chatId, messages.chatId), eq(chatMembers.userId, viewerId)))
+      .where(
+        and(
+          inArray(messages.chatId, ids),
+          sql`${messages.id} > ${chatMembers.lastReadMessageId}`,
+          sql`${viewerId}::uuid = any(${messages.mentions})`,
+          isNull(messages.deletedAt),
+        ),
+      )
+      .groupBy(messages.chatId),
   ]);
 
-  const lastDtos = await messageDtos(db, lastMessages);
+  const lastDtos = await messageDtos(app, lastMessages, viewerId);
+  const sharing = await receiptsAllowed(db, [viewerId, ...peers.map((p) => p.id)]);
   const countBy = new Map(counts.map((c) => [c.chatId, c.n]));
   const mineBy = new Map(mine.map((m) => [m.chatId, m]));
   const unreadBy = new Map(unread.map((u) => [u.chatId, u.n]));
   const lastBy = new Map(lastDtos.map((m) => [m.chatId, m]));
   const peerBy = new Map(peers.map((p) => [p.chatId, toUserSummary(p)]));
+  const peerReadBy = new Map(
+    peers.map((p) => [p.chatId, sharing.has(viewerId) && sharing.has(p.id) ? p.lastRead : null]),
+  );
+  const mentionsBy = new Map(mentioned.map((m) => [m.chatId, m.n]));
   const requesterBy = new Map(requesters.map((u) => [u.id, toUserSummary(u)]));
 
   return rows.map((c) => {
@@ -227,7 +364,10 @@ export async function chatDtos(db: Db, rows: ChatRow[], viewerId: string): Promi
       myRole: member?.role ?? null,
       pinned: member?.pinned ?? false,
       unreadCount: unreadBy.get(c.id) ?? 0,
+      unreadMentions: mentionsBy.get(c.id) ?? 0,
       lastMessage: lastBy.get(c.id) ?? null,
+      peerReadMessageId: peerReadBy.get(c.id) ?? null,
+      commentsEnabled: c.commentsEnabled,
       peer,
       support: c.type === 'support' && requester ? { status: c.supportStatus ?? 'open', requester } : null,
       createdAt: iso(c.createdAt),
@@ -298,4 +438,98 @@ export async function createChannel(
     .returning();
   await db.insert(chatMembers).values({ chatId: chat!.id, userId: input.ownerId, role: 'owner' });
   return chat!;
+}
+
+// ---------------------------------------------------------------------------
+// Notifications about messages
+// ---------------------------------------------------------------------------
+
+const summaryOf = (m: MessageRow) =>
+  m.body ||
+  (m.attachmentIds.length > 1
+    ? `${m.attachmentIds.length} files`
+    : m.attachmentIds.length
+      ? 'Sent a file'
+      : '');
+
+/**
+ * After a message is sent: mentions, replies and comments on someone's post go to the
+ * notification center; everyone else in a direct chat, group or ticket who is away gets a push.
+ */
+/**
+ * A system line in a chat ("Maria added Oleg"): English in the body (previews, search), the text
+ * with its values in meta.text, so every app shows it in its own language.
+ */
+export const systemText = (value: LocalText) => ({ body: english(value), meta: { text: value } });
+
+export async function notifyNewMessage(
+  app: FastifyInstance,
+  chat: ChatRow,
+  message: MessageRow,
+  sender: { id: string; displayName: string },
+) {
+  if (message.kind !== 'text') return;
+  const link =
+    chat.type === 'support'
+      ? `/support/${chat.id}`
+      : `/chats/${chat.id}?message=${message.threadId ?? message.id}`;
+  const body = summaryOf(message);
+  const told = new Set([sender.id]);
+  const tell = async (
+    userIds: (string | null | undefined)[],
+    type: 'mention' | 'reply' | 'comment',
+    title: Text,
+  ) => {
+    const fresh = userIds.filter((id): id is string => !!id && !told.has(id));
+    fresh.forEach((id) => told.add(id));
+    await queueNotification(app.db, fresh, { type, title, body, link });
+  };
+  const direct = chat.type === 'direct';
+  const name = sender.displayName;
+  await tell(
+    message.mentions,
+    'mention',
+    direct ? text`${name} mentioned you` : text`${name} mentioned you in ${chat.title}`,
+  );
+  for (const [id, type, title] of [
+    [
+      message.replyToId,
+      'reply',
+      direct ? text`${name} replied to you` : text`${name} replied to you in ${chat.title}`,
+    ],
+    [
+      message.threadId,
+      'comment',
+      direct ? text`${name} commented on your post` : text`${name} commented on your post in ${chat.title}`,
+    ],
+  ] as const) {
+    if (!id) continue;
+    const [original] = await app.db
+      .select({ senderId: messages.senderId })
+      .from(messages)
+      .where(eq(messages.id, id));
+    await tell([original?.senderId], type, title);
+  }
+
+  // Everything else in private conversations: a push to people who are away (channels are news, not pushed).
+  if (message.threadId || chat.type === 'channel') return;
+  const members = (await chatAudience(app, chat)).filter((id) => !told.has(id));
+  const online = await app.hub.onlineAmong(members);
+  const away = members.filter((id) => !online.has(id));
+  if (!away.length) return;
+  const wanting = await app.db
+    .select({ id: users.id })
+    .from(users)
+    .where(
+      and(inArray(users.id, away), sql`coalesce(${users.preferences} ->> 'pushChats', 'true') <> 'false'`),
+    );
+  app.push.sendToUsers(
+    wanting.map((u) => u.id),
+    {
+      title: chat.type === 'direct' ? sender.displayName : `${sender.displayName} · ${chat.title}`,
+      body: body.length > 200 ? `${body.slice(0, 199)}…` : body,
+      link,
+      tag: `chat-${chat.id}`,
+    },
+  );
 }

@@ -31,6 +31,15 @@
   file, and CI fails if the generated code is stale. The chosen theme and onboarding state are
   stored as account preferences (`PATCH /me/preferences`), so they follow the person across
   devices.
+- **One set of translations everywhere.** English text is the key: `t('Send money')` in React,
+  `tr('Send money')` in Dart, `t('Bought {0} shares', n)` with values, and `plural(n, 'share')`
+  with each language's plural forms. The Russian catalog is built from `scripts/i18n/ru/*.json`
+  into `packages/shared/src/locales/ru.ts` (web, admin panel, server) and
+  `clients/app/lib/i18n/ru.g.dart` (apps). The server translates what it says (errors into the
+  request's `Accept-Language`, which the apps send; notifications and emails into the language
+  the account keeps in `preferences.locale`). System lines in chats carry their text and values in
+  `meta.text`, so every member reads them in their own language; names in them are never
+  translated, only values marked with `label()`. A missing translation falls back to English.
 - **The admin panel is a separate app** (`admin/`) with its own build, container, address and
   session storage. It talks to the same API; staff endpoints are protected by permissions on the
   server, never only by the UI.
@@ -113,9 +122,29 @@ the review queue in the client shows everything waiting for the current user.
 ## Realtime
 
 `GET /api/v1/realtime?token=<access token>` upgrades to a WebSocket. The server pushes
-`message.created/updated`, `chat.updated/removed`, `typing`, `application.updated`, `story.created`
-and `wallet.updated`. Clients use them to refresh their caches. The hub is in-process; for several
-API replicas put Redis or Postgres `LISTEN/NOTIFY` behind `RealtimeHub` (see roadmap).
+`message.created/updated`, `chat.updated/removed`, `typing`, `application.updated`, `story.created`,
+`wallet.updated`, `notification.created` and more (see API.md). Clients use them to refresh their
+caches.
+
+## Running several instances
+
+Any number of API instances can run behind a load balancer on one database; nothing else is
+needed:
+
+- **Realtime** (`REALTIME_BROKER=postgres`, the default): every instance keeps its own sockets in
+  `RealtimeHub` and publishes each event with `NOTIFY ovl_realtime`; all instances `LISTEN` and
+  deliver to the sockets they hold. Events too large for a NOTIFY payload (about 8 KB) are stored
+  in `realtime_events` and sent by id. Signing a session out closes its socket wherever it is.
+- **Presence**: who is connected where lives in `realtime_presence` (each instance refreshes its
+  rows every 30 s, rows of a crashed instance expire after 90 s). Push notifications use it to
+  reach only people who are not connected anywhere.
+- **Rate limits** (`RATE_LIMIT_STORE=postgres`): counters in `rate_limits`, one upsert per request,
+  so a client cannot multiply its allowance by spreading requests over instances. The default,
+  `memory`, counts per instance.
+- **Background jobs** claim their work with `FOR UPDATE SKIP LOCKED`, so every instance may run
+  the scheduler; notifications and webhooks are written in the transaction of the change (outbox)
+  and delivered by whichever instance gets there first.
+- **Files** need shared storage: the S3 driver (`STORAGE_DRIVER=s3`) or one volume for all.
 
 ## Security
 

@@ -1,23 +1,26 @@
 import 'package:intl/intl.dart';
 
 import '../api/currencies.g.dart';
+import '../i18n/i18n.dart';
+
+export '../i18n/i18n.dart' show plural;
 
 /// "48500.5" → "48,500.50 EUR" (money arrives from the API as decimal strings).
 String money(String amount, String currency, {bool code = true, int? decimals}) {
   final negative = amount.startsWith('-');
   final parts = amount.replaceFirst('-', '').split('.');
-  final whole = parts[0].replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
+  // 1,234.50 in English; 1 234,50 in Russian.
+  final russian = currentLocale == 'ru';
+  final whole = parts[0].replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => russian ? '\u00a0' : ',');
   var fraction = parts.length > 1 ? parts[1] : '';
   final d = decimals ?? currencyDecimals(currency);
   fraction = fraction.padRight(d, '0').substring(0, d);
-  return '${negative ? '−' : ''}$whole${d > 0 ? '.$fraction' : ''}${code ? ' $currency' : ''}';
+  final point = russian ? ',' : '.';
+  return '${negative ? '−' : ''}$whole${d > 0 ? '$point$fraction' : ''}${code ? ' $currency' : ''}';
 }
 
 String moneyOf(double value, String currency, {bool code = true}) =>
     money(value.toStringAsFixed(2), currency, code: code);
-
-String plural(int count, String one, [String? many]) =>
-    '${NumberFormat.decimalPattern().format(count)} ${count == 1 ? one : (many ?? '${one}s')}';
 
 String shortTime(DateTime d) => DateFormat.jm().format(d);
 
@@ -26,8 +29,8 @@ String dayLabel(DateTime d) {
   final today = DateTime(now.year, now.month, now.day);
   final day = DateTime(d.year, d.month, d.day);
   final diff = today.difference(day).inDays;
-  if (diff == 0) return 'Today';
-  if (diff == 1) return 'Yesterday';
+  if (diff == 0) return tr('Today');
+  if (diff == 1) return tr('Yesterday');
   if (diff < 7) return DateFormat.EEEE().format(d);
   return DateFormat.yMMMd().format(d);
 }
@@ -45,24 +48,24 @@ String dateTime(DateTime d) => DateFormat.yMMMd().add_jm().format(d);
 
 String timeAgo(DateTime d) {
   final s = DateTime.now().difference(d).inSeconds;
-  if (s < 60) return 'just now';
-  if (s < 3600) return '${s ~/ 60} min ago';
-  if (s < 86400) return '${s ~/ 3600} h ago';
-  if (s < 86400 * 7) return '${s ~/ 86400} d ago';
+  if (s < 60) return tr('just now');
+  if (s < 3600) return tr('{0} min ago', [s ~/ 60]);
+  if (s < 86400) return tr('{0} h ago', [s ~/ 3600]);
+  if (s < 86400 * 7) return tr('{0} d ago', [s ~/ 86400]);
   return date(d);
 }
 
 String humanize(String key) {
   final s = key.replaceAll('_', ' ');
-  return s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+  return s.isEmpty ? s : tr(s[0].toUpperCase() + s.substring(1));
 }
 
 String greeting() {
   final h = DateTime.now().hour;
-  if (h < 5) return 'Good night';
-  if (h < 12) return 'Good morning';
-  if (h < 18) return 'Good afternoon';
-  return 'Good evening';
+  if (h < 5) return tr('Good night');
+  if (h < 12) return tr('Good morning');
+  if (h < 18) return tr('Good afternoon');
+  return tr('Good evening');
 }
 
 String initials(String name) {

@@ -1,4 +1,5 @@
 import { OvlClient, type TokenStore } from '@ovl/sdk';
+import { getLocale } from '@ovl/ui';
 import { accounts } from './accounts';
 import { apiUrl } from './config';
 
@@ -12,4 +13,5 @@ export const api = new OvlClient({
   baseUrl: apiUrl(),
   tokenStore: activeAccountTokens,
   onSignedOut: () => window.dispatchEvent(new Event('ovl:signed-out')),
+  locale: getLocale,
 });

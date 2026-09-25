@@ -1,5 +1,6 @@
 import { motion } from 'motion/react';
 import { useEffect, useId, useRef, useState } from 'react';
+import { t } from './i18n';
 
 /**
  * Monotone cubic interpolation (Fritsch–Carlson): smooth like a spline, but it never
@@ -58,7 +59,7 @@ export function AreaChart({
   format,
   height = 120,
   color = 'var(--accent)',
-  label = 'Price history',
+  label = t('Price history'),
 }: {
   values: number[];
   labels?: string[];
@@ -74,7 +75,7 @@ export function AreaChart({
   if (values.length < 2) {
     return (
       <div className="muted small" style={{ height, display: 'flex', alignItems: 'center' }}>
-        Not enough history yet — the chart appears after the next price change.
+        {t('Not enough history yet — the chart appears after the next price change.')}
       </div>
     );
   }
@@ -93,7 +94,9 @@ export function AreaChart({
   const area = `${d} L ${width} ${height} L 0 ${height} Z`;
   const last = pts[pts.length - 1]!;
   const active = hover ?? null;
-  const grid = interactive ? [0.25, 0.5, 0.75].map((f) => rawMin + (rawMax - rawMin) * f) : [];
+  // A flat series has no scale to show (and three identical grid lines).
+  const grid =
+    interactive && rawMax > rawMin ? [0.25, 0.5, 0.75].map((f) => rawMin + (rawMax - rawMin) * f) : [];
 
   return (
     <div
@@ -122,8 +125,8 @@ export function AreaChart({
               <stop offset="100%" stopColor={color} stopOpacity="0" />
             </linearGradient>
           </defs>
-          {grid.map((g) => (
-            <g key={g}>
+          {grid.map((g, i) => (
+            <g key={i}>
               <line x1={0} x2={width} y1={y(g)} y2={y(g)} stroke="var(--border)" strokeDasharray="3 5" />
               <text x={2} y={y(g) - 5} className="chart-axis">
                 {format!(g)}
@@ -215,7 +218,7 @@ export function ShareBar({ parts }: { parts: { value: number; color: string; lab
       {parts.map((p) => (
         <motion.div
           key={p.label}
-          title={p.label}
+          title={t(p.label)}
           style={{ background: p.color }}
           initial={{ width: 0 }}
           animate={{ width: `${(p.value / total) * 100}%` }}

@@ -1,5 +1,5 @@
 import type { AuthResult, LoginInput, Me, Permission, Preferences, RegisterInput } from '@ovl/shared';
-import { applyTheme, getThemePreference } from '@ovl/ui';
+import { applyTheme, getThemePreference, passkeyAssertion, syncLocale } from '@ovl/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   createContext,
@@ -24,6 +24,8 @@ interface AuthState {
   startAddAccount: () => void;
   cancelAddAccount: () => void;
   login: (input: LoginInput) => Promise<Me>;
+  /** Sign in with a passkey saved on this device or in a password manager. */
+  loginWithPasskey: () => Promise<Me>;
   register: (input: RegisterInput) => Promise<Me>;
   switchAccount: (id: string) => void;
   logout: () => Promise<void>;
@@ -48,9 +50,10 @@ function useAccounts(): StoredAccount[] {
   return useMemo(() => (snapshot ? accounts.list() : []), [snapshot]);
 }
 
-/** Apply the account's synced theme unless this device already shows it. */
-function syncTheme(theme: string | undefined) {
+/** Apply the account's synced theme and language unless this device already shows them. */
+function syncTheme(theme: string | undefined, locale?: string) {
   if (theme && theme !== getThemePreference()) applyTheme(theme);
+  syncLocale(locale);
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -69,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const user = await api.me.get();
       accounts.updateProfile(user);
-      syncTheme(user.preferences.theme);
+      syncTheme(user.preferences.theme, user.preferences.locale);
       setMe(user);
     } catch {
       setMe(null);
@@ -99,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (previous && previous.id !== result.user.id) startAtHome();
       accounts.signIn(result.user, { accessToken: result.accessToken, refreshToken: result.refreshToken });
       queryClient.clear();
-      syncTheme(result.user.preferences.theme);
+      syncTheme(result.user.preferences.theme, result.user.preferences.locale);
       setAddingAccount(false);
       setActiveId(result.user.id);
       setMe(result.user);
@@ -118,6 +121,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelAddAccount: () => setAddingAccount(false),
       reload,
       login: async (input) => finishSignIn(await api.request<AuthResult>('POST', '/auth/login', input)),
+      loginWithPasskey: async () =>
+        finishSignIn(await api.request<AuthResult>('POST', '/auth/passkey', await passkeyAssertion(api))),
       register: async (input) => finishSignIn(await api.request<AuthResult>('POST', '/auth/register', input)),
       switchAccount: (id) => {
         if (id === accounts.active()?.id) return;

@@ -8,6 +8,7 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../theme/theme.dart';
 import 'format.dart';
+import '../i18n/i18n.dart';
 
 // ---------------------------------------------------------------------------
 // Brand
@@ -47,7 +48,7 @@ class _LogoState extends State<Logo> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) {
     final c = context.c;
     return Semantics(
-      label: 'OVL For Business',
+      label: tr('OVL For Business'),
       image: true,
       child: AnimatedBuilder(
         animation: _c,
@@ -192,7 +193,7 @@ class RoleBadge extends StatelessWidget {
         children: [
           if (badge == 'owner') ...[Icon(LucideIcons.crown, size: 11, color: o.role(badge)), const SizedBox(width: 3)],
           Text(
-            (badgeLabels[badge] ?? badge).toUpperCase(),
+            tr(badgeLabels[badge] ?? badge).toUpperCase(),
             style: font(body, 9.5, FontWeight.w800, letterSpacing: 0.6, color: o.role(badge)),
           ),
         ],
@@ -293,7 +294,7 @@ class Caption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      Text(text.toUpperCase(), style: context.text.labelSmall?.copyWith(color: color));
+      Text(tr(text).toUpperCase(), style: context.text.labelSmall?.copyWith(color: color));
 }
 
 class GradientButton extends StatelessWidget {
@@ -369,9 +370,21 @@ class StatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.c;
     final (fg, bg) = switch (status) {
-      'active' || 'approved' || 'open' => (c.success, c.successSoft),
-      'pending' || 'halted' => (c.warning, c.warningSoft),
-      'rejected' || 'revoked' || 'suspended' || 'delisted' => (c.danger, c.dangerSoft),
+      'active' || 'approved' || 'completed' || 'paid' || 'confirmed' || 'verified' => (c.success, c.successSoft),
+      'open' || 'partly_paid' || 'renewal_pending' => (c.accent, c.accentSoft),
+      'pending' ||
+      'halted' ||
+      'not confirmed' ||
+      'changes_requested' ||
+      'waiting_for_approval' ||
+      'paused' => (c.warning, c.warningSoft),
+      'rejected' ||
+      'revoked' ||
+      'suspended' ||
+      'delisted' ||
+      'declined' ||
+      'overdue' ||
+      'expired' => (c.danger, c.dangerSoft),
       _ => (c.text3, c.surface3),
     };
     return Container(
@@ -386,8 +399,41 @@ class StatusPill extends StatelessWidget {
             decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
           ),
           const SizedBox(width: 5),
-          Text(status.toUpperCase(), style: font(body, 10, FontWeight.w800, letterSpacing: 0.6, color: fg)),
+          Text(
+            status.replaceAll('_', ' ').toUpperCase(),
+            style: font(body, 10, FontWeight.w800, letterSpacing: 0.6, color: fg),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+/// "Verified business": the company's owner passed an identity check.
+class VerifiedBadge extends StatelessWidget {
+  const VerifiedBadge({super.key, this.compact = false});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Tooltip(
+      message: tr('Verified business: the owner passed an identity check'),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(color: c.successSoft, borderRadius: BorderRadius.circular(999)),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(LucideIcons.shieldCheck, size: 12, color: c.success),
+            const SizedBox(width: 4),
+            Text(
+              compact ? tr('VERIFIED') : tr('VERIFIED BUSINESS'),
+              style: font(body, 10, FontWeight.w800, letterSpacing: 0.6, color: c.success),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -470,14 +516,15 @@ class ErrorBox extends StatelessWidget {
           Expanded(
             child: Text(errorText(error), style: TextStyle(color: c.danger, fontSize: 13.5)),
           ),
-          if (onRetry != null) TextButton(onPressed: onRetry, child: const Text('Retry')),
+          if (onRetry != null) TextButton(onPressed: onRetry, child: Text(tr('Retry'))),
         ],
       ),
     );
   }
 }
 
-String errorText(Object? error) => error is ApiException ? error.message : 'Something went wrong. Please try again.';
+String errorText(Object? error) =>
+    error is ApiException ? error.message : tr('Something went wrong. Please try again.');
 
 // ---------------------------------------------------------------------------
 // Motion
@@ -689,7 +736,7 @@ class Segmented<T> extends StatelessWidget {
                                 o.$1 == value ? FontWeight.w700 : FontWeight.w500,
                                 color: o.$1 == value ? c.text : c.text3,
                               ),
-                              child: Text(o.$2),
+                              child: Text(tr(o.$2)),
                             ),
                           ),
                         ),
@@ -765,6 +812,33 @@ class LabeledField extends StatelessWidget {
       ],
     );
   }
+}
+
+/// A globe button that switches the language (on the sign-in screen, before there is an account).
+class LanguageMenu extends StatelessWidget {
+  const LanguageMenu({super.key, required this.value, required this.onChanged});
+
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) => PopupMenuButton<String>(
+    tooltip: 'Language / Язык',
+    initialValue: value,
+    onSelected: onChanged,
+    itemBuilder: (_) => [for (final code in appLocales) PopupMenuItem(value: code, child: Text(localeNames[code]!))],
+    child: Padding(
+      padding: const EdgeInsets.all(8),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(LucideIcons.globe, size: 18),
+          const SizedBox(width: 6),
+          Text(localeNames[value]!, style: context.text.bodyMedium),
+        ],
+      ),
+    ),
+  );
 }
 
 void toast(BuildContext context, String message, {bool error = false}) {

@@ -4,7 +4,11 @@ import type { Db } from '../../db/client';
 import { fundLocks, investments, organizations, stockListings, stockPriceHistory } from '../../db/schema';
 import { badRequest, conflict, notFound } from '../../lib/errors';
 import { iso } from '../../lib/mappers';
+import { emitEvent } from '../../lib/webhooks';
 import { credit, debit, getOrCreateWallet, lockWallet } from '../wallets/service';
+import { addShares } from './market';
+import { assertWithinLimits } from './protection';
+import { text } from '../../lib/i18n';
 
 export type ListingRow = typeof stockListings.$inferSelect;
 
@@ -39,7 +43,13 @@ export async function listingDtos(db: Db, rows: ListingRow[]): Promise<StockList
     return {
       id: l.id,
       ticker: l.ticker,
-      organization: { id: org.id, name: org.name, slug: org.slug, registryNumber: org.registryNumber },
+      organization: {
+        id: org.id,
+        name: org.name,
+        slug: org.slug,
+        registryNumber: org.registryNumber,
+        verified: org.verifiedAt !== null && org.status === 'active',
+      },
       currency: l.currency,
       sharePrice: formatAmount(l.sharePrice, l.currency),
       totalShares: l.totalShares.toString(),
@@ -72,7 +82,7 @@ export async function createListing(
     .select({ id: stockListings.id })
     .from(stockListings)
     .where(eq(stockListings.ticker, input.ticker));
-  if (taken) throw conflict(`Ticker ${input.ticker} is already used on the exchange`);
+  if (taken) throw conflict(text`Ticker ${input.ticker} is already used on the exchange`);
   if (input.sharePrice <= 0n) throw badRequest('Share price must be positive');
   const [listing] = await db
     .insert(stockListings)
@@ -87,6 +97,11 @@ export async function createListing(
     })
     .returning();
   await db.insert(stockPriceHistory).values({ listingId: listing!.id, price: input.sharePrice });
+  await emitEvent(
+    db,
+    'listing.created',
+    (await listingDtos(db, [listing!]))[0]! as unknown as Record<string, unknown>,
+  );
   return listing!;
 }
 
@@ -101,19 +116,20 @@ export async function invest(db: Db, input: { ticker: string; investorId: string
     .where(eq(stockListings.ticker, input.ticker.toUpperCase()))
     .for('update');
   if (!listing) throw notFound('Listing');
-  if (listing.status !== 'active') throw conflict(`Trading of ${listing.ticker} is ${listing.status}`);
+  if (listing.status !== 'active') throw conflict(text`Trading of ${listing.ticker} is ${listing.status}`);
   const [org] = await db.select().from(organizations).where(eq(organizations.id, listing.organizationId));
   if (!org || org.status !== 'active') throw conflict('This company is suspended');
 
   const shares = input.amount / listing.sharePrice;
   if (shares < 1n) {
     throw badRequest(
-      `Minimum investment is one share: ${formatAmount(listing.sharePrice, listing.currency)} ${listing.currency}`,
+      text`Minimum investment is one share: ${formatAmount(listing.sharePrice, listing.currency)} ${listing.currency}`,
     );
   }
   const available = listing.totalShares - listing.sharesSold;
-  if (shares > available) throw conflict(`Only ${available} shares of ${listing.ticker} are left`);
+  if (shares > available) throw conflict(text`Only ${available} shares of ${listing.ticker} are left`);
   const cost = shares * listing.sharePrice;
+  await assertWithinLimits(db, { userId: input.investorId, listing, shares, cost });
   const frozen = percentOf(cost, listing.freezeBps);
   const unlocksAt = new Date(Date.now() + listing.lockDays * 86_400_000);
 
@@ -165,6 +181,7 @@ export async function invest(db: Db, input: { ticker: string; investorId: string
       updatedAt: new Date(),
     })
     .where(eq(stockListings.id, listing.id));
+  await addShares(db, listing.id, input.investorId, shares);
 
   return { investment: investment!, listing, org, investorWallet, companyWallet };
 }

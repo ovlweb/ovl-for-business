@@ -12,6 +12,7 @@ import '../ui/widgets.dart';
 import 'contacts.dart';
 import 'home.dart';
 import 'wallet.dart';
+import '../i18n/i18n.dart';
 
 class CompaniesScreen extends StatelessWidget {
   const CompaniesScreen({super.key});
@@ -31,13 +32,13 @@ class CompaniesScreen extends StatelessWidget {
             children: [
               PageTitle(
                 icon: LucideIcons.building2,
-                title: 'Companies',
-                subtitle: 'Business accounts you own or work for.',
+                title: tr('Companies'),
+                subtitle: tr('Business accounts you own or work for.'),
                 actions: [
                   FilledButton.icon(
                     onPressed: () => context.go('/applications/new/company'),
                     icon: const Icon(LucideIcons.plus, size: 17),
-                    label: const Text('Register a company'),
+                    label: Text(tr('Register a company')),
                   ),
                 ],
               ),
@@ -47,11 +48,13 @@ class CompaniesScreen extends StatelessWidget {
               else if (s.data!.isEmpty)
                 EmptyState(
                   icon: LucideIcons.building2,
-                  title: 'No companies yet',
-                  text: 'Apply for a business account — moderation and the council review it, then it appears in the registry.',
+                  title: tr('No companies yet'),
+                  text: tr(
+                    'Apply for a business account — moderation and the council review it, then it appears in the registry.',
+                  ),
                   action: FilledButton(
                     onPressed: () => context.go('/applications/new/company'),
-                    child: const Text('Start an application'),
+                    child: Text(tr('Start an application')),
                   ),
                 )
               else
@@ -107,12 +110,13 @@ class _CompanyCard extends StatelessWidget {
                     Expanded(
                       child: Text(org.name, style: context.text.titleLarge, overflow: TextOverflow.ellipsis),
                     ),
+                    if (org.verified) ...[const VerifiedBadge(compact: true), const SizedBox(width: 6)],
                     StatusPill(org.status),
                   ],
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${org.registryNumber ?? 'Not registered'} · ${humanize(org.myRole ?? 'member')} · ${plural(org.memberCount, 'member')}',
+                  '${org.registryNumber ?? tr('Not registered')} · ${humanize(org.myRole ?? 'member')} · ${plural(org.memberCount, 'member')}',
                   style: context.text.bodySmall,
                 ),
                 if (org.description.isNotEmpty) ...[
@@ -164,9 +168,10 @@ class CompanyScreen extends StatelessWidget {
                         children: [
                           Text(o.name, style: context.text.headlineLarge),
                           Text(
-                            '${o.registryNumber ?? ''} · owner @${o.owner.username}',
+                            tr('{0} · owner @{1}', [o.registryNumber ?? '', o.owner.username]),
                             style: context.text.bodyMedium,
                           ),
+                          if (o.verified) ...[const SizedBox(height: 6), const VerifiedBadge()],
                         ],
                       ),
                     ),
@@ -179,7 +184,7 @@ class CompanyScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('About', style: context.text.titleLarge),
+                    Text(tr('About'), style: context.text.titleLarge),
                     const SizedBox(height: 8),
                     Text(o.description, style: context.text.bodyLarge),
                     const SizedBox(height: 14),
@@ -189,9 +194,9 @@ class CompanyScreen extends StatelessWidget {
                       children: [
                         if (o.website != null) _Fact(LucideIcons.globe, o.website!),
                         if (o.country != null && o.country!.isNotEmpty) _Fact(LucideIcons.mapPin, o.country!),
-                        _Fact(LucideIcons.coins, 'Base currency ${o.baseCurrency}'),
+                        _Fact(LucideIcons.coins, tr('Base currency {0}', [o.baseCurrency])),
                         _Fact(LucideIcons.users, plural(o.memberCount, 'member')),
-                        _Fact(LucideIcons.calendar, 'Since ${date(o.createdAt)}'),
+                        _Fact(LucideIcons.calendar, tr('Since {0}', [date(o.createdAt)])),
                       ],
                     ),
                     if (o.ticker != null) ...[
@@ -199,15 +204,17 @@ class CompanyScreen extends StatelessWidget {
                       OutlinedButton.icon(
                         onPressed: () => context.go('/exchange/${o.ticker}'),
                         icon: const Icon(LucideIcons.chartLine, size: 17),
-                        label: Text('${o.ticker} on the exchange'),
+                        label: Text(tr('{0} on the exchange', [o.ticker])),
                       ),
                     ],
                   ],
                 ),
               ),
               if (o.canSeeMoney) ...[
+                _PaymentApprovals(org: o),
+                _Payroll(org: o),
                 const SizedBox(height: 18),
-                Text('Company balances', style: context.text.titleLarge),
+                Text(tr('Company balances'), style: context.text.titleLarge),
                 const SizedBox(height: 10),
                 Query<List<Wallet>>(
                   client: session.queries,
@@ -216,7 +223,7 @@ class CompanyScreen extends StatelessWidget {
                   builder: (context, w) => !w.hasData
                       ? const Skeleton(height: 170, radius: 22)
                       : w.data!.isEmpty
-                      ? Text('No balances yet.', style: context.text.bodyMedium)
+                      ? Text(tr('No balances yet.'), style: context.text.bodyMedium)
                       : _CompanyWallets(wallets: w.data!),
                 ),
               ],
@@ -247,9 +254,241 @@ class _CompanyWalletsState extends State<_CompanyWallets> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         WalletCards(wallets: widget.wallets, selected: selected.id, onSelect: (w) => setState(() => _selected = w.id)),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: () => showCashRequestSheet(context, selected, 'deposit'),
+              icon: const Icon(LucideIcons.arrowDownLeft, size: 17),
+              label: Text(tr('Deposit')),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => showCashRequestSheet(context, selected, 'withdrawal'),
+              icon: const Icon(LucideIcons.arrowUpRight, size: 17),
+              label: Text(tr('Withdraw')),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => showConvertSheet(context, selected),
+              icon: const Icon(LucideIcons.arrowLeftRight, size: 17),
+              label: Text(tr('Convert')),
+            ),
+          ],
+        ),
+        CashRequests(wallet: selected),
         const SizedBox(height: 16),
         Statement(wallet: selected),
       ],
+    );
+  }
+}
+
+const _kindIcon = {
+  'transfer': LucideIcons.send,
+  'invoice': LucideIcons.receipt,
+  'exchange': LucideIcons.arrowLeftRight,
+  'payroll': LucideIcons.users,
+};
+
+/// Company payments above the approval limit: a second finance member approves or declines them.
+class _PaymentApprovals extends StatelessWidget {
+  const _PaymentApprovals({required this.org});
+
+  final Organization org;
+
+  @override
+  Widget build(BuildContext context) {
+    final session = context.watch<Session>();
+    final c = context.c;
+    return Query<List<PaymentApproval>>(
+      client: session.queries,
+      queryKey: 'paymentApprovals:${org.id}',
+      fetch: () => session.api.paymentApprovals(org.id, status: 'pending'),
+      builder: (context, s) {
+        final waiting = s.data ?? const <PaymentApproval>[];
+        if (org.approvalLimit == null && waiting.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 18),
+          child: OvlCard(
+            padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(tr('Payments waiting for approval'), style: context.text.titleLarge),
+                      const SizedBox(height: 4),
+                      Text(
+                        org.approvalLimit == null
+                            ? tr('The approval limit is off: payments go through at once.')
+                            : tr(
+                                'Payments of {0} or more need a second owner, director or accountant. The money is set aside meanwhile.',
+                                [money(org.approvalLimit!, org.baseCurrency)],
+                              ),
+                        style: context.text.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                if (s.hasData && waiting.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 6, 14, 8),
+                    child: Text(tr('Nothing is waiting.'), style: context.text.bodyMedium),
+                  ),
+                for (final (i, a) in waiting.indexed)
+                  FadeSlideIn(
+                    delay: stagger(i, 30),
+                    child: ListTile(
+                      leading: IconTile(_kindIcon[a.kind] ?? LucideIcons.banknote, size: 38, color: c.warning),
+                      title: Text(a.description, style: context.text.titleSmall, maxLines: 2),
+                      subtitle: Text(
+                        '${a.requestedById == session.me?.id ? tr('You') : a.requestedBy} · ${date(a.createdAt)}',
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '−${money(a.amount, a.currency)}',
+                            style: font(body, 14, FontWeight.w700, color: c.text),
+                          ),
+                          const SizedBox(width: 6),
+                          if (a.requestedById != session.me?.id)
+                            IconButton(
+                              tooltip: tr('Approve'),
+                              onPressed: () => _approve(context, a),
+                              icon: Icon(LucideIcons.check, size: 19, color: c.success),
+                            ),
+                          IconButton(
+                            tooltip: a.requestedById == session.me?.id ? tr('Withdraw') : tr('Decline'),
+                            onPressed: () => _decline(context, a),
+                            icon: Icon(LucideIcons.x, size: 18, color: c.text3),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _refresh(Session session) {
+    for (final k in ['paymentApprovals', 'wallets', 'entries', 'orgs', 'invoices']) {
+      session.queries.invalidate(k);
+    }
+  }
+
+  Future<void> _approve(BuildContext context, PaymentApproval a) async {
+    final session = context.read<Session>();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: Text(tr('Approve this payment?')),
+        content: Text(tr('{0}\n\n{1} leaves the company balance now.', [a.description, money(a.amount, a.currency)])),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: Text(tr('Not now'))),
+          FilledButton(onPressed: () => Navigator.pop(dialog, true), child: Text(tr('Approve'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await session.api.approvePayment(org.id, a.id);
+      _refresh(session);
+      if (context.mounted) toast(context, tr('Approved: {0}', [a.description]));
+    } catch (e) {
+      if (context.mounted) toast(context, errorText(e), error: true);
+    }
+  }
+
+  Future<void> _decline(BuildContext context, PaymentApproval a) async {
+    final session = context.read<Session>();
+    final mine = a.requestedById == session.me?.id;
+    final reason = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: Text(mine ? tr('Withdraw this payment?') : tr('Decline this payment?')),
+        content: TextField(
+          controller: reason,
+          autofocus: true,
+          decoration: InputDecoration(hintText: tr('Reason (at least 3 characters)')),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: Text(tr('Keep'))),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialog, true),
+            child: Text(mine ? tr('Withdraw') : tr('Decline')),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await session.api.rejectPayment(org.id, a.id, reason.text.trim());
+      _refresh(session);
+      if (context.mounted) toast(context, mine ? tr('Payment withdrawn') : tr('Payment declined'));
+    } catch (e) {
+      if (context.mounted) toast(context, errorText(e), error: true);
+    }
+  }
+}
+
+/// Payroll runs (read-only here; new runs are made on the web).
+class _Payroll extends StatelessWidget {
+  const _Payroll({required this.org});
+
+  final Organization org;
+
+  @override
+  Widget build(BuildContext context) {
+    final session = context.watch<Session>();
+    final c = context.c;
+    return Query<List<PayrollRun>>(
+      client: session.queries,
+      queryKey: 'payroll:${org.id}',
+      fetch: () => session.api.payrollRuns(org.id),
+      builder: (context, s) {
+        final runs = s.data ?? const <PayrollRun>[];
+        if (runs.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 18),
+          child: OvlCard(
+            padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+                  child: Text(tr('Payroll'), style: context.text.titleLarge),
+                ),
+                for (final r in runs.take(5))
+                  ListTile(
+                    leading: IconTile(LucideIcons.users, size: 38, color: c.accent),
+                    title: Text(r.title, style: context.text.titleSmall, overflow: TextOverflow.ellipsis),
+                    subtitle: Text('${plural(r.people, 'person', 'people')} · ${date(r.createdAt)}'),
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text('−${money(r.total, r.currency)}', style: font(body, 14, FontWeight.w700, color: c.text)),
+                        const SizedBox(height: 4),
+                        StatusPill(r.status == 'pending' ? 'waiting_for_approval' : r.status),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

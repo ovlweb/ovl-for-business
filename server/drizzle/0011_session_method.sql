@@ -1,0 +1,1 @@
+ALTER TABLE "sessions" ADD COLUMN "method" varchar(16) DEFAULT 'password' NOT NULL;

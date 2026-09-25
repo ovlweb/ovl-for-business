@@ -12,6 +12,9 @@ import {
   StatusBadge,
   WorkflowStepper,
   type IconName,
+  plural,
+  intlLocale,
+  t,
 } from '@ovl/ui';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'motion/react';
@@ -22,10 +25,10 @@ import { StoriesBar } from '../components/Stories';
 
 function greeting(): string {
   const h = new Date().getHours();
-  if (h < 5) return 'Good night';
-  if (h < 12) return 'Good morning';
-  if (h < 18) return 'Good afternoon';
-  return 'Good evening';
+  if (h < 5) return t('Good night');
+  if (h < 12) return t('Good morning');
+  if (h < 18) return t('Good afternoon');
+  return t('Good evening');
 }
 
 function QuickAction({ to, icon, label, tone }: { to: string; icon: IconName; label: string; tone: string }) {
@@ -83,20 +86,23 @@ export function HomePage() {
         <div className="home-hero-content">
           <div className="stack-sm">
             <span className="hero-date">
-              {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
+              {new Date().toLocaleDateString(intlLocale(), {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+              })}
             </span>
             <h1>
               {greeting()}, {me.displayName.split(' ')[0]}
             </h1>
             <p>
-              {unread > 0 ? `${unread} unread message${unread === 1 ? '' : 's'}` : 'You are all caught up'}
-              {pending.length > 0 &&
-                ` · ${pending.length} application${pending.length === 1 ? '' : 's'} in review`}
+              {unread > 0 ? plural(unread, 'unread message') : t('You are all caught up')}
+              {pending.length > 0 && ` ${t('· {0} in review', plural(pending.length, 'application'))}`}
             </p>
           </div>
           <div className="hero-balance">
             <span className="hero-balance-label">
-              <Icon name="wallet" size={15} /> {primary ? `${primary.currency} balance` : 'Balance'}
+              <Icon name="wallet" size={15} /> {primary ? t('{0} balance', primary.currency) : t('Balance')}
             </span>
             {wallets.isLoading ? (
               <Skeleton width={180} height={34} />
@@ -108,19 +114,19 @@ export function HomePage() {
               <span className="hero-balance-value">—</span>
             )}
             {wallets.data && wallets.data.length > 1 && (
-              <span className="hero-balance-more">+{wallets.data.length - 1} more currencies</span>
+              <span className="hero-balance-more">{t('+{0} more currencies', wallets.data.length - 1)}</span>
             )}
           </div>
         </div>
       </motion.div>
 
       <div className="quick-actions">
-        <QuickAction to="/wallet" icon="send" label="Send money" tone="blue" />
-        <QuickAction to="/chats" icon="chat" label="Messages" tone="violet" />
-        <QuickAction to="/exchange" icon="chart" label="Invest" tone="green" />
-        <QuickAction to="/applications?new=company" icon="building" label="New company" tone="amber" />
-        <QuickAction to="/registry" icon="book" label="Registry" tone="teal" />
-        <QuickAction to="/support" icon="support" label="Support" tone="pink" />
+        <QuickAction to="/wallet" icon="send" label={t('Send money')} tone="blue" />
+        <QuickAction to="/chats" icon="chat" label={t('Messages')} tone="violet" />
+        <QuickAction to="/exchange" icon="chart" label={t('Invest')} tone="green" />
+        <QuickAction to="/applications?new=company" icon="building" label={t('New company')} tone="amber" />
+        <QuickAction to="/registry" icon="book" label={t('Registry')} tone="teal" />
+        <QuickAction to="/support" icon="support" label={t('Support')} tone="pink" />
       </div>
 
       <StoriesBar />
@@ -131,7 +137,7 @@ export function HomePage() {
             <span className="kpi-icon">
               <Icon name="chat" size={16} />
             </span>
-            Unread
+            {t('Unread')}
           </span>
           <span className="kpi-value">
             <AnimatedNumber value={String(unread)} />
@@ -142,7 +148,7 @@ export function HomePage() {
             <span className="kpi-icon">
               <Icon name="briefcase" size={16} />
             </span>
-            Companies
+            {t('Companies')}
           </span>
           <span className="kpi-value">
             <AnimatedNumber value={String(orgs.data?.length ?? 0)} />
@@ -153,7 +159,7 @@ export function HomePage() {
             <span className="kpi-icon">
               <Icon name="pie" size={16} />
             </span>
-            Portfolio
+            {t('Portfolio')}
           </span>
           <span className="kpi-value">
             {portfolioValue ? (
@@ -171,7 +177,7 @@ export function HomePage() {
             <span className="kpi-icon">
               <Icon name="file" size={16} />
             </span>
-            In review
+            {t('In review')}
           </span>
           <span className="kpi-value">
             <AnimatedNumber value={String(pending.length)} />
@@ -186,12 +192,9 @@ export function HomePage() {
               <Icon name="review" size={18} />
             </span>
             <div className="grow">
-              <b>
-                {queue.data!.length} application{queue.data!.length === 1 ? '' : 's'} waiting for your
-                decision
-              </b>
+              <b>{t('{0} waiting for your decision', plural(queue.data!.length, 'application'))}</b>
               <div className="small muted">
-                Companies, licenses and staff candidates in your review queue.
+                {t('Companies, licenses and staff candidates in your review queue.')}
               </div>
             </div>
             <Icon name="chevronRight" />
@@ -202,9 +205,9 @@ export function HomePage() {
       <div className="grid-2" style={{ alignItems: 'start' }}>
         <div className="card pad-0">
           <div className="card-header padded">
-            <h3>Recent conversations</h3>
+            <h3>{t('Recent conversations')}</h3>
             <Link to="/chats" className="small">
-              All chats
+              {t('All chats')}
             </Link>
           </div>
           {chats.isLoading && (
@@ -219,7 +222,7 @@ export function HomePage() {
                 <Avatar name={c.title} url={c.peer?.avatarUrl} size={36} />
                 <div className="grow">
                   <div className="bold ellipsis">{c.title}</div>
-                  <div className="small muted ellipsis">{c.lastMessage?.body ?? 'No messages yet'}</div>
+                  <div className="small muted ellipsis">{c.lastMessage?.body ?? t('No messages yet')}</div>
                 </div>
                 <div className="stack-sm" style={{ alignItems: 'flex-end' }}>
                   <span className="tiny muted">
@@ -230,15 +233,15 @@ export function HomePage() {
               </Link>
             ))}
           </div>
-          {chats.data?.length === 0 && <Empty icon="chat" title="No conversations yet" />}
+          {chats.data?.length === 0 && <Empty icon="chat" title={t('No conversations yet')} />}
         </div>
 
         <div className="stack-lg">
           <div className="card stack">
             <div className="spread">
-              <h3>Your applications</h3>
+              <h3>{t('Your applications')}</h3>
               <Link to="/applications" className="small">
-                View all
+                {t('View all')}
               </Link>
             </div>
             {applications.data?.slice(0, 3).map((a) => (
@@ -254,17 +257,18 @@ export function HomePage() {
             ))}
             {applications.data?.length === 0 && (
               <div className="small muted">
-                Nothing submitted yet. <Link to="/applications?new=company">Register a company</Link> or{' '}
-                <Link to="/applications?new=license">request a license</Link>.
+                {t('Nothing submitted yet.')}{' '}
+                <Link to="/applications?new=company">{t('Register a company')}</Link> {t('or')}{' '}
+                <Link to="/applications?new=license">{t('request a license')}</Link>.
               </div>
             )}
           </div>
 
           <div className="card pad-0">
             <div className="card-header padded">
-              <h3>Exchange</h3>
+              <h3>{t('Exchange')}</h3>
               <Link to="/exchange" className="small">
-                Open market
+                {t('Open market')}
               </Link>
             </div>
             <div className="list">
@@ -274,14 +278,14 @@ export function HomePage() {
                   <div className="grow">
                     <div className="bold ellipsis">{l.organization.name}</div>
                     <div className="tiny muted">
-                      {l.investorsCount} investors · raised {formatMoney(l.raised, l.currency)}
+                      {t('{0} investors · raised {1}', l.investorsCount, formatMoney(l.raised, l.currency))}
                     </div>
                   </div>
                   <span className="num bold">{formatMoney(l.sharePrice, l.currency)}</span>
                 </Link>
               ))}
             </div>
-            {listings.data?.length === 0 && <Empty icon="chart" title="No listed companies yet" />}
+            {listings.data?.length === 0 && <Empty icon="chart" title={t('No listed companies yet')} />}
           </div>
         </div>
       </div>

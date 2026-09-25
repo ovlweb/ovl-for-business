@@ -12,16 +12,20 @@ import '../state/session.dart';
 import '../theme/theme.dart';
 import '../ui/format.dart';
 import '../ui/widgets.dart';
+import '../i18n/i18n.dart';
 
 const navIcons = <String, IconData>{
   'home': LucideIcons.house,
   'chats': LucideIcons.messageCircle,
   'contacts': LucideIcons.users,
+  'notifications': LucideIcons.bell,
   'wallet': LucideIcons.wallet,
+  'invoices': LucideIcons.receipt,
   'companies': LucideIcons.building2,
   'exchange': LucideIcons.chartLine,
   'registry': LucideIcons.bookOpen,
   'applications': LucideIcons.fileText,
+  'transparency': LucideIcons.award,
   'support': LucideIcons.lifeBuoy,
   'review': LucideIcons.clipboardCheck,
   'settings': LucideIcons.settings,
@@ -60,48 +64,63 @@ class _AppShellState extends State<AppShell> {
       client: session.queries,
       queryKey: 'chats',
       fetch: session.api.chats,
-      builder: (context, chats) {
-        final counts = <String, int>{'/chats': chats.data?.fold<int>(0, (s, c) => s + c.unreadCount) ?? 0};
-        final shortcuts = <ShortcutActivator, VoidCallback>{
-          const SingleActivator(LogicalKeyboardKey.keyK, control: true): () => openPalette(context, visible, _go),
-          const SingleActivator(LogicalKeyboardKey.keyK, meta: true): () => openPalette(context, visible, _go),
-        };
-        if (width < 700) {
-          return CallbackShortcuts(
-            bindings: shortcuts,
-            child: Scaffold(
-              body: widget.shell,
-              // A conversation gets the whole screen, like in any messenger.
-              bottomNavigationBar: RegExp(r'^/(chats|support)/[^/]+$').hasMatch(widget.location)
-                  ? null
-                  : _BottomBar(visible: visible, current: current, counts: counts, onSelect: _go),
-            ),
-          );
-        }
-        final collapsed = _collapsed || width < 1100;
-        return CallbackShortcuts(
-          bindings: shortcuts,
-          child: Focus(
-            autofocus: true,
-            child: Scaffold(
-              body: Row(
-                children: [
-                  _Sidebar(
-                    visible: visible,
-                    current: current,
-                    counts: counts,
-                    collapsed: collapsed,
-                    onSelect: _go,
-                    onToggle: width < 1100 ? null : () => setState(() => _collapsed = !_collapsed),
-                    onSearch: () => openPalette(context, visible, _go),
-                  ),
-                  Expanded(child: widget.shell),
-                ],
+      builder: (context, chats) => Query<List<Invoice>>(
+        client: session.queries,
+        queryKey: 'invoices:incoming:true',
+        fetch: () => session.api.invoices(direction: 'incoming', status: 'open'),
+        builder: (context, toPay) => Query<NotificationPage>(
+          client: session.queries,
+          queryKey: 'notifications:count',
+          fetch: () => session.api.notifications(unreadOnly: true, limit: 1),
+          builder: (context, inbox) => _layout(context, visible, current, width, {
+            '/chats': chats.data?.fold<int>(0, (s, c) => s + c.unreadCount) ?? 0,
+            '/invoices': toPay.data?.length ?? 0,
+            '/notifications': inbox.data?.unreadCount ?? 0,
+          }),
+        ),
+      ),
+    );
+  }
+
+  Widget _layout(BuildContext context, List<Section> visible, Section current, double width, Map<String, int> counts) {
+    final shortcuts = <ShortcutActivator, VoidCallback>{
+      const SingleActivator(LogicalKeyboardKey.keyK, control: true): () => openPalette(context, visible, _go),
+      const SingleActivator(LogicalKeyboardKey.keyK, meta: true): () => openPalette(context, visible, _go),
+    };
+    if (width < 700) {
+      return CallbackShortcuts(
+        bindings: shortcuts,
+        child: Scaffold(
+          body: widget.shell,
+          // A conversation gets the whole screen, like in any messenger.
+          bottomNavigationBar: RegExp(r'^/(chats|support)/[^/]+$').hasMatch(widget.location)
+              ? null
+              : _BottomBar(visible: visible, current: current, counts: counts, onSelect: _go),
+        ),
+      );
+    }
+    final collapsed = _collapsed || width < 1100;
+    return CallbackShortcuts(
+      bindings: shortcuts,
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          body: Row(
+            children: [
+              _Sidebar(
+                visible: visible,
+                current: current,
+                counts: counts,
+                collapsed: collapsed,
+                onSelect: _go,
+                onToggle: width < 1100 ? null : () => setState(() => _collapsed = !_collapsed),
+                onSearch: () => openPalette(context, visible, _go),
               ),
-            ),
+              Expanded(child: widget.shell),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
@@ -156,14 +175,14 @@ class _Sidebar extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('OVL For Business', style: font(display, 15, FontWeight.w800, color: c.sidebarText)),
-                          Text('Corporate platform', style: TextStyle(fontSize: 11.5, color: c.sidebarMuted)),
+                          Text(tr('OVL For Business'), style: font(display, 15, FontWeight.w800, color: c.sidebarText)),
+                          Text(tr('Corporate platform'), style: TextStyle(fontSize: 11.5, color: c.sidebarMuted)),
                         ],
                       ),
                     ),
                     if (onToggle != null)
                       IconButton(
-                        tooltip: 'Collapse sidebar',
+                        tooltip: tr('Collapse sidebar'),
                         onPressed: onToggle,
                         icon: Icon(LucideIcons.panelLeft, size: 18, color: c.sidebarMuted),
                       ),
@@ -188,7 +207,7 @@ class _Sidebar extends StatelessWidget {
                         if (!collapsed) ...[
                           const SizedBox(width: 10),
                           Expanded(
-                            child: Text('Search…', style: TextStyle(color: c.sidebarMuted, fontSize: 13.5)),
+                            child: Text(tr('Search…'), style: TextStyle(color: c.sidebarMuted, fontSize: 13.5)),
                           ),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -196,7 +215,7 @@ class _Sidebar extends StatelessWidget {
                               border: Border.all(color: c.sidebarBorder),
                               borderRadius: BorderRadius.circular(6),
                             ),
-                            child: Text('Ctrl K', style: TextStyle(color: c.sidebarMuted, fontSize: 10.5)),
+                            child: Text(tr('Ctrl K'), style: TextStyle(color: c.sidebarMuted, fontSize: 10.5)),
                           ),
                         ],
                       ],
@@ -359,7 +378,7 @@ class _BottomBar extends StatelessWidget {
               ),
               label: s.label,
             ),
-          const NavigationDestination(icon: Icon(LucideIcons.ellipsis), label: 'More'),
+          NavigationDestination(icon: Icon(LucideIcons.ellipsis), label: tr('More')),
         ],
       ),
     );
@@ -390,7 +409,7 @@ void showMoreSheet(BuildContext context, List<Section> more, ValueChanged<Sectio
                     Navigator.pop(sheet);
                     showAccountSheet(context);
                   },
-                  child: const Text('Switch'),
+                  child: Text(tr('Switch')),
                 ),
               ),
               const Divider(height: 18),
@@ -469,7 +488,7 @@ class AccountButton extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: font(body, 14, FontWeight.w700, color: c.sidebarText),
                       ),
-                      Text(roleLabels[me.role] ?? me.role, style: TextStyle(fontSize: 12, color: c.sidebarMuted)),
+                      Text(tr(roleLabels[me.role] ?? me.role), style: TextStyle(fontSize: 12, color: c.sidebarMuted)),
                     ],
                   ),
                 ),
@@ -505,11 +524,11 @@ void showAccountSheet(BuildContext context) {
               ListTile(
                 leading: Avatar(name: me.displayName, url: me.avatarUrl, size: 46),
                 title: NameWithBadges(me),
-                subtitle: Text('@${me.username} · ${roleLabels[me.role]}'),
+                subtitle: Text('@${me.username} · ${tr(roleLabels[me.role] ?? me.role)}'),
               ),
               if (others.isNotEmpty) ...[
                 const Divider(height: 16),
-                Padding(padding: const EdgeInsets.fromLTRB(16, 4, 16, 4), child: Caption('Switch account')),
+                Padding(padding: const EdgeInsets.fromLTRB(16, 4, 16, 4), child: Caption(tr('Switch account'))),
                 for (final a in others)
                   ListTile(
                     leading: Avatar(name: a.displayName, url: a.avatarUrl, size: 34),
@@ -525,7 +544,7 @@ void showAccountSheet(BuildContext context) {
               const Divider(height: 16),
               ListTile(
                 leading: const Icon(LucideIcons.userPlus, size: 20),
-                title: const Text('Add another account'),
+                title: Text(tr('Add another account')),
                 onTap: () {
                   Navigator.pop(sheet);
                   session.startAddAccount();
@@ -533,7 +552,7 @@ void showAccountSheet(BuildContext context) {
               ),
               ListTile(
                 leading: const Icon(LucideIcons.palette, size: 20),
-                title: const Text('Themes'),
+                title: Text(tr('Themes')),
                 onTap: () {
                   Navigator.pop(sheet);
                   GoRouter.of(context).go('/settings?section=appearance');
@@ -541,7 +560,7 @@ void showAccountSheet(BuildContext context) {
               ),
               ListTile(
                 leading: const Icon(LucideIcons.settings, size: 20),
-                title: const Text('Settings'),
+                title: Text(tr('Settings')),
                 onTap: () {
                   Navigator.pop(sheet);
                   GoRouter.of(context).go('/settings');
@@ -549,7 +568,7 @@ void showAccountSheet(BuildContext context) {
               ),
               ListTile(
                 leading: Icon(LucideIcons.logOut, size: 20, color: sheet.c.danger),
-                title: Text('Sign out', style: TextStyle(color: sheet.c.danger)),
+                title: Text(tr('Sign out'), style: TextStyle(color: sheet.c.danger)),
                 onTap: () {
                   Navigator.pop(sheet);
                   session.logout();
@@ -576,7 +595,7 @@ class MessageBanner extends StatelessWidget {
     final sender = incoming.message.sender;
     final chat = incoming.chat;
     final title = sender == null
-        ? (chat?.title ?? 'New message')
+        ? (chat?.title ?? tr('New message'))
         : (chat != null && chat.type != 'direct' ? '${sender.displayName} · ${chat.title}' : sender.displayName);
     return Material(
       color: c.surface,
@@ -683,8 +702,8 @@ class _PaletteState extends State<_Palette> {
                   setState(() {});
                   _search(v);
                 },
-                decoration: const InputDecoration(
-                  hintText: 'Search pages, chats and people…',
+                decoration: InputDecoration(
+                  hintText: tr('Search pages, chats and people…'),
                   prefixIcon: Icon(LucideIcons.search, size: 18),
                 ),
               ),
@@ -694,7 +713,7 @@ class _PaletteState extends State<_Palette> {
                 shrinkWrap: true,
                 padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
                 children: [
-                  if (pages.isNotEmpty) const _PaletteGroup('Pages'),
+                  if (pages.isNotEmpty) _PaletteGroup(tr('Pages')),
                   for (final s in pages)
                     ListTile(
                       dense: true,
@@ -705,7 +724,7 @@ class _PaletteState extends State<_Palette> {
                         widget.onSection(s);
                       },
                     ),
-                  if (chats.isNotEmpty) const _PaletteGroup('Chats'),
+                  if (chats.isNotEmpty) _PaletteGroup(tr('Chats')),
                   for (final c in chats)
                     ListTile(
                       dense: true,
@@ -716,7 +735,7 @@ class _PaletteState extends State<_Palette> {
                         router.go('/chats/${c.id}');
                       },
                     ),
-                  if (_people.isNotEmpty) const _PaletteGroup('People'),
+                  if (_people.isNotEmpty) _PaletteGroup(tr('People')),
                   for (final u in _people)
                     ListTile(
                       dense: true,
@@ -732,7 +751,7 @@ class _PaletteState extends State<_Palette> {
                     Padding(
                       padding: const EdgeInsets.all(24),
                       child: Text(
-                        'No results for “${_q.text}”',
+                        tr('No results for “{0}”', [_q.text]),
                         textAlign: TextAlign.center,
                         style: context.text.bodyMedium,
                       ),

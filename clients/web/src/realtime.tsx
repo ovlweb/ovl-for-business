@@ -5,6 +5,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { api } from './api';
 import { useAuth } from './auth';
 import { showNotification } from './notifications';
+import { t } from '@ovl/ui';
 
 interface RealtimeState {
   status: RealtimeStatus;
@@ -37,15 +38,21 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       switch (event.type) {
         case 'message.created':
         case 'message.updated': {
-          queryClient.setQueryData<MessagePages>(['messages', event.chatId], (data) => {
-            if (!data) return data;
-            const [first = [], ...rest] = data.pages;
-            const exists = data.pages.some((p) => p.some((m) => m.id === event.message.id));
-            const pages = exists
-              ? data.pages.map((p) => p.map((m) => (m.id === event.message.id ? event.message : m)))
-              : [[event.message, ...first], ...rest];
-            return { ...data, pages };
-          });
+          const threadId = event.message.threadId;
+          // Comments under a channel post live in their own list, not in the channel feed.
+          queryClient.setQueryData<MessagePages>(
+            threadId ? ['comments', event.chatId, threadId] : ['messages', event.chatId],
+            (data) => {
+              if (!data) return data;
+              const [first = [], ...rest] = data.pages;
+              const exists = data.pages.some((p) => p.some((m) => m.id === event.message.id));
+              const pages = exists
+                ? data.pages.map((p) => p.map((m) => (m.id === event.message.id ? event.message : m)))
+                : [[event.message, ...first], ...rest];
+              return { ...data, pages };
+            },
+          );
+          if (threadId && !event.message.mentions.includes(me.id)) break;
           queryClient.invalidateQueries({ queryKey: ['chats'] });
           queryClient.invalidateQueries({ queryKey: ['support'] });
           // Application cards posted into the council / moderation chats: refresh the review queue.
@@ -54,12 +61,25 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
           if (event.type === 'message.created' && sender && sender.id !== me.id) {
             const chat = queryClient.getQueryData<Chat[]>(['chats'])?.find((c) => c.id === event.chatId);
             const route = chat ? `#/chats/${event.chatId}` : `#/support/${event.chatId}`;
+            const mentioned = event.message.mentions.includes(me.id);
             const title =
-              chat && chat.type !== 'direct' ? `${sender.displayName} · ${chat.title}` : sender.displayName;
-            showNotification(title, event.message.body, event.chatId, () => {
+              (mentioned ? `${t('Mentioned by')} ` : '') +
+              (chat && chat.type !== 'direct' ? `${sender.displayName} · ${chat.title}` : sender.displayName);
+            const body = event.message.body || (event.message.attachments.length ? t('Sent a file') : '');
+            showNotification(title, body, event.chatId, () => {
               location.hash = route;
             });
           }
+          break;
+        }
+        case 'notification.created': {
+          queryClient.invalidateQueries({ queryKey: ['notifications'] });
+          const n = event.notification;
+          // Messages already announce themselves (mentions included); everything else does here.
+          if (!['mention', 'reply', 'comment'].includes(n.type))
+            showNotification(n.title, n.body, `n-${n.id}`, () => {
+              location.hash = n.link ?? '/notifications';
+            });
           break;
         }
         case 'chat.updated':
@@ -85,6 +105,27 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
           for (const key of ['wallets', 'wallet', 'entries', 'orgWallets', 'portfolio']) {
             queryClient.invalidateQueries({ queryKey: [key] });
           }
+          break;
+        case 'identity.updated':
+          queryClient.invalidateQueries({ queryKey: ['identity'] });
+          queryClient.invalidateQueries({ queryKey: ['orgs'] });
+          void reload();
+          break;
+        case 'invoice.updated':
+          queryClient.invalidateQueries({ queryKey: ['invoices'] });
+          break;
+        case 'payment_approval.updated':
+          queryClient.invalidateQueries({ queryKey: ['paymentApprovals', event.organizationId] });
+          break;
+        case 'stock.updated':
+          queryClient.invalidateQueries({ queryKey: ['stock'] });
+          queryClient.invalidateQueries({ queryKey: ['listings'] });
+          break;
+        case 'payroll.updated':
+          queryClient.invalidateQueries({ queryKey: ['payroll', event.organizationId] });
+          break;
+        case 'cash_request.updated':
+          queryClient.invalidateQueries({ queryKey: ['cashRequests', event.walletId] });
           break;
       }
       for (const l of listeners.current) l(event);

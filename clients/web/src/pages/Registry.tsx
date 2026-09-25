@@ -4,11 +4,15 @@ import {
   ErrorAlert,
   formatDate,
   humanize,
+  Icon,
   Modal,
   PageHeader,
   Spinner,
   StatusBadge,
   useDebounced,
+  VerifiedBadge,
+  t,
+  msg,
 } from '@ovl/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -19,7 +23,7 @@ const KINDS = [
   { value: '', label: 'Everything' },
   { value: 'organization', label: 'Organizations' },
   { value: 'license', label: 'Licenses' },
-  { value: 'virtual_country', label: 'Virtual countries' },
+  { value: 'virtual_country', label: msg('Virtual countries') },
 ] as const;
 
 function EntryModal({ entry, onClose }: { entry: RegistryEntry; onClose: () => void }) {
@@ -33,12 +37,15 @@ function EntryModal({ entry, onClose }: { entry: RegistryEntry; onClose: () => v
         </div>
         <p style={{ whiteSpace: 'pre-wrap' }}>{entry.description}</p>
         <dl className="dl">
-          <dt>Holder</dt>
+          <dt>{t('Holder')}</dt>
           <dd>
             {entry.holder.type === 'organization' ? (
-              <Link to={`/companies/${entry.holder.handle}`} onClick={onClose}>
-                {entry.holder.name}
-              </Link>
+              <>
+                <Link to={`/companies/${entry.holder.handle}`} onClick={onClose}>
+                  {entry.holder.name}
+                </Link>{' '}
+                {entry.holder.verified && <VerifiedBadge />}
+              </>
             ) : (
               <Link to={`/u/${entry.holder.handle}`} onClick={onClose}>
                 {entry.holder.name} (@{entry.holder.handle})
@@ -47,7 +54,7 @@ function EntryModal({ entry, onClose }: { entry: RegistryEntry; onClose: () => v
           </dd>
           {entry.website && (
             <>
-              <dt>Website</dt>
+              <dt>{t('Website')}</dt>
               <dd>
                 <a href={entry.website} target="_blank" rel="noreferrer">
                   {entry.website}
@@ -55,11 +62,38 @@ function EntryModal({ entry, onClose }: { entry: RegistryEntry; onClose: () => v
               </dd>
             </>
           )}
-          <dt>Issued</dt>
+          <dt>{t('Issued')}</dt>
           <dd>{formatDate(entry.issuedAt)}</dd>
-          <dt>Updated</dt>
+          {entry.currency && (
+            <>
+              <dt>{t('Currency')}</dt>
+              <dd>
+                <code>{entry.currency}</code>
+              </dd>
+            </>
+          )}
+          {entry.expiresAt && (
+            <>
+              <dt>{t('Valid until')}</dt>
+              <dd>{formatDate(entry.expiresAt, false)}</dd>
+            </>
+          )}
+          <dt>{t('Updated')}</dt>
           <dd>{formatDate(entry.updatedAt)}</dd>
         </dl>
+        <div className="row-wrap">
+          <a
+            className="btn"
+            href={api.registry.certificateUrl(entry.number)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <Icon name="award" size={16} /> {t('Certificate (PDF)')}
+          </a>
+          <Link className="btn ghost" to={`/verify/${entry.number}`} onClick={onClose}>
+            <Icon name="shield" size={16} /> {t('Verification page')}
+          </Link>
+        </div>
       </div>
     </Modal>
   );
@@ -87,13 +121,15 @@ export function RegistryPage() {
     <div className="page stack-lg">
       <PageHeader
         icon="book"
-        title="Public registry"
-        subtitle="Every approved license, organization and virtual country. Also available to other services via the public API."
+        title={t('Public registry')}
+        subtitle={t(
+          'Every approved license, organization and virtual country. Also available to other services via the public API.',
+        )}
       />
       <div className="card stack">
         <input
           className="input"
-          placeholder="Search by name, registry number, holder…"
+          placeholder={t('Search by name, registry number, holder…')}
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
@@ -110,7 +146,7 @@ export function RegistryPage() {
                 setOffset(0);
               }}
             >
-              {k.label}
+              {t(k.label)}
             </button>
           ))}
           <select
@@ -122,10 +158,10 @@ export function RegistryPage() {
               setOffset(0);
             }}
           >
-            <option value="">Any license type</option>
-            {LICENSE_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {LICENSE_TYPE_LABELS[t]}
+            <option value="">{t('Any license type')}</option>
+            {LICENSE_TYPES.map((kind) => (
+              <option key={kind} value={kind}>
+                {t(LICENSE_TYPE_LABELS[kind])}
               </option>
             ))}
           </select>
@@ -143,29 +179,35 @@ export function RegistryPage() {
                   <span className="badge">{humanize(e.licenseType ?? e.kind)}</span>
                 </div>
                 <div className="small muted">
-                  {e.holder.name} · issued {formatDate(e.issuedAt, false)}
+                  {e.holder.name}
+                  {e.holder.verified && ` ${t('✓ verified')}`} {t('· issued')} {formatDate(e.issuedAt, false)}
                 </div>
               </div>
               <code className="small">{e.number}</code>
             </button>
           ))}
         </div>
-        {results.data?.items.length === 0 && <Empty title="Nothing found in the registry" />}
+        {results.data?.items.length === 0 && <Empty title={t('Nothing found in the registry')} />}
       </div>
       {results.data && results.data.total > limit && (
         <div className="spread">
           <button className="btn sm" disabled={offset === 0} onClick={() => setOffset(offset - limit)}>
-            Previous
+            {t('Previous')}
           </button>
           <span className="small muted">
-            {offset + 1}–{Math.min(offset + limit, results.data.total)} of {results.data.total}
+            {t(
+              '{0}–{1} of {2}',
+              offset + 1,
+              Math.min(offset + limit, results.data.total),
+              results.data.total,
+            )}
           </span>
           <button
             className="btn sm"
             disabled={offset + limit >= results.data.total}
             onClick={() => setOffset(offset + limit)}
           >
-            Next
+            {t('Next')}
           </button>
         </div>
       )}

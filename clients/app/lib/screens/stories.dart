@@ -8,6 +8,7 @@ import '../state/session.dart';
 import '../theme/theme.dart';
 import '../ui/format.dart';
 import '../ui/widgets.dart';
+import '../i18n/i18n.dart';
 
 Color _hex(String hex) => Color(int.parse('FF${hex.replaceFirst('#', '')}', radix: 16));
 
@@ -47,7 +48,7 @@ class StoriesBar extends StatelessWidget {
             children: [
               if (canPublish)
                 _Bubble(
-                  label: 'New story',
+                  label: tr('New story'),
                   onTap: () => showPublishStory(context),
                   child: Container(
                     width: 58,
@@ -332,9 +333,9 @@ void showPublishStory(BuildContext context) {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('New service story', style: sheet.text.headlineSmall),
+            Text(tr('New service story'), style: sheet.text.headlineSmall),
             const SizedBox(height: 4),
-            Text('Visible to everyone for 24 hours.', style: sheet.text.bodyMedium),
+            Text(tr('Visible to everyone for 24 hours.'), style: sheet.text.bodyMedium),
             const SizedBox(height: 16),
             if (error != null) ...[ErrorBox(error), const SizedBox(height: 12)],
             AnimatedContainer(
@@ -347,12 +348,12 @@ void showPublishStory(BuildContext context) {
                 maxLines: null,
                 maxLength: 500,
                 style: font(display, 19, FontWeight.w800, color: Colors.white),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   filled: false,
                   border: InputBorder.none,
                   enabledBorder: InputBorder.none,
                   focusedBorder: InputBorder.none,
-                  hintText: 'What should everyone know?',
+                  hintText: tr('What should everyone know?'),
                   hintStyle: TextStyle(color: Colors.white70),
                   counterStyle: TextStyle(color: Colors.white70),
                 ),
@@ -380,7 +381,7 @@ void showPublishStory(BuildContext context) {
             ),
             const SizedBox(height: 18),
             GradientButton(
-              label: 'Publish',
+              label: tr('Publish'),
               busy: busy,
               onPressed: () async {
                 set(() => busy = true);

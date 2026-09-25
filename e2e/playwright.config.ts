@@ -14,6 +14,15 @@ const serverEnv = {
   COUNCIL_QUORUM: '1',
   PORT: String(API_PORT),
   LOG_LEVEL: 'warn',
+  PUBLIC_WEB_URL: `http://localhost:${WEB_PORT}`,
+  PUBLIC_ADMIN_URL: `http://localhost:${ADMIN_PORT}`,
+  // The story below predates these rules; the account test covers email links on its own.
+  REQUIRE_2FA_FOR_STAFF: 'false',
+  REQUIRE_2FA_FOR_COMPANY_FINANCE: 'false',
+  REQUIRE_VERIFIED_EMAIL: 'false',
+  REQUIRE_IDENTITY_FOR_COMPANIES: 'false',
+  // Every browser of the story shares 127.0.0.1; together they pass the per-IP default at peaks.
+  GLOBAL_RATE_LIMIT: '5000',
 };
 
 export default defineConfig({

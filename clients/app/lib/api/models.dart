@@ -1,6 +1,8 @@
 // Data models of the OVL For Business API (v1). Field names mirror
 // packages/shared/src/api.ts; money is always a decimal string.
 
+import '../i18n/i18n.dart';
+
 typedef Json = Map<String, dynamic>;
 
 DateTime _date(Object? v) => DateTime.parse(v as String).toLocal();
@@ -96,17 +98,41 @@ class UserProfile extends UserSummary {
 }
 
 class Preferences {
-  const Preferences({this.theme, this.onboardingCompleted = false, this.goals = const []});
+  const Preferences({
+    this.theme,
+    this.onboardingCompleted = false,
+    this.goals = const [],
+    this.statementEmails = false,
+    this.readReceipts = true,
+    this.pushChats = true,
+    this.locale,
+  });
 
   factory Preferences.fromJson(Json? j) => Preferences(
     theme: j?['theme'] as String?,
     onboardingCompleted: j?['onboardingCompleted'] as bool? ?? false,
     goals: List<String>.from(j?['goals'] as List? ?? const []),
+    statementEmails: j?['statementEmails'] as bool? ?? false,
+    readReceipts: j?['readReceipts'] as bool? ?? true,
+    pushChats: j?['pushChats'] as bool? ?? true,
+    locale: j?['locale'] as String?,
   );
 
   final String? theme;
   final bool onboardingCompleted;
   final List<String> goals;
+
+  /// Email a PDF statement of every balance at the start of each month.
+  final bool statementEmails;
+
+  /// Share (and see) read receipts in direct chats and groups.
+  final bool readReceipts;
+
+  /// Push new direct and group messages while away.
+  final bool pushChats;
+
+  /// The language of the apps ('en', 'ru'); the device's language until set.
+  final String? locale;
 }
 
 class Me extends UserSummary {
@@ -116,6 +142,9 @@ class Me extends UserSummary {
       status = j['status'] as String,
       permissions = List<String>.from(j['permissions'] as List? ?? const []),
       preferences = Preferences.fromJson(j['preferences'] as Json?),
+      twoFactorEnabled = j['twoFactorEnabled'] as bool? ?? false,
+      emailVerified = j['emailVerified'] as bool? ?? true,
+      identityVerified = j['identityVerified'] as bool? ?? false,
       createdAt = _date(j['createdAt']),
       super(
         id: j['id'] as String,
@@ -131,6 +160,9 @@ class Me extends UserSummary {
   final String status;
   final List<String> permissions;
   final Preferences preferences;
+  final bool twoFactorEnabled;
+  final bool emailVerified;
+  final bool identityVerified;
   final DateTime createdAt;
 
   bool can(String permission) => permissions.contains(permission);
@@ -147,6 +179,37 @@ class AuthResult {
   final String accessToken;
   final String refreshToken;
   final Me user;
+}
+
+class TwoFactorStatus {
+  TwoFactorStatus.fromJson(Json j)
+    : enabled = j['enabled'] as bool,
+      enabledAt = _dateOrNull(j['enabledAt']),
+      recoveryCodesLeft = j['recoveryCodesLeft'] as int;
+
+  final bool enabled;
+  final DateTime? enabledAt;
+  final int recoveryCodesLeft;
+}
+
+/// A device signed in to the account.
+class SessionInfo {
+  SessionInfo.fromJson(Json j)
+    : id = j['id'] as String,
+      device = j['device'] as String,
+      kind = j['kind'] as String,
+      ip = j['ip'] as String?,
+      createdAt = _date(j['createdAt']),
+      lastUsedAt = _date(j['lastUsedAt']),
+      current = j['current'] as bool? ?? false;
+
+  final String id;
+  final String device;
+  final String kind;
+  final String? ip;
+  final DateTime createdAt;
+  final DateTime lastUsedAt;
+  final bool current;
 }
 
 class Contact extends UserSummary {
@@ -185,6 +248,306 @@ class Wallet {
   final DateTime createdAt;
 
   bool get hasFrozen => (double.tryParse(frozen) ?? 0) > 0;
+}
+
+/// A company payment above its approval limit, waiting for (or decided by) a second finance member.
+class PaymentApproval {
+  PaymentApproval.fromJson(Json j)
+    : id = j['id'] as String,
+      organizationId = j['organizationId'] as String,
+      walletId = j['walletId'] as String,
+      kind = j['kind'] as String,
+      amount = j['amount'] as String,
+      currency = j['currency'] as String,
+      description = j['description'] as String,
+      status = j['status'] as String,
+      requestedById = (j['requestedBy'] as Json)['id'] as String,
+      requestedBy = (j['requestedBy'] as Json)['displayName'] as String,
+      decidedBy = (j['decidedBy'] as Json?)?['displayName'] as String?,
+      reason = j['reason'] as String?,
+      createdAt = _date(j['createdAt']),
+      decidedAt = _dateOrNull(j['decidedAt']);
+
+  /// Payment endpoints answer 202 with one of these instead of the finished result.
+  static bool matches(Object? j) => j is Json && j.containsKey('kind') && j.containsKey('requestedBy');
+
+  final String id;
+  final String organizationId;
+  final String walletId;
+
+  /// transfer, invoice, exchange or payroll
+  final String kind;
+  final String amount;
+  final String currency;
+  final String description;
+  final String status;
+  final String requestedById;
+
+  /// Display names.
+  final String requestedBy;
+  final String? decidedBy;
+  final String? reason;
+  final DateTime createdAt;
+  final DateTime? decidedAt;
+}
+
+/// Exchange rates against the base currency, and the fee.
+class ExchangeInfo {
+  ExchangeInfo.fromJson(Json j)
+    : base = j['base'] as String,
+      feePercent = j['feePercent'] as String,
+      rates = {for (final r in j['rates'] as List) (r as Json)['currency'] as String: r['rate'] as String};
+
+  final String base;
+  final String feePercent;
+
+  /// Currency → what one unit is worth in [base].
+  final Map<String, String> rates;
+
+  List<String> targetsFrom(String currency) => [base, ...rates.keys].where((c) => c != currency).toList();
+}
+
+class ExchangeQuote {
+  ExchangeQuote.fromJson(Json j)
+    : fromCurrency = j['fromCurrency'] as String,
+      toCurrency = j['toCurrency'] as String,
+      amount = j['amount'] as String,
+      fee = j['fee'] as String,
+      receive = j['receive'] as String,
+      rate = j['rate'] as String;
+
+  final String fromCurrency;
+  final String toCurrency;
+  final String amount;
+  final String fee;
+  final String receive;
+
+  /// Target units per source unit.
+  final String rate;
+}
+
+/// A deposit or payout someone asked a finance manager for.
+class CashRequest {
+  CashRequest.fromJson(Json j)
+    : id = j['id'] as String,
+      walletId = j['walletId'] as String,
+      type = j['type'] as String,
+      method = j['method'] as String,
+      amount = j['amount'] as String,
+      currency = j['currency'] as String,
+      note = j['note'] as String? ?? '',
+      status = j['status'] as String,
+      requestedBy = (j['requestedBy'] as Json)['username'] as String,
+      handledBy = (j['handledBy'] as Json?)?['displayName'] as String?,
+      reference = j['reference'] as String?,
+      declineReason = j['declineReason'] as String?,
+      createdAt = _date(j['createdAt']),
+      handledAt = _dateOrNull(j['handledAt']);
+
+  final String id;
+  final String walletId;
+  final String type;
+  final String method;
+  final String amount;
+  final String currency;
+  final String note;
+  final String status;
+  final String requestedBy;
+  final String? handledBy;
+  final String? reference;
+  final String? declineReason;
+  final DateTime createdAt;
+  final DateTime? handledAt;
+
+  bool get isDeposit => type == 'deposit';
+  bool get isPending => status == 'pending';
+}
+
+/// A person or a company on an invoice.
+class InvoiceParty {
+  InvoiceParty.fromJson(Json j)
+    : type = j['type'] as String,
+      id = j['id'] as String,
+      name = j['name'] as String,
+      handle = j['handle'] as String;
+
+  final String type;
+  final String id;
+  final String name;
+  final String handle;
+
+  bool get isCompany => type == 'organization';
+}
+
+class InvoiceItem {
+  InvoiceItem.fromJson(Json j)
+    : description = j['description'] as String,
+      quantity = j['quantity'] as int,
+      unitPrice = j['unitPrice'] as String,
+      amount = j['amount'] as String;
+
+  final String description;
+  final int quantity;
+  final String unitPrice;
+  final String amount;
+}
+
+class Invoice {
+  Invoice.fromJson(Json j)
+    : id = j['id'] as String,
+      number = j['number'] as String,
+      direction = j['direction'] as String,
+      issuer = InvoiceParty.fromJson(j['issuer'] as Json),
+      recipient = InvoiceParty.fromJson(j['recipient'] as Json),
+      currency = j['currency'] as String,
+      items = [for (final i in j['items'] as List) InvoiceItem.fromJson(i as Json)],
+      total = j['total'] as String,
+      amountPaid = j['amountPaid'] as String? ?? '0',
+      amountDue = j['amountDue'] as String? ?? j['total'] as String,
+      payments = [
+        for (final p in j['payments'] as List? ?? const [])
+          (
+            amount: (p as Json)['amount'] as String,
+            paidBy: (p['paidBy'] as Json)['displayName'] as String,
+            at: _date(p['createdAt']),
+          ),
+      ],
+      recurringInterval = (j['recurring'] as Json?)?['interval'] as String?,
+      note = j['note'] as String? ?? '',
+      dueDate = DateTime.parse(j['dueDate'] as String),
+      status = j['status'] as String,
+      overdue = j['overdue'] as bool,
+      createdAt = _date(j['createdAt']),
+      paidAt = _dateOrNull(j['paidAt']),
+      paidBy = (j['paidBy'] as Json?)?['displayName'] as String?,
+      cancelReason = j['cancelReason'] as String?;
+
+  final String id;
+  final String number;
+  final String direction;
+  final InvoiceParty issuer;
+  final InvoiceParty recipient;
+  final String currency;
+  final List<InvoiceItem> items;
+  final String total;
+
+  /// Invoices can be paid in parts.
+  final String amountPaid;
+  final String amountDue;
+  final List<({String amount, String paidBy, DateTime at})> payments;
+
+  /// weekly, monthly, quarterly or yearly when a recurring schedule issued it.
+  final String? recurringInterval;
+  final String note;
+  final DateTime dueDate;
+  final String status;
+  final bool overdue;
+  final DateTime createdAt;
+  final DateTime? paidAt;
+  final String? paidBy;
+  final String? cancelReason;
+
+  bool get incoming => direction == 'incoming';
+  bool get isOpen => status == 'open';
+
+  /// The other side, seen from the viewer.
+  InvoiceParty get counterparty => incoming ? issuer : recipient;
+
+  bool get partlyPaid => isOpen && (double.tryParse(amountPaid) ?? 0) > 0;
+
+  /// For badges: open invoices past their due date read "overdue".
+  String get displayStatus => overdue
+      ? 'overdue'
+      : partlyPaid
+      ? 'partly_paid'
+      : status;
+}
+
+/// A currency balances can hold; `virtual` ones are issued by a virtual country.
+class CurrencyInfo {
+  CurrencyInfo.fromJson(Json j)
+    : code = j['code'] as String,
+      name = j['name'] as String,
+      decimals = j['decimals'] as int,
+      virtual = j['virtual'] as bool? ?? false,
+      country = (j['issuer'] as Json?)?['country'] as String?;
+
+  final String code;
+  final String name;
+  final int decimals;
+  final bool virtual;
+  final String? country;
+}
+
+/// One calendar month of a balance.
+class MonthlyStatement {
+  MonthlyStatement.fromJson(Json j)
+    : month = j['month'] as String,
+      from = j['from'] as String,
+      to = j['to'] as String,
+      moneyIn = j['moneyIn'] as String,
+      moneyOut = j['moneyOut'] as String,
+      closing = j['closing'] as String,
+      operations = j['operations'] as int;
+
+  /// YYYY-MM
+  final String month;
+  final String from;
+  final String to;
+  final String moneyIn;
+  final String moneyOut;
+  final String closing;
+  final int operations;
+}
+
+/// A recurring invoice: one is issued every period.
+class InvoiceSchedule {
+  InvoiceSchedule.fromJson(Json j)
+    : id = j['id'] as String,
+      issuer = InvoiceParty.fromJson(j['issuer'] as Json),
+      recipient = InvoiceParty.fromJson(j['recipient'] as Json),
+      currency = j['currency'] as String,
+      total = j['total'] as String,
+      interval = j['interval'] as String,
+      nextRunOn = j['nextRunOn'] == null ? null : DateTime.parse(j['nextRunOn'] as String),
+      endDate = j['endDate'] == null ? null : DateTime.parse(j['endDate'] as String),
+      status = j['status'] as String,
+      invoiceCount = j['invoiceCount'] as int;
+
+  final String id;
+  final InvoiceParty issuer;
+  final InvoiceParty recipient;
+  final String currency;
+  final String total;
+  final String interval;
+  final DateTime? nextRunOn;
+  final DateTime? endDate;
+
+  /// active, paused or ended
+  final String status;
+  final int invoiceCount;
+}
+
+/// A company paying many people at once.
+class PayrollRun {
+  PayrollRun.fromJson(Json j)
+    : id = j['id'] as String,
+      title = j['title'] as String,
+      currency = j['currency'] as String,
+      total = j['total'] as String,
+      status = j['status'] as String,
+      people = (j['items'] as List).length,
+      createdAt = _date(j['createdAt']);
+
+  final String id;
+  final String title;
+  final String currency;
+  final String total;
+
+  /// pending (waiting for a second signature), paid or rejected
+  final String status;
+  final int people;
+  final DateTime createdAt;
 }
 
 class LedgerEntry {
@@ -232,8 +595,15 @@ class Organization {
       owner = UserSummary.fromJson(j['owner'] as Json),
       memberCount = j['memberCount'] as int,
       myRole = j['myRole'] as String?,
+      verified = j['verified'] as bool? ?? false,
+      approvalLimit = j['approvalLimit'] as String?,
       createdAt = _date(j['createdAt']);
 
+  /// Verified business: its owner passed an identity check.
+  final bool verified;
+
+  /// Payments of at least this much (base currency) need a second finance member; members only.
+  final String? approvalLimit;
   final String id;
   final String name;
   final String slug;
@@ -252,14 +622,34 @@ class Organization {
   bool get canSeeMoney => const ['owner', 'director', 'accountant'].contains(myRole);
 }
 
+/// An uploaded file; `url` is a signed API path (open it in the browser, about an hour).
+class FileInfo {
+  FileInfo.fromJson(Json j)
+    : id = j['id'] as String,
+      name = j['name'] as String,
+      contentType = j['contentType'] as String,
+      size = j['size'] as int,
+      url = j['url'] as String;
+
+  final String id;
+  final String name;
+  final String contentType;
+  final int size;
+  final String url;
+
+  bool get isImage => contentType.startsWith('image/');
+}
+
 class ApplicationReview {
   ApplicationReview.fromJson(Json j)
     : stageKey = j['stageKey'] as String,
       reviewer = UserSummary.fromJson(j['reviewer'] as Json),
       decision = j['decision'] as String,
       comment = j['comment'] as String? ?? '',
+      round = j['round'] as int? ?? 1,
       createdAt = _date(j['createdAt']);
 
+  final int round;
   final String stageKey;
   final UserSummary reviewer;
   final String decision;
@@ -278,6 +668,9 @@ class Application {
       payload = (j['payload'] as Json?) ?? {},
       result = j['result'] as Json?,
       rejectionReason = j['rejectionReason'] as String?,
+      changesRequested = j['changesRequested'] as String?,
+      round = j['round'] as int? ?? 1,
+      attachments = _list(j['attachments'], FileInfo.fromJson),
       reviews = _list(j['reviews'], ApplicationReview.fromJson),
       createdAt = _date(j['createdAt']),
       decidedAt = _dateOrNull(j['decidedAt']);
@@ -291,6 +684,9 @@ class Application {
   final Json payload;
   final Json? result;
   final String? rejectionReason;
+  final String? changesRequested;
+  final int round;
+  final List<FileInfo> attachments;
   final List<ApplicationReview> reviews;
   final DateTime createdAt;
   final DateTime? decidedAt;
@@ -300,8 +696,8 @@ class Application {
     final name = payload['name'] ?? payload['title'];
     if (name is String && name.isNotEmpty) return name;
     return switch (type) {
-      'moderator' => 'Join the moderation team',
-      'council' => 'Join the council',
+      'moderator' => tr('Join the moderation team'),
+      'council' => tr('Join the council'),
       _ => workflows[type]?.label ?? type,
     };
   }
@@ -311,11 +707,13 @@ class RegistryHolder {
   RegistryHolder.fromJson(Json j)
     : type = j['type'] as String,
       name = j['name'] as String,
-      handle = j['handle'] as String;
+      handle = j['handle'] as String,
+      verified = j['verified'] as bool? ?? false;
 
   final String type;
   final String name;
   final String handle;
+  final bool verified;
 }
 
 class RegistryEntry {
@@ -329,11 +727,32 @@ class RegistryEntry {
       website = j['website'] as String?,
       status = j['status'] as String,
       holder = RegistryHolder.fromJson(j['holder'] as Json),
-      issuedAt = _date(j['issuedAt']);
+      issuedAt = _date(j['issuedAt']),
+      expiresAt = _dateOrNull(j['expiresAt']),
+      currency = j['currency'] as String?,
+      renewalApplicationId = j['renewalApplicationId'] as String?;
+
+  /// The currency a virtual country issues.
+  final String? currency;
 
   final String id;
   final String number;
   final String kind;
+
+  /// Licences run for a term and are renewed; companies never expire.
+  final DateTime? expiresAt;
+
+  /// A renewal waiting for moderation (only on /me/licences).
+  final String? renewalApplicationId;
+
+  /// Renewals open 60 days before expiry and close 90 days after it.
+  bool get canRenew {
+    final e = expiresAt;
+    if (e == null || (status != 'active' && status != 'expired') || renewalApplicationId != null) return false;
+    final now = DateTime.now();
+    return now.isAfter(e.subtract(const Duration(days: 60))) && now.isBefore(e.add(const Duration(days: 90)));
+  }
+
   final String? licenseType;
   final String title;
   final String description;
@@ -342,11 +761,13 @@ class RegistryEntry {
   final RegistryHolder holder;
   final DateTime issuedAt;
 
-  String get kindLabel => kind == 'license'
-      ? (licenseTypeLabels[licenseType] ?? 'License')
-      : kind == 'virtual_country'
-      ? 'Virtual country'
-      : 'Organization';
+  String get kindLabel => tr(
+    kind == 'license'
+        ? (licenseTypeLabels[licenseType] ?? 'License')
+        : kind == 'virtual_country'
+        ? 'Virtual country'
+        : 'Organization',
+  );
 }
 
 class StockListing {
@@ -356,6 +777,7 @@ class StockListing {
       organizationName = (j['organization'] as Json)['name'] as String,
       organizationSlug = (j['organization'] as Json)['slug'] as String,
       registryNumber = (j['organization'] as Json)['registryNumber'] as String?,
+      verified = (j['organization'] as Json)['verified'] as bool? ?? false,
       currency = j['currency'] as String,
       sharePrice = j['sharePrice'] as String,
       totalShares = j['totalShares'] as String,
@@ -373,6 +795,9 @@ class StockListing {
 
   final String id;
   final String ticker;
+
+  /// The issuer is a verified business.
+  final bool verified;
   final String organizationName;
   final String organizationSlug;
   final String? registryNumber;
@@ -414,6 +839,8 @@ class Holding {
       organizationName = j['organizationName'] as String,
       currency = j['currency'] as String,
       shares = j['shares'] as String,
+      sellable = j['sellable'] as String? ?? '0',
+      locked = j['locked'] as String? ?? '0',
       invested = j['invested'] as String,
       currentValue = j['currentValue'] as String;
 
@@ -421,8 +848,130 @@ class Holding {
   final String organizationName;
   final String currency;
   final String shares;
+
+  /// Unlocked and not already offered for sale.
+  final String sellable;
+  final String locked;
   final String invested;
   final String currentValue;
+}
+
+class CompanyReport {
+  CompanyReport.fromJson(Json j)
+    : id = j['id'] as String,
+      period = j['period'] as String,
+      title = j['title'] as String,
+      body = j['body'] as String,
+      currency = j['currency'] as String,
+      revenue = j['revenue'] as String?,
+      profit = j['profit'] as String?,
+      publishedAt = _date(j['publishedAt']);
+
+  final String id;
+  final String period;
+  final String title;
+  final String body;
+  final String currency;
+  final String? revenue;
+  final String? profit;
+  final DateTime publishedAt;
+}
+
+/// What investors accept once before their first investment or buy order.
+class RiskDisclosure {
+  RiskDisclosure.fromJson(Json j)
+    : version = j['version'] as String,
+      title = j['title'] as String,
+      points = List<String>.from(j['points'] as List),
+      acceptedAt = _dateOrNull(j['acceptedAt']);
+
+  final String version;
+  final String title;
+  final List<String> points;
+  final DateTime? acceptedAt;
+}
+
+class Proposal {
+  Proposal.fromJson(Json j)
+    : id = j['id'] as String,
+      title = j['title'] as String,
+      description = j['description'] as String,
+      status = j['status'] as String,
+      closesAt = _date(j['closesAt']),
+      turnoutPercent = (j['turnoutPercent'] as num).toDouble(),
+      myShares = j['myShares'] as String,
+      myVote = j['myVote'] as String?,
+      winner = j['winner'] as String?,
+      options = [
+        for (final o in j['options'] as List)
+          (key: (o as Json)['key'] as String, label: o['label'] as String, shares: o['shares'] as String),
+      ];
+
+  final String id;
+  final String title;
+  final String description;
+
+  /// open or closed
+  final String status;
+  final DateTime closesAt;
+  final double turnoutPercent;
+  final String myShares;
+  final String? myVote;
+  final String? winner;
+  final List<({String key, String label, String shares})> options;
+
+  bool get canVote => status == 'open' && (int.tryParse(myShares) ?? 0) > 0 && myVote == null;
+}
+
+/// One price level of the order book.
+class BookLevel {
+  BookLevel.fromJson(Json j)
+    : price = j['price'] as String,
+      shares = j['shares'] as String,
+      orders = j['orders'] as int;
+
+  final String price;
+  final String shares;
+  final int orders;
+}
+
+class OrderBook {
+  OrderBook.fromJson(Json j)
+    : lastPrice = j['lastPrice'] as String,
+      bids = [for (final l in j['bids'] as List) BookLevel.fromJson(l as Json)],
+      asks = [for (final l in j['asks'] as List) BookLevel.fromJson(l as Json)],
+      trades = [
+        for (final t in j['trades'] as List)
+          (price: (t as Json)['price'] as String, shares: t['shares'] as String, at: _date(t['at'])),
+      ];
+
+  final String lastPrice;
+  final List<BookLevel> bids;
+  final List<BookLevel> asks;
+  final List<({String price, String shares, DateTime at})> trades;
+}
+
+class StockOrder {
+  StockOrder.fromJson(Json j)
+    : id = j['id'] as String,
+      ticker = j['ticker'] as String,
+      currency = j['currency'] as String,
+      side = j['side'] as String,
+      price = j['price'] as String,
+      shares = j['shares'] as String,
+      remaining = j['remaining'] as String,
+      status = j['status'] as String;
+
+  final String id;
+  final String ticker;
+  final String currency;
+
+  /// buy or sell
+  final String side;
+  final String price;
+  final String shares;
+  final String remaining;
+  final String status;
 }
 
 class Investment {
@@ -466,6 +1015,11 @@ class Message {
       body = j['body'] as String,
       meta = (j['meta'] as Json?) ?? {},
       replyToId = j['replyToId'] as int?,
+      threadId = j['threadId'] as int?,
+      attachments = _list(j['attachments'], FileInfo.fromJson),
+      mentions = List<String>.from(j['mentions'] as List? ?? const []),
+      reactions = _list(j['reactions'], Reaction.fromJson),
+      commentCount = j['commentCount'] as int? ?? 0,
       editedAt = _dateOrNull(j['editedAt']),
       deleted = j['deleted'] as bool? ?? false,
       createdAt = _date(j['createdAt']);
@@ -477,11 +1031,61 @@ class Message {
   final String body;
   final Json meta;
   final int? replyToId;
+
+  /// Comments under a channel post point at the post.
+  final int? threadId;
+  final List<FileInfo> attachments;
+
+  /// Ids of the members mentioned with @username.
+  final List<String> mentions;
+  final List<Reaction> reactions;
+  final int commentCount;
   final DateTime? editedAt;
   final bool deleted;
   final DateTime createdAt;
 
   bool get isSystem => kind == 'system';
+
+  /// The text to show: system lines from the server ("Maria added Oleg") in the reader's language.
+  String get text {
+    final t = meta['text'];
+    if (!isSystem || t is! Map || t['key'] is! String) return body;
+    // Names stay as they are; values the server marks as {label: …} are translated too.
+    final values = (t['values'] as List? ?? const [])
+        .map((v) => v is Map && v['label'] is String ? tr(v['label'] as String) : v)
+        .toList();
+    return tr(t['key'] as String, values);
+  }
+
+  /// The message in one line: its text, or what it carries.
+  String get summary {
+    if (deleted) return tr('Message deleted');
+    if (body.isNotEmpty) return text;
+    if (attachments.isEmpty) return '';
+    final images = attachments.where((f) => f.isImage).length;
+    return images == attachments.length ? (images > 1 ? plural(images, 'photo') : tr('Photo')) : tr('File');
+  }
+}
+
+class Reaction {
+  Reaction.fromJson(Json j) : emoji = j['emoji'] as String, count = j['count'] as int, mine = j['mine'] as bool;
+
+  final String emoji;
+  final int count;
+  final bool mine;
+}
+
+class MessageSearchResult {
+  MessageSearchResult.fromJson(Json j)
+    : chatId = (j['chat'] as Json)['id'] as String,
+      chatTitle = (j['chat'] as Json)['title'] as String,
+      chatType = (j['chat'] as Json)['type'] as String,
+      message = Message.fromJson(j['message'] as Json);
+
+  final String chatId;
+  final String chatTitle;
+  final String chatType;
+  final Message message;
 }
 
 class SupportInfo {
@@ -504,6 +1108,9 @@ class Chat {
       myRole = j['myRole'] as String?,
       pinned = j['pinned'] as bool? ?? false,
       unreadCount = j['unreadCount'] as int? ?? 0,
+      unreadMentions = j['unreadMentions'] as int? ?? 0,
+      peerReadMessageId = j['peerReadMessageId'] as int?,
+      commentsEnabled = j['commentsEnabled'] as bool? ?? false,
       lastMessage = j['lastMessage'] == null ? null : Message.fromJson(j['lastMessage'] as Json),
       peer = j['peer'] == null ? null : UserSummary.fromJson(j['peer'] as Json),
       support = j['support'] == null ? null : SupportInfo.fromJson(j['support'] as Json),
@@ -518,6 +1125,11 @@ class Chat {
   final String? myRole;
   final bool pinned;
   final int unreadCount;
+  final int unreadMentions;
+
+  /// Direct chats: the newest message the other person read (null when receipts are hidden).
+  final int? peerReadMessageId;
+  final bool commentsEnabled;
   final Message? lastMessage;
   final UserSummary? peer;
   final SupportInfo? support;
@@ -562,23 +1174,28 @@ class Story {
 // ---------------------------------------------------------------------------
 
 class ChecklistItem {
-  const ChecklistItem(this.key, this.label);
+  const ChecklistItem(this.key, this._label);
   final String key;
-  final String label;
+  final String _label;
+  String get label => tr(_label);
 }
 
 class WorkflowStage {
-  const WorkflowStage(this.key, this.label, this.description, {this.checklist = const []});
+  const WorkflowStage(this.key, this._label, this._description, {this.checklist = const []});
   final String key;
-  final String label;
-  final String description;
+  final String _label;
+  final String _description;
+  String get label => tr(_label);
+  String get description => tr(_description);
   final List<ChecklistItem> checklist;
 }
 
 class Workflow {
-  const Workflow(this.label, this.description, this.stages);
-  final String label;
-  final String description;
+  const Workflow(this._label, this._description, this.stages);
+  final String _label;
+  final String _description;
+  String get label => tr(_label);
+  String get description => tr(_description);
   final List<WorkflowStage> stages;
 }
 
@@ -647,6 +1264,21 @@ const workflows = <String, Workflow>{
   'news_channel': Workflow('News channel', 'News channels can only be created through moderation.', [
     WorkflowStage('moderation', 'Moderation', 'A moderator approves the channel.'),
   ]),
+  'renewal': Workflow(
+    'Licence renewal',
+    'Extends a licence or virtual country for another term. A moderator checks it is still in use.',
+    [
+      WorkflowStage(
+        'moderation',
+        'Moderation',
+        'A moderator confirms the holder still uses the licence as registered.',
+        checklist: [
+          ChecklistItem('holder', 'The holder is unchanged and in good standing'),
+          ChecklistItem('activity', 'The licence is still used as described in the registry'),
+        ],
+      ),
+    ],
+  ),
 };
 
 // ---------------------------------------------------------------------------
@@ -659,11 +1291,92 @@ class RealtimeEvent {
       chatId = j['chatId'] as String?,
       message = j['message'] == null ? null : Message.fromJson(j['message'] as Json),
       userId = j['userId'] as String?,
+      messageId = j['messageId'] as int?,
       status = j['status'] as String?;
 
   final String type;
   final String? chatId;
   final Message? message;
   final String? userId;
+  final int? messageId;
   final String? status;
+}
+
+/// An entry in the notification center.
+class AppNotification {
+  AppNotification.fromJson(Json j)
+    : id = j['id'] as String,
+      type = j['type'] as String,
+      title = j['title'] as String,
+      body = j['body'] as String? ?? '',
+      link = j['link'] as String?,
+      read = j['read'] as bool? ?? false,
+      createdAt = _date(j['createdAt']);
+
+  final String id;
+
+  /// mention, reply, comment, money, invoice, payment_approval, application, identity, cash_request, licence, test
+  final String type;
+  final String title;
+  final String body;
+
+  /// App route, e.g. `/invoices` or `/chats/<id>?message=<id>`.
+  final String? link;
+  final bool read;
+  final DateTime createdAt;
+}
+
+class NotificationPage {
+  NotificationPage.fromJson(Json j)
+    : items = _list(j['items'], AppNotification.fromJson),
+      unreadCount = j['unreadCount'] as int;
+
+  final List<AppNotification> items;
+  final int unreadCount;
+}
+
+/// Council rules and members (GET /governance).
+class GovernanceInfo {
+  GovernanceInfo.fromJson(Json j)
+    : councilVoting = j['councilVoting'] as String,
+      councilQuorum = j['councilQuorum'] as int,
+      councilTermMonths = j['councilTermMonths'] as int,
+      activeCouncilMembers = j['activeCouncilMembers'] as int,
+      votesNeeded = j['votesNeeded'] as int,
+      council = [
+        for (final c in j['council'] as List)
+          (user: UserSummary.fromJson((c as Json)['user'] as Json), termEndsAt: _dateOrNull(c['termEndsAt'])),
+      ];
+
+  /// quorum, majority or two_thirds
+  final String councilVoting;
+  final int councilQuorum;
+  final int councilTermMonths;
+  final int activeCouncilMembers;
+  final int votesNeeded;
+  final List<({UserSummary user, DateTime? termEndsAt})> council;
+
+  String get votingLabel => (switch (councilVoting) {
+    'majority' => tr('more than half of the council'),
+    'two_thirds' => tr('two thirds of the council'),
+    _ => tr('a fixed number of votes'),
+  });
+}
+
+/// A published transparency report; `stats` keeps the server's sections as they are.
+class TransparencyReport {
+  TransparencyReport.fromJson(Json j)
+    : id = j['id'] as String,
+      title = j['title'] as String,
+      periodStart = _date(j['periodStart']),
+      periodEnd = _date(j['periodEnd']),
+      notes = j['notes'] as String? ?? '',
+      stats = j['stats'] as Json;
+
+  final String id;
+  final String title;
+  final DateTime periodStart;
+  final DateTime periodEnd;
+  final String notes;
+  final Json stats;
 }

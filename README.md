@@ -18,12 +18,13 @@ separate admin panel. One Docker-based server with an open API, and clients for 
 
 **Web client**: animated sign-in, first-run tour, dashboard, chats and the stock exchange.
 
-|                                                            |                                                                               |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| ![Animated sign-in](docs/screenshots/web/login.png)        | ![First-run tour: pick a theme](docs/screenshots/web/onboarding.png)          |
-| ![Home dashboard](docs/screenshots/web/home.png)           | ![Chats](docs/screenshots/web/chats.png)                                      |
-| ![Wallet with bank cards](docs/screenshots/web/wallet.png) | ![Listing with an interactive price chart](docs/screenshots/web/exchange.png) |
-| ![Themes (Aurora)](docs/screenshots/web/themes.png)        | ![Ctrl/⌘ + K search](docs/screenshots/web/palette.png)                        |
+|                                                                          |                                                                               |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| ![Animated sign-in](docs/screenshots/web/login.png)                      | ![First-run tour: pick a theme](docs/screenshots/web/onboarding.png)          |
+| ![Home dashboard](docs/screenshots/web/home.png)                         | ![Chats](docs/screenshots/web/chats.png)                                      |
+| ![Wallet with bank cards](docs/screenshots/web/wallet.png)               | ![Listing with an interactive price chart](docs/screenshots/web/exchange.png) |
+| ![Themes (Aurora)](docs/screenshots/web/themes.png)                      | ![Ctrl/⌘ + K search](docs/screenshots/web/palette.png)                        |
+| ![Deposit and payout requests](docs/screenshots/web/wallet-requests.png) | ![An invoice, ready to pay or print](docs/screenshots/web/invoices.png)       |
 
 ![Web client on a phone (Obsidian theme)](docs/screenshots/web/phones.png)
 
@@ -52,18 +53,31 @@ Android, iOS, macOS and Windows.
 - **Business balance in any currency** — 155 ISO 4217 currencies, exact money in minor units,
   immutable ledger per wallet. Money is **deposited only by finance managers** in the admin panel,
   either as a manager-handled transfer or as **physical cash at the desk**, each with a reference and
-  a journal entry. Transfers between people and companies, per-currency balances, statements.
+  a journal entry. People and companies ask for deposits and payouts from their wallet; a payout
+  holds the amount until a manager pays it out or declines it. Transfers between people and
+  companies, **invoices** paid from a balance in one step, per-currency balances, **currency
+  conversion** at rates the finance team manages, statements with CSV export. Invoices can be paid
+  in parts or sent on a schedule (**recurring invoices**), and companies pay their team with
+  **payroll runs**. Companies can set an **approval limit**: larger payments wait for a second
+  owner, director or accountant. Statements download as CSV or PDF, with monthly statements (and an
+  optional monthly email).
 - **Tech support** — tickets are support chats. Moderators, admins and the owner answer from the same
   client in a separate _Support desk_ section; replies carry a staff badge and the owner's replies a
   special owner badge. The council cannot answer tickets.
 - **Chats** — direct messages, groups (you can only invite people from your contacts), news channels
-  (created only through moderation), the pinned council chat and the moderation team chat. Realtime
-  over WebSocket, unread counters, typing indicators.
+  (created only through moderation, with comments under posts), the pinned council chat and the
+  moderation team chat. Photos and files, @mentions, emoji reactions, read receipts (can be turned
+  off), message search. Realtime over WebSocket, unread counters, typing indicators.
+- **Notifications** — a notification center for mentions, payments, invoices, approvals and
+  application news, and push notifications to browsers (Web Push) and phones (FCM, APNs) while you
+  are away.
 - **Licenses** — projects, fan-projects, TV / radio channels, verified websites, virtual countries and
   more (virtual only). Approval: **moderation → council vote (quorum) → owner confirmation**, then the
   license is rolled out into the public registry with a registry number.
 - **Public registry** — licenses, organizations and virtual countries; searchable in the app and via
-  the public API (`X-API-Key` developer keys for other services).
+  the public API (`X-API-Key` developer keys and signed webhooks for other services). Every entry has a PDF certificate
+  whose QR code opens a public verification page. Licences expire after a term and are renewed
+  through moderation; virtual countries can issue their own currency.
 - **Service stories** — short-lived announcements that council members, admins and the owner publish
   from any client; every client shows them in a stories bar.
 - **Stock exchange** — a company application is reviewed by a moderator who must confirm a checklist
@@ -74,11 +88,16 @@ Android, iOS, macOS and Windows.
 - **Registration** — applications to create a company / business account, request a license, join
   the moderation team, join the council or open a news channel.
 - **Council** — a role with a pinned council chat where applications waiting for a vote are posted as
-  cards, plus normal chit-chat.
+  cards, plus normal chit-chat. The owner chooses quorum, majority or two-thirds voting and how long
+  council seats last; the platform publishes transparency reports anyone can read.
 - **Themes, onboarding and multi-account**: eight themes (Daylight, Midnight, Graphite,
   Emerald, Obsidian, Ivory, Aurora, High contrast) shared by the web client, the admin panel and
   the native apps. Your choice follows your account to every device. New accounts get a
   first-run tour. Several accounts can be signed in on one device, with one-tap switching.
+- **English and Russian** — the web client, the admin panel and the native apps, with Russian plural
+  forms and dates, numbers and money in the language's format. The server answers in the same
+  language: errors, notifications, emails and chat events. The choice follows the account to every
+  device; until then each device starts in its own language.
 - **Business extras** — company team roles (owner, director, accountant, member), audit log of every
   privileged action, developer API keys, OpenAPI docs, a Ctrl/⌘ + K command palette. See
   [docs/ROADMAP.md](docs/ROADMAP.md) for what comes next.
@@ -140,6 +159,13 @@ The end-to-end suite (`e2e/`) needs the database from `pnpm db:up` and a Chromiu
 
 After changing `server/src/db/schema.ts`, create a migration with `pnpm db:generate`.
 
+Translations: text in the code is English, wrapped in `t('…')` (web, admin panel), `tr('…')`
+(apps) or, on the server, passed to the error helpers and `text\`…\``. After adding text, run
+`pnpm i18n`: it lists every text, rebuilds the catalogs and prints what has no Russian yet; add it
+to a file in `scripts/i18n/ru/`and run it again. CI fails while a text is untranslated. For a
+large batch of new screens,`scripts/i18n/wrap.ts`(React) and`scripts/i18n/wrap-dart.ts`
+(Flutter) wrap the text automatically.
+
 Native builds for all five platforms: see [clients/app/README.md](clients/app/README.md). CI builds
 them in `.github/workflows/native.yml`.
 
@@ -147,17 +173,73 @@ them in `.github/workflows/native.yml`.
 
 Server environment variables (see `server/src/config.ts`):
 
-| Variable                                            | Default      | Meaning                                                                                    |
-| --------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------ |
-| `DATABASE_URL`                                      | —            | PostgreSQL connection string                                                               |
-| `JWT_SECRET`                                        | —            | ≥ 32 characters                                                                            |
-| `OWNER_USERNAME` / `OWNER_EMAIL` / `OWNER_PASSWORD` | `owner`      | The single owner account, created on first start                                           |
-| `COUNCIL_QUORUM`                                    | `3`          | Council approvals needed (capped by the council size)                                      |
-| `STOCK_FREEZE_PERCENT`                              | `30`         | Frozen share of each investment                                                            |
-| `STOCK_LOCK_DAYS`                                   | `90`         | Default lock period; admins may set 90–183 days per listing                                |
-| `CORS_ORIGINS`                                      | `*`          | Allowed browser origins                                                                    |
-| `TRUST_PROXY`                                       | `true`       | Trust `X-Forwarded-For` from the reverse proxy; set `false` if the API is exposed directly |
-| `PUBLIC_RATE_LIMIT` / `API_KEY_RATE_LIMIT`          | `60` / `600` | Requests per minute on the public API                                                      |
+| Variable                                                               | Default                      | Meaning                                                                                                                                     |
+| ---------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                                         | —                            | PostgreSQL connection string                                                                                                                |
+| `JWT_SECRET`                                                           | —                            | ≥ 32 characters                                                                                                                             |
+| `OWNER_USERNAME` / `OWNER_EMAIL` / `OWNER_PASSWORD`                    | `owner`                      | The single owner account, created on first start                                                                                            |
+| `COUNCIL_QUORUM`                                                       | `3`                          | Council approvals needed (capped by the council size)                                                                                       |
+| `PUBLIC_WEB_URL`                                                       | `http://localhost:5173`      | Web client address, used in email links                                                                                                     |
+| `SMTP_URL` / `MAIL_FROM`                                               | —                            | `smtp://user:pass@host:587`; without it emails are logged (and kept in `/api/v1/dev/outbox` in development)                                 |
+| `PUBLIC_ADMIN_URL`                                                     | `http://localhost:5174`      | Admin panel address (a passkey origin); `WEBAUTHN_RP_ID` / `WEBAUTHN_ORIGINS` override                                                      |
+| `STORAGE_DRIVER`                                                       | `local`                      | `local` (the `uploads` volume, `STORAGE_DIR`) or `s3` (`S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_REGION`) |
+| `MAX_UPLOAD_MB`                                                        | `10`                         | Largest upload                                                                                                                              |
+| `REQUIRE_2FA_FOR_STAFF`                                                | `true`                       | Staff must turn on two-step verification before using staff tools                                                                           |
+| `REQUIRE_2FA_FOR_COMPANY_FINANCE`                                      | `true`                       | Company owners, directors and accountants need it to move company money                                                                     |
+| `REQUIRE_IDENTITY_FOR_COMPANIES`                                       | `true`                       | Company owners pass an identity check before approval                                                                                       |
+| `ADMIN_IP_ALLOWLIST`                                                   | —                            | Networks allowed to use the admin API, e.g. `10.0.0.0/8, 203.0.113.7`                                                                       |
+| `CASH_FOUR_EYES_AMOUNT`                                                | `10000`                      | Cash operations of at least this amount need a second finance manager (`0`: off)                                                            |
+| `SCHEDULER_ENABLED`                                                    | `true`                       | Background jobs such as recurring invoices; every instance may run them, they share the work                                                |
+| `REALTIME_BROKER`                                                      | `postgres`                   | How instances share realtime events and presence (`postgres` LISTEN/NOTIFY, or `memory` for one instance)                                   |
+| `RATE_LIMIT_STORE`                                                     | `memory`                     | `postgres` to share rate-limit counters between instances                                                                                   |
+| `METRICS_TOKEN`                                                        | —                            | Bearer token for `GET /metrics`; without one, only private networks can read it                                                             |
+| `LICENSE_TERM_MONTHS`                                                  | `12`                         | Licences and virtual countries run this long before they need a renewal (`0`: no expiry)                                                    |
+| `WEBHOOK_ALLOW_PRIVATE_NETWORKS`                                       | `false` in production        | Let webhooks call private and loopback addresses (on by default outside production)                                                         |
+| `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` / `OIDC_LABEL` | —                            | Single sign-on for the admin panel (redirect URI: `PUBLIC_ADMIN_URL/`)                                                                      |
+| `REQUIRE_VERIFIED_EMAIL`                                               | `true`                       | Applications need a confirmed email address                                                                                                 |
+| `STOCK_FREEZE_PERCENT`                                                 | `30`                         | Frozen share of each investment                                                                                                             |
+| `STOCK_LOCK_DAYS`                                                      | `90`                         | Default lock period; admins may set 90–183 days per listing                                                                                 |
+| `STOCK_REQUIRE_RISK_ACK`                                               | `true`                       | Investors accept the risk disclosure before their first investment or buy order                                                             |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT`             | made on first use            | Web Push keys (the server keeps a generated pair in the database)                                                                           |
+| `FCM_SERVICE_ACCOUNT`                                                  | —                            | Firebase service account JSON (or base64) for Android push                                                                                  |
+| `APNS_KEY` / `APNS_KEY_ID` / `APNS_TEAM_ID` / `APNS_TOPIC`             | —                            | Apple push: the .p8 key, its id, your team id and the app bundle id                                                                         |
+| `APNS_HOST`                                                            | `https://api.push.apple.com` | `https://api.sandbox.push.apple.com` for development builds                                                                                 |
+| `NOTIFICATION_RETENTION_DAYS`                                          | `90`                         | Notifications older than this are removed                                                                                                   |
+| `CORS_ORIGINS`                                                         | `*`                          | Allowed browser origins                                                                                                                     |
+| `TRUST_PROXY`                                                          | `true`                       | Trust `X-Forwarded-For` from the reverse proxy; set `false` if the API is exposed directly                                                  |
+| `PUBLIC_RATE_LIMIT` / `API_KEY_RATE_LIMIT`                             | `60` / `600`                 | Requests per minute on the public API                                                                                                       |
+
+With `NODE_ENV=development` the two-step and identity rules default to off so the demo data works on a laptop; production turns them on unless you set them.
+
+## Operations
+
+**Monitoring.** `GET /metrics` serves Prometheus metrics: requests and latency per route,
+realtime connections, notification and webhook queues, push outcomes, background job runs and
+failures, memory and event-loop use. Set `METRICS_TOKEN` and scrape with
+`Authorization: Bearer <token>`, or leave it unset to allow private networks only. Request ids are
+W3C trace ids: send a `traceparent` header (your proxy or client can) and every log line of that
+request carries it as `traceId`; responses return a `traceparent` and `Server-Timing`. The admin
+dashboard shows instances, connections, queues, jobs and the last backup.
+
+**Audit export.** Admin panel → Audit log → Export CSV / NDJSON, or
+`GET /api/v1/admin/audit-logs/export?format=ndjson&from=…&to=…&action=…` for archives and SIEM tools
+(exports are audited too).
+
+**Backups.** The `backup` service in `docker-compose.yml` dumps the database (`pg_dump`, custom
+format) and the uploaded files every `BACKUP_INTERVAL_HOURS` (24) into the `backups` volume and keeps
+`BACKUP_KEEP_DAYS` (14) days. Copy that volume somewhere else, too. To restore, stop the API and run:
+
+```sh
+docker compose stop api
+docker compose run --rm --entrypoint sh backup /deploy/restore.sh \
+  /backups/ovl-20260925-030000.dump /backups/ovl-files-20260925-030000.tar.gz
+docker compose start api
+```
+
+(with S3 storage, back the bucket up with your provider's tools instead of the files tarball.)
+
+**Several instances.** Run as many API instances as you like on one database; see
+[ARCHITECTURE.md](docs/ARCHITECTURE.md#running-several-instances).
 
 ## Documentation
 

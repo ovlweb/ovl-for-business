@@ -1,6 +1,6 @@
-import { ROLE_LABELS } from '@ovl/shared';
-import { Avatar, Badges, Icon, Logo, PageTransition, Popover, type IconName } from '@ovl/ui';
-import { useQuery } from '@tanstack/react-query';
+import { ORG_FINANCE_ROLES, ROLE_LABELS, type SecurityPolicy } from '@ovl/shared';
+import { Avatar, Badges, Icon, Logo, PageTransition, Popover, useToast, type IconName, t } from '@ovl/ui';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -35,7 +35,7 @@ function NavItemLink({ item, collapsed }: { item: NavItem; collapsed: boolean })
             />
           )}
           <Icon name={item.icon} size={19} />
-          <span className="nav-label">{item.label}</span>
+          <span className="nav-label">{t(item.label)}</span>
           {!!item.count && <span className="count">{item.count > 99 ? '99+' : item.count}</span>}
         </>
       )}
@@ -57,6 +57,79 @@ function useConnectionLost(status: string): boolean {
   return lost;
 }
 
+/** Things the account should do: confirm the email, turn on two-step verification where required. */
+function AccountNotices() {
+  const me = useMe();
+  const toast = useToast();
+  const navigate = useNavigate();
+  const meta = useQuery({ queryKey: ['meta'], queryFn: api.meta, staleTime: Infinity });
+  const orgs = useQuery({ queryKey: ['orgs', 'mine'], queryFn: api.organizations.mine });
+  const [hidden, setHidden] = useState(() => {
+    try {
+      return sessionStorage.getItem('ovl.hideEmailNotice') === me.id;
+    } catch {
+      return false;
+    }
+  });
+  const resend = useMutation({
+    mutationFn: api.me.resendVerification,
+    onSuccess: () => toast.success(t('Link sent to {0}', me.email)),
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const policy = meta.data?.security as SecurityPolicy | undefined;
+  const handlesMoney = orgs.data?.some((o) => o.myRole && ORG_FINANCE_ROLES.includes(o.myRole));
+  const needsTwoFactor =
+    !me.twoFactorEnabled &&
+    ((policy?.twoFactorForStaff && me.role !== 'user') ||
+      (policy?.twoFactorForCompanyFinance && handlesMoney));
+  if (!needsTwoFactor && (me.emailVerified || hidden)) return null;
+  return (
+    <div className="account-notices">
+      {needsTwoFactor && (
+        <div className="alert warning small">
+          <Icon name="shield" size={17} />
+          <span className="grow">
+            {me.role !== 'user'
+              ? t(
+                  'As {0} you need two-step verification before you can use staff tools.',
+                  ROLE_LABELS[me.role].toLowerCase(),
+                )
+              : t('Turn on two-step verification before moving company money.')}
+          </span>
+          <button className="btn sm" onClick={() => navigate('/settings?section=security')}>
+            {t('Set it up')}
+          </button>
+        </div>
+      )}
+      {!me.emailVerified && !hidden && (
+        <div className="alert info small">
+          <Icon name="send" size={17} />
+          <span className="grow">
+            {t('Confirm your email address: we sent a link to')} <b>{me.email}</b>.
+          </span>
+          <button className="btn sm" disabled={resend.isPending} onClick={() => resend.mutate()}>
+            {t('Send again')}
+          </button>
+          <button
+            className="btn ghost icon sm"
+            aria-label={t('Hide')}
+            onClick={() => {
+              setHidden(true);
+              try {
+                sessionStorage.setItem('ovl.hideEmailNotice', me.id);
+              } catch {
+                /* private mode */
+              }
+            }}
+          >
+            <Icon name="x" size={15} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AccountSwitcher({ collapsed }: { collapsed: boolean }) {
   const me = useMe();
   const { accounts, switchAccount, startAddAccount, logout } = useAuth();
@@ -74,7 +147,7 @@ function AccountSwitcher({ collapsed }: { collapsed: boolean }) {
       >
         <span style={{ position: 'relative' }}>
           <Avatar name={me.displayName} url={me.avatarUrl} size={34} />
-          <span className={`presence ${status}`} title={`Realtime: ${status}`} />
+          <span className={`presence ${status}`} title={t('Realtime: {0}', status)} />
         </span>
         {!collapsed && (
           <>
@@ -83,7 +156,7 @@ function AccountSwitcher({ collapsed }: { collapsed: boolean }) {
                 {me.displayName}
               </span>
               <span className="tiny ellipsis sidebar-muted" style={{ display: 'block' }}>
-                {ROLE_LABELS[me.role]}
+                {t(ROLE_LABELS[me.role])}
               </span>
             </span>
             <Icon name="chevronDown" size={16} />
@@ -110,7 +183,7 @@ function AccountSwitcher({ collapsed }: { collapsed: boolean }) {
           <>
             <div className="menu-sep" />
             <div className="tiny muted" style={{ padding: '4px 10px' }}>
-              Switch account
+              {t('Switch account')}
             </div>
             {others.map((a) => (
               <button
@@ -136,7 +209,7 @@ function AccountSwitcher({ collapsed }: { collapsed: boolean }) {
             startAddAccount();
           }}
         >
-          <Icon name="userPlus" size={17} /> Add another account
+          <Icon name="userPlus" size={17} /> {t('Add another account')}
         </button>
         <button
           className="menu-item"
@@ -145,7 +218,7 @@ function AccountSwitcher({ collapsed }: { collapsed: boolean }) {
             navigate('/settings?section=appearance');
           }}
         >
-          <Icon name="palette" size={17} /> Themes
+          <Icon name="palette" size={17} /> {t('Themes')}
         </button>
         <button
           className="menu-item"
@@ -154,11 +227,11 @@ function AccountSwitcher({ collapsed }: { collapsed: boolean }) {
             navigate('/settings');
           }}
         >
-          <Icon name="settings" size={17} /> Settings
+          <Icon name="settings" size={17} /> {t('Settings')}
         </button>
         <div className="menu-sep" />
         <button className="menu-item danger" onClick={() => logout()}>
-          <Icon name="logout" size={17} /> Sign out
+          <Icon name="logout" size={17} /> {t('Sign out')}
         </button>
       </Popover>
     </div>
@@ -187,7 +260,15 @@ export function Layout() {
     queryFn: () => api.support.desk('open'),
     enabled: can('support.answer'),
   });
+  const toPay = useQuery({
+    queryKey: ['invoices', 'incoming', 'open'],
+    queryFn: () => api.invoices.list({ direction: 'incoming', status: 'open' }),
+  });
   const unread = chats.data?.reduce((sum, c) => sum + c.unreadCount, 0) ?? 0;
+  const inbox = useQuery({
+    queryKey: ['notifications', 'count'],
+    queryFn: () => api.notifications.list({ unread: true, limit: 1 }),
+  });
 
   useEffect(() => {
     document.title = unread ? `(${unread}) OVL For Business` : 'OVL For Business';
@@ -206,38 +287,41 @@ export function Layout() {
 
   const groups: { title: string; items: NavItem[] }[] = [
     {
-      title: 'Workspace',
+      title: t('Workspace'),
       items: [
-        { to: '/home', icon: 'home', label: 'Home', primary: true },
-        { to: '/chats', icon: 'chat', label: 'Chats', count: unread, primary: true },
-        { to: '/contacts', icon: 'users', label: 'Contacts' },
+        { to: '/home', icon: 'home', label: t('Home'), primary: true },
+        { to: '/chats', icon: 'chat', label: t('Chats'), count: unread, primary: true },
+        { to: '/contacts', icon: 'users', label: t('Contacts') },
+        { to: '/notifications', icon: 'bell', label: t('Notifications'), count: inbox.data?.unreadCount },
       ],
     },
     {
-      title: 'Finance',
+      title: t('Finance'),
       items: [
-        { to: '/wallet', icon: 'wallet', label: 'Wallet', primary: true },
-        { to: '/companies', icon: 'building', label: 'Companies' },
-        { to: '/exchange', icon: 'chart', label: 'Exchange', primary: true },
+        { to: '/wallet', icon: 'wallet', label: t('Wallet'), primary: true },
+        { to: '/invoices', icon: 'receipt', label: t('Invoices'), count: toPay.data?.length },
+        { to: '/companies', icon: 'building', label: t('Companies') },
+        { to: '/exchange', icon: 'chart', label: t('Exchange'), primary: true },
       ],
     },
     {
-      title: 'Registry',
+      title: t('Registry'),
       items: [
-        { to: '/registry', icon: 'book', label: 'Public registry' },
-        { to: '/applications', icon: 'file', label: 'Applications' },
+        { to: '/registry', icon: 'book', label: t('Public registry') },
+        { to: '/applications', icon: 'file', label: t('Applications') },
+        { to: '/transparency', icon: 'award', label: t('Transparency') },
       ],
     },
     {
-      title: 'Help',
-      items: [{ to: '/support', icon: 'support', label: 'Tech support', count: desk.data?.length }],
+      title: t('Help'),
+      items: [{ to: '/support', icon: 'support', label: t('Tech support'), count: desk.data?.length }],
     },
     ...(isReviewer
       ? [
           {
-            title: 'Staff',
+            title: t('Staff'),
             items: [
-              { to: '/review', icon: 'review' as const, label: 'Review queue', count: queue.data?.length },
+              { to: '/review', icon: 'review' as const, label: t('Review queue'), count: queue.data?.length },
             ],
           },
         ]
@@ -246,7 +330,7 @@ export function Layout() {
   const all = groups.flatMap((g) => g.items);
   const secondary = [
     ...all.filter((i) => !i.primary),
-    { to: '/settings', icon: 'settings' as const, label: 'Settings' },
+    { to: '/settings', icon: 'settings' as const, label: t('Settings') },
   ];
   const secondaryCount = secondary.reduce((sum, i) => sum + (i.count ?? 0), 0);
   const moreActive = secondary.some((i) => location.pathname.startsWith(i.to));
@@ -259,30 +343,30 @@ export function Layout() {
 
   return (
     <div className={`app${collapsed ? ' collapsed' : ''}`}>
-      <nav className="sidebar" aria-label="Main">
+      <nav className="sidebar" aria-label={t('Main')}>
         <div className="brand">
           <Logo size={34} />
           <div className="brand-text">
-            OVL For Business
-            <small>Corporate platform</small>
+            {t('OVL For Business')}
+            <small>{t('Corporate platform')}</small>
           </div>
           <button
             className="btn ghost icon sm collapse-toggle"
             onClick={toggleCollapsed}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={collapsed ? t('Expand sidebar') : t('Collapse sidebar')}
           >
             <Icon name="sidebar" size={17} />
           </button>
         </div>
         <button className="search-button" onClick={() => setPaletteOpen(true)}>
           <Icon name="search" size={16} />
-          <span className="nav-label grow">Search…</span>
-          <kbd className="nav-label">Ctrl K</kbd>
+          <span className="nav-label grow">{t('Search…')}</span>
+          <kbd className="nav-label">{t('Ctrl K')}</kbd>
         </button>
         <div className="nav-scroll">
           {groups.map((g) => (
             <div key={g.title} className="nav-group">
-              <div className="nav-section">{g.title}</div>
+              <div className="nav-section">{t(g.title)}</div>
               {g.items.map((item) => (
                 <NavItemLink key={item.to} item={item} collapsed={collapsed} />
               ))}
@@ -295,7 +379,7 @@ export function Layout() {
           aria-haspopup="dialog"
         >
           <Icon name="more" size={19} />
-          <span className="nav-label">More</span>
+          <span className="nav-label">{t('More')}</span>
           {secondaryCount > 0 && (
             <span className="count">{secondaryCount > 99 ? '99+' : secondaryCount}</span>
           )}
@@ -315,11 +399,12 @@ export function Layout() {
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
             >
-              <Icon name="refresh" size={14} /> Connection lost — reconnecting… Messages appear as soon as you
-              are back online.
+              <Icon name="refresh" size={14} />{' '}
+              {t('Connection lost — reconnecting… Messages appear as soon as you are back online.')}
             </motion.div>
           )}
         </AnimatePresence>
+        <AccountNotices />
         {/* Enter-only: an exiting copy of the old page would stay clickable (and keep marking chats read). */}
         <PageTransition key={sectionKey}>
           <Outlet />
@@ -339,7 +424,7 @@ export function Layout() {
               className="sheet"
               role="dialog"
               aria-modal="true"
-              aria-label="More"
+              aria-label={t('More')}
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
@@ -356,7 +441,7 @@ export function Layout() {
               {secondary.map((item) => (
                 <NavLink key={item.to} to={item.to} className="nav-link sheet-link">
                   <Icon name={item.icon} size={19} />
-                  <span>{item.label}</span>
+                  <span>{t(item.label)}</span>
                   {!!item.count && <span className="count">{item.count}</span>}
                 </NavLink>
               ))}
@@ -367,7 +452,7 @@ export function Layout() {
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
-        items={[...all, { to: '/settings', icon: 'settings', label: 'Settings' }]}
+        items={[...all, { to: '/settings', icon: 'settings', label: t('Settings') }]}
       />
     </div>
   );

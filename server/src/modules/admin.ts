@@ -6,6 +6,7 @@ import {
   auditLogSchema,
   canAssignRole,
   cashOperationInputSchema,
+  cashApprovalSchema,
   cashOperationSchema,
   formatAmount,
   organizationSchema,
@@ -30,12 +31,15 @@ import {
   apiKeys,
   applications,
   auditLogs,
+  cashApprovals,
   cashOperations,
+  cashRequests,
   chats,
   messages,
   organizations,
   refreshTokens,
   registryEntries,
+  sessions,
   stockListings,
   stockPriceHistory,
   users,
@@ -47,11 +51,17 @@ import { iso, isoOrNull, toUserSummary } from '../lib/mappers';
 import { currentUser } from '../plugins/auth';
 import { toApiKeyDto } from './api-keys';
 import { organizationDtos } from './organizations';
-import { getRegistryEntry } from './registry';
+import { emitRegistryEvent, getRegistryEntry } from './registry';
+import { recordCashOperation } from './cash';
+import { approvalDtos, createApproval, needsFourEyes, pendingApprovalCount } from './cash-approvals';
+import { pendingIdentityChecks } from './identity';
 import { changeRole } from './roles';
+import { revokeSessions } from './sessions';
 import { listingDtos } from './stock/service';
+import { emitEvent } from '../lib/webhooks';
 import { walletAudience } from './wallets/routes';
-import { credit, debit, getOrCreateWallet, listOwnerWallets } from './wallets/service';
+import { getOrCreateWallet, listOwnerWallets } from './wallets/service';
+import { text } from '../lib/i18n';
 
 const like = (q: string) => `%${q.replace(/[%_\\]/g, '\\$&')}%`;
 
@@ -137,24 +147,38 @@ export async function adminRoutes(fastify: FastifyInstance) {
       schema: { tags, response: { 200: adminStatsSchema } },
     },
     async () => {
-      const [byRole, [orgs], [pending], [tickets], [listings], [registry], balances, daily] =
-        await Promise.all([
-          app.db.select({ role: users.role, n: count() }).from(users).groupBy(users.role),
-          app.db.select({ n: count() }).from(organizations),
-          app.db.select({ n: count() }).from(applications).where(eq(applications.status, 'pending')),
-          app.db
-            .select({ n: count() })
-            .from(chats)
-            .where(and(eq(chats.type, 'support'), eq(chats.supportStatus, 'open'))),
-          app.db.select({ n: count() }).from(stockListings).where(eq(stockListings.status, 'active')),
-          app.db.select({ n: count() }).from(registryEntries),
-          app.db
-            .select({ currency: wallets.currency, total: sql<string>`sum(${wallets.balance})`, n: count() })
-            .from(wallets)
-            .groupBy(wallets.currency)
-            .orderBy(wallets.currency),
-          activity(app.db),
-        ]);
+      const [
+        byRole,
+        [orgs],
+        [pending],
+        [tickets],
+        [listings],
+        [registry],
+        [cash],
+        identity,
+        approvals,
+        balances,
+        daily,
+      ] = await Promise.all([
+        app.db.select({ role: users.role, n: count() }).from(users).groupBy(users.role),
+        app.db.select({ n: count() }).from(organizations),
+        app.db.select({ n: count() }).from(applications).where(eq(applications.status, 'pending')),
+        app.db
+          .select({ n: count() })
+          .from(chats)
+          .where(and(eq(chats.type, 'support'), eq(chats.supportStatus, 'open'))),
+        app.db.select({ n: count() }).from(stockListings).where(eq(stockListings.status, 'active')),
+        app.db.select({ n: count() }).from(registryEntries),
+        app.db.select({ n: count() }).from(cashRequests).where(eq(cashRequests.status, 'pending')),
+        pendingIdentityChecks(app.db),
+        pendingApprovalCount(app.db),
+        app.db
+          .select({ currency: wallets.currency, total: sql<string>`sum(${wallets.balance})`, n: count() })
+          .from(wallets)
+          .groupBy(wallets.currency)
+          .orderBy(wallets.currency),
+        activity(app.db),
+      ]);
       return {
         users: Object.fromEntries(byRole.map((r) => [r.role, r.n])),
         organizations: orgs?.n ?? 0,
@@ -162,6 +186,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
         openTickets: tickets?.n ?? 0,
         activeListings: listings?.n ?? 0,
         registryEntries: registry?.n ?? 0,
+        pendingCashRequests: cash?.n ?? 0,
+        pendingIdentityChecks: identity,
+        pendingCashApprovals: approvals,
         balances: balances.map((b) => ({
           currency: b.currency,
           total: formatAmount(BigInt(b.total), b.currency),
@@ -236,10 +263,10 @@ export async function adminRoutes(fastify: FastifyInstance) {
       if (target.id === me.id) throw badRequest('You cannot change your own account here');
       const { role, status } = req.body;
       if (role && role !== target.role && !canAssignRole(me.role, target.role, role)) {
-        throw forbidden(`You cannot change a ${target.role} into a ${role}`);
+        throw forbidden(text`You cannot change a ${target.role} into a ${role}`);
       }
       if (status && status !== target.status && !canAssignRole(me.role, target.role, target.role)) {
-        throw forbidden(`You cannot suspend a ${target.role}`);
+        throw forbidden(text`You cannot suspend a ${target.role}`);
       }
       const updated = await app.db.transaction(async (tx) => {
         if (role && role !== target.role) await changeRole(tx, target.id, role);
@@ -263,6 +290,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
         const [row] = await tx.select().from(users).where(eq(users.id, target.id));
         return row!;
       });
+      if (status === 'suspended' && target.status !== 'suspended') {
+        await revokeSessions(app, eq(sessions.userId, target.id));
+      }
       app.hub.updateRole(updated.id, updated.role);
       return {
         ...toUserSummary(updated),
@@ -276,6 +306,36 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
   // ----- Organizations ------------------------------------------------------
 
+  app.post(
+    '/admin/users/:id/sign-out',
+    {
+      preHandler: app.requirePermission('users.manage'),
+      schema: {
+        tags,
+        description: 'Sign an account out on every device (e.g. a lost phone or a compromised password).',
+        params: z.object({ id: z.uuid() }),
+        response: { 200: z.object({ signedOut: z.number().int() }) },
+      },
+    },
+    async (req) => {
+      const me = currentUser(req);
+      const [target] = await app.db.select().from(users).where(eq(users.id, req.params.id));
+      if (!target) throw notFound('User');
+      if (target.id !== me.id && !canAssignRole(me.role, target.role, target.role)) {
+        throw forbidden(text`You cannot sign out a ${target.role}`);
+      }
+      const ids = await revokeSessions(app, eq(sessions.userId, target.id));
+      await audit(app.db, {
+        actorId: me.id,
+        action: 'user.sign_out',
+        targetType: 'user',
+        targetId: target.id,
+        data: { sessions: ids.length },
+        ip: req.ip,
+      });
+      return { signedOut: ids.length };
+    },
+  );
   app.get(
     '/admin/organizations',
     {
@@ -419,14 +479,14 @@ export async function adminRoutes(fastify: FastifyInstance) {
           'Deposit to or withdraw from a personal or business balance in any currency. ' +
           'Method is either a transfer handled by a manager or physical cash at the desk.',
         body: cashOperationInputSchema,
-        response: { 201: cashOperationSchema },
+        response: { 201: cashOperationSchema, 202: cashApprovalSchema },
       },
     },
     async (req, reply) => {
       const me = currentUser(req);
       const input = req.body;
       const amount = parseAmount(input.amount, input.currency);
-      const { opId, wallet } = await app.db.transaction(async (tx) => {
+      const { opId, approvalId, wallet } = await app.db.transaction(async (tx) => {
         const ownerTable = input.ownerType === 'user' ? users : organizations;
         const [owner] = await tx
           .select({ id: ownerTable.id })
@@ -438,48 +498,43 @@ export async function adminRoutes(fastify: FastifyInstance) {
           { type: input.ownerType, id: input.ownerId },
           input.currency,
         );
-        const [op] = await tx
-          .insert(cashOperations)
-          .values({
+        if (needsFourEyes(app.config, amount, input.currency)) {
+          const approval = await createApproval(tx, {
+            kind: 'operation',
             walletId: wallet.id,
             type: input.type,
             method: input.method,
             amount,
             currency: input.currency,
             reference: input.reference,
-            note: input.note ?? '',
-            processedBy: me.id,
-          })
-          .returning();
-        const method = input.method === 'physical_cash' ? 'cash desk' : 'manager transfer';
-        const options = {
-          description: `${input.type === 'deposit' ? 'Deposit' : 'Withdrawal'} via ${method} (ref. ${input.reference})`,
-          referenceType: 'cash_operation',
-          referenceId: op!.id,
+            note: input.note,
+            requestedBy: me.id,
+            ip: req.ip,
+          });
+          return { opId: null, approvalId: approval.id, wallet };
+        }
+        const opId = await recordCashOperation(tx, {
+          wallet,
+          type: input.type,
+          method: input.method,
+          amount,
+          reference: input.reference,
+          note: input.note,
           actorId: me.id,
-        };
-        if (input.type === 'deposit') await credit(tx, wallet.id, amount, 'deposit', options);
-        else await debit(tx, wallet.id, amount, 'withdrawal', options);
-        await audit(tx, {
-          actorId: me.id,
-          action: `wallet.${input.type}`,
-          targetType: 'wallet',
-          targetId: wallet.id,
-          data: {
-            amount: input.amount,
-            currency: input.currency,
-            method: input.method,
-            reference: input.reference,
-          },
           ip: req.ip,
         });
-        return { opId: op!.id, wallet };
+        return { opId, approvalId: null, wallet };
       });
+      if (approvalId) {
+        // Large amount: a second finance manager confirms it under Cash desk → Waiting for approval.
+        const [pending] = await approvalDtos(app.db, eq(cashApprovals.id, approvalId), 1);
+        return reply.status(202).send(pending!);
+      }
       app.hub.sendToUsers(await walletAudience(app.db, wallet), {
         type: 'wallet.updated',
         walletId: wallet.id,
       });
-      const [dto] = await cashOperationDtos(app.db, eq(cashOperations.id, opId), 1);
+      const [dto] = await cashOperationDtos(app.db, eq(cashOperations.id, opId!), 1);
       return reply.status(201).send(dto!);
     },
   );
@@ -493,18 +548,33 @@ export async function adminRoutes(fastify: FastifyInstance) {
       schema: {
         tags,
         params: z.object({ id: z.uuid() }),
-        body: z.object({ status: z.enum(REGISTRY_STATUSES), reason: z.string().trim().max(1000).optional() }),
+        description: 'Change the status of an entry, or move its expiry date (null: it never expires).',
+        body: z
+          .object({
+            status: z.enum(REGISTRY_STATUSES).optional(),
+            expiresAt: z.iso.datetime({ offset: true }).nullable().optional(),
+            reason: z.string().trim().max(1000).optional(),
+          })
+          .refine((b) => b.status !== undefined || b.expiresAt !== undefined, 'Nothing to change'),
         response: { 200: registryEntrySchema },
       },
     },
     async (req) => {
       const me = currentUser(req);
+      const { status, expiresAt } = req.body;
       const [entry] = await app.db
         .update(registryEntries)
-        .set({ status: req.body.status, updatedAt: new Date() })
+        .set({
+          ...(status ? { status } : {}),
+          ...(expiresAt !== undefined
+            ? { expiresAt: expiresAt ? new Date(expiresAt) : null, reminderStage: 0 }
+            : {}),
+          updatedAt: new Date(),
+        })
         .where(eq(registryEntries.id, req.params.id))
         .returning();
       if (!entry) throw notFound('Registry entry');
+      await emitRegistryEvent(app.db, 'registry.updated', entry.id);
       await audit(app.db, {
         actorId: me.id,
         action: 'registry.status',
@@ -541,7 +611,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         (lockDays < app.config.STOCK_LOCK_DAYS_MIN || lockDays > app.config.STOCK_LOCK_DAYS_MAX)
       ) {
         throw badRequest(
-          `Lock period must be between ${app.config.STOCK_LOCK_DAYS_MIN} and ${app.config.STOCK_LOCK_DAYS_MAX} days`,
+          text`Lock period must be between ${app.config.STOCK_LOCK_DAYS_MIN} and ${app.config.STOCK_LOCK_DAYS_MAX} days`,
         );
       }
       const price = sharePrice !== undefined ? parseAmount(sharePrice, listing.currency) : undefined;
@@ -561,6 +631,11 @@ export async function adminRoutes(fastify: FastifyInstance) {
         if (price !== undefined && price !== listing.sharePrice) {
           await tx.insert(stockPriceHistory).values({ listingId: listing.id, price });
         }
+        await emitEvent(
+          tx,
+          'listing.updated',
+          (await listingDtos(tx, [row!]))[0]! as unknown as Record<string, unknown>,
+        );
         await audit(tx, {
           actorId: me.id,
           action: 'stock.listing_update',

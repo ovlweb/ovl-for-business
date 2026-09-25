@@ -25,6 +25,10 @@ COPY --from=build /out/node_modules ./node_modules
 COPY --from=build /repo/server/package.json ./package.json
 COPY --from=build /repo/server/dist ./dist
 COPY --from=build /repo/server/drizzle ./drizzle
+# Fonts for PDF statements and certificates.
+COPY --from=build /repo/server/assets ./assets
+# Uploaded files (a volume in docker-compose.yml); a new volume copies this owner.
+RUN mkdir -p /data/uploads && chown -R node:node /data
 USER node
 EXPOSE 4000
 HEALTHCHECK --interval=15s --timeout=3s --start-period=20s CMD wget -qO- http://127.0.0.1:4000/health >/dev/null || exit 1

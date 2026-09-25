@@ -1,4 +1,4 @@
-import { ErrorAlert, formatDate, PageHeader, Spinner } from '@ovl/ui';
+import { ErrorAlert, formatDate, PageHeader, Spinner, t } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../api';
@@ -20,8 +20,8 @@ export function ApiKeysPage() {
     <div className="page">
       <PageHeader
         icon="key"
-        title="Developer API keys"
-        subtitle="Keys that external services use for the public registry and stock API."
+        title={t('Developer API keys')}
+        subtitle={t('Keys that external services use for the public registry and stock API.')}
       />
       <ErrorAlert error={keys.error ?? revoke.error} />
       <div className="card pad-0 table-wrap">
@@ -29,12 +29,12 @@ export function ApiKeysPage() {
         <table className="table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Owner</th>
-              <th>Prefix</th>
-              <th>Scopes</th>
-              <th>Created</th>
-              <th>Last used</th>
+              <th>{t('Name')}</th>
+              <th>{t('Owner')}</th>
+              <th>{t('Prefix')}</th>
+              <th>{t('Scopes')}</th>
+              <th>{t('Created')}</th>
+              <th>{t('Last used')}</th>
               <th />
             </tr>
           </thead>
@@ -51,10 +51,10 @@ export function ApiKeysPage() {
                 <td className="small">{k.lastUsedAt ? formatDate(k.lastUsedAt) : '—'}</td>
                 <td>
                   {k.revokedAt ? (
-                    <span className="badge bad">Revoked</span>
+                    <span className="badge bad">{t('Revoked')}</span>
                   ) : (
                     <button className="btn sm danger" onClick={() => revoke.mutate(k.id)}>
-                      Revoke
+                      {t('Revoke')}
                     </button>
                   )}
                 </td>

@@ -5,36 +5,95 @@ import type {
   Application,
   AuditLog,
   AuthResult,
+  CashApproval,
   CashOperation,
   CashOperationInput,
+  CashRequest,
+  CashRequestInput,
+  CashRequestStatus,
   Chat,
   ChatMember,
   Contact,
+  ExchangeInfo,
+  ExchangeInput,
+  ExchangeQuote,
+  ExchangeResult,
   CreateApplicationInput,
+  CreateInvoiceInput,
+  CreateInvoiceScheduleInput,
+  CreateVirtualCurrencyInput,
+  CreateProposalInput,
+  CreateReportInput,
+  CompanyReport,
+  Dividend,
+  DividendInput,
+  CreateWebhookInput,
+  CreatedWebhook,
+  CurrencyInfo,
   CreateStoryInput,
+  FileInfo,
+  Governance,
   FundLock,
   Holding,
+  IdentityCheck,
+  IdentitySubmitInput,
   Investment,
+  Invoice,
+  InvoiceSchedule,
+  InvoiceStatus,
   LedgerEntry,
   LoginInput,
   Me,
   Message,
+  MessageSearchResult,
+  MyLicence,
   Organization,
+  Passkey,
+  PaymentApproval,
+  MyStockLimits,
+  NotificationPage,
+  Proposal,
+  PushConfig,
+  PushDevice,
+  PushSubscriptionInput,
+  ReadReceipt,
+  RiskDisclosure,
+  Shareholder,
+  PayrollInput,
+  PayrollRun,
   OrgMember,
+  OrderBook,
+  PlaceOrderInput,
   Preferences,
   OrgRole,
   RegisterInput,
   RegistryEntry,
   RegistrySearchQuery,
+  Session,
+  MonthlyStatement,
+  StatementLink,
+  StatementLinkInput,
+  StatementRange,
+  TwoFactorSetup,
+  TwoFactorStatus,
   ReviewInput,
   Role,
   StockListing,
   StockListingDetail,
+  StockLimits,
+  StockOrder,
+  SystemStatus,
+  TransparencyReport,
+  TransparencyStats,
+  StockTrade,
   Story,
   TransferInput,
   UpdateMeInput,
   UserProfile,
   UserSummary,
+  VirtualCurrency,
+  WebhookDelivery,
+  WebhookEndpoint,
   Wallet,
 } from '@ovl/shared';
 import { RealtimeConnection } from './realtime';
@@ -87,6 +146,8 @@ export interface OvlClientOptions {
   fetch?: typeof fetch;
   /** Called when the session ends (refresh failed or logout). */
   onSignedOut?: () => void;
+  /** The language people picked ('en', 'ru'): sent as Accept-Language, so errors come back in it. */
+  locale?: () => string | undefined;
 }
 
 type Query = Record<string, string | number | boolean | undefined | null>;
@@ -106,6 +167,7 @@ export class OvlClient {
   private readonly apiKey?: string;
   private readonly fetchImpl: typeof fetch;
   private readonly onSignedOut?: () => void;
+  private readonly locale?: () => string | undefined;
   private refreshing: Promise<boolean> | null = null;
 
   constructor(options: OvlClientOptions) {
@@ -114,6 +176,7 @@ export class OvlClient {
     this.apiKey = options.apiKey;
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.onSignedOut = options.onSignedOut;
+    this.locale = options.locale;
   }
 
   get isSignedIn(): boolean {
@@ -124,34 +187,61 @@ export class OvlClient {
   // Transport
   // ---------------------------------------------------------------------------
 
-  async request<T>(method: string, path: string, body?: unknown, retry = true): Promise<T> {
-    const headers: Record<string, string> = { accept: 'application/json' };
+  private async send(
+    method: string,
+    path: string,
+    body?: unknown,
+    retry = true,
+    accept = 'application/json',
+  ): Promise<Response> {
+    const headers: Record<string, string> = { accept };
     const tokens = this.tokens.get();
     if (tokens) headers.authorization = `Bearer ${tokens.accessToken}`;
     if (this.apiKey) headers['x-api-key'] = this.apiKey;
-    if (body !== undefined) headers['content-type'] = 'application/json';
+    const locale = this.locale?.();
+    if (locale) headers['accept-language'] = locale;
+    // A Blob (a file upload) goes as it is, with its own type; everything else is JSON.
+    const raw = typeof Blob !== 'undefined' && body instanceof Blob;
+    if (raw) headers['content-type'] = (body as Blob).type || 'application/octet-stream';
+    else if (body !== undefined) headers['content-type'] = 'application/json';
 
     const res = await this.fetchImpl(`${this.baseUrl}/api/v1${path}`, {
       method,
       headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: raw ? (body as Blob) : body !== undefined ? JSON.stringify(body) : undefined,
     });
 
     if (res.status === 401 && retry && tokens && !path.startsWith('/auth/')) {
-      if (await this.refresh()) return this.request<T>(method, path, body, false);
+      if (await this.refresh()) return this.send(method, path, body, false, accept);
     }
+    return res;
+  }
+
+  private static async fail(res: Response, text?: string): Promise<never> {
+    const body = text ?? (await res.text());
+    let data: { error?: string; message?: string; details?: unknown } | undefined;
+    try {
+      data = body ? JSON.parse(body) : undefined;
+    } catch {
+      data = undefined;
+    }
+    throw new OvlApiError(res.status, data?.error ?? 'error', data?.message ?? res.statusText, data?.details);
+  }
+
+  async request<T>(method: string, path: string, body?: unknown, retry = true): Promise<T> {
+    const res = await this.send(method, path, body, retry);
     if (res.status === 204) return undefined as T;
     const text = await res.text();
-    const data = text ? JSON.parse(text) : undefined;
-    if (!res.ok) {
-      throw new OvlApiError(
-        res.status,
-        data?.error ?? 'error',
-        data?.message ?? res.statusText,
-        data?.details,
-      );
-    }
-    return data as T;
+    if (!res.ok) return OvlClient.fail(res, text);
+    return (text ? JSON.parse(text) : undefined) as T;
+  }
+
+  /** Fetch a file (such as a CSV statement) with the same authentication as every other call. */
+  async download(path: string, query?: Query): Promise<{ blob: Blob; filename: string | null }> {
+    const res = await this.send('GET', path + qs(query), undefined, true, '*/*');
+    if (!res.ok) return OvlClient.fail(res);
+    const disposition = res.headers.get('content-disposition') ?? '';
+    return { blob: await res.blob(), filename: /filename="([^"]+)"/.exec(disposition)?.[1] ?? null };
   }
 
   private get<T>(path: string, query?: Query) {
@@ -159,6 +249,9 @@ export class OvlClient {
   }
   private post<T>(path: string, body: unknown = {}) {
     return this.request<T>('POST', path, body);
+  }
+  private put<T>(path: string, body: unknown) {
+    return this.request<T>('PUT', path, body);
   }
   private patch<T>(path: string, body: unknown) {
     return this.request<T>('PATCH', path, body);
@@ -183,6 +276,10 @@ export class OvlClient {
           this.tokens.set({ accessToken: result.accessToken, refreshToken: result.refreshToken });
           return true;
         } catch {
+          // Another tab or process may have refreshed with the same token a moment earlier;
+          // if the store now holds newer tokens, use those instead of signing out.
+          const latest = this.tokens.get();
+          if (latest && latest.refreshToken !== tokens.refreshToken) return true;
           this.tokens.set(null);
           this.onSignedOut?.();
           return false;
@@ -214,6 +311,23 @@ export class OvlClient {
     register: async (input: RegisterInput) =>
       this.storeAuth(await this.post<AuthResult>('/auth/register', input)),
     login: async (input: LoginInput) => this.storeAuth(await this.post<AuthResult>('/auth/login', input)),
+    /** Passkey sign-in, step 1: options for navigator.credentials.get(). */
+    passkeyOptions: () =>
+      this.post<{ challengeId: string; options: Record<string, unknown> }>('/auth/passkey/options'),
+    /** Passkey sign-in, step 2: send the browser's answer. */
+    passkeyLogin: async (challengeId: string, response: unknown) =>
+      this.storeAuth(await this.post<AuthResult>('/auth/passkey', { challengeId, response })),
+    /** Single sign-on (admin panel): whether it is offered, then start and finish it. */
+    sso: () => this.get<{ enabled: boolean; label: string }>('/auth/sso'),
+    ssoStart: () => this.post<{ url: string }>('/auth/sso/start'),
+    ssoCallback: async (code: string, state: string) =>
+      this.storeAuth(await this.post<AuthResult>('/auth/sso/callback', { code, state })),
+    /** Confirm an email address with the token from the link. */
+    verifyEmail: (token: string) => this.post<{ email: string }>('/auth/verify-email', { token }),
+    /** Email a reset link (always succeeds, so it never reveals whether an address is registered). */
+    forgotPassword: (email: string) => this.post<void>('/auth/password/forgot', { email }),
+    resetPassword: (token: string, password: string) =>
+      this.post<void>('/auth/password/reset', { token, password }),
     logout: async () => {
       const tokens = this.tokens.get();
       this.tokens.set(null);
@@ -226,8 +340,37 @@ export class OvlClient {
     get: () => this.get<Me>('/me'),
     update: (input: UpdateMeInput) => this.patch<Me>('/me', input),
     updatePreferences: (input: Preferences) => this.patch<Me>('/me/preferences', input),
+    /** Licences you hold (or your companies do), with expiry dates and waiting renewals. */
+    licences: () => this.get<MyLicence[]>('/me/licences'),
     changePassword: (currentPassword: string, newPassword: string) =>
       this.post<void>('/me/password', { currentPassword, newPassword }),
+    /** Change the email address; the new one must be confirmed through the emailed link. */
+    changeEmail: (email: string, password: string) => this.post<Me>('/me/email', { email, password }),
+    resendVerification: () => this.post<void>('/me/email/verification'),
+    /** Your latest identity check (KYC), or null. */
+    identity: () => this.get<IdentityCheck | null>('/me/identity'),
+    submitIdentity: (input: IdentitySubmitInput) => this.post<IdentityCheck>('/me/identity', input),
+    passkeys: {
+      list: () => this.get<Passkey[]>('/me/passkeys'),
+      options: () =>
+        this.post<{ challengeId: string; options: Record<string, unknown> }>('/me/passkeys/options'),
+      add: (challengeId: string, name: string, response: unknown) =>
+        this.post<Passkey>('/me/passkeys', { challengeId, name, response }),
+      remove: (id: string) => this.del(`/me/passkeys/${encodeURIComponent(id)}`),
+    },
+    /** Two-factor authentication (authenticator app + recovery codes). */
+    twoFactor: {
+      status: () => this.get<TwoFactorStatus>('/me/2fa'),
+      setup: () => this.post<TwoFactorSetup>('/me/2fa/setup'),
+      enable: (code: string) => this.post<{ recoveryCodes: string[] }>('/me/2fa/enable', { code }),
+      disable: (password: string, code: string) => this.post<void>('/me/2fa/disable', { password, code }),
+      newRecoveryCodes: (code: string) =>
+        this.post<{ recoveryCodes: string[] }>('/me/2fa/recovery-codes', { code }),
+    },
+    /** Devices signed in to this account. */
+    sessions: () => this.get<Session[]>('/me/sessions'),
+    signOutSession: (id: string) => this.del(`/me/sessions/${id}`),
+    signOutOtherSessions: () => this.post<{ signedOut: number }>('/me/sessions/sign-out-others'),
   };
 
   users = {
@@ -248,13 +391,52 @@ export class OvlClient {
     entries: (id: string, query?: { limit?: number; offset?: number }) =>
       this.get<Page<LedgerEntry>>(`/wallets/${id}/entries`, query),
     locks: (id: string) => this.get<FundLock[]>(`/wallets/${id}/locks`),
-    transfer: (input: TransferInput) => this.post<Wallet>('/wallets/transfer', input),
+    /** Company payments of at least the approval limit come back as a PaymentApproval (HTTP 202). */
+    transfer: (input: TransferInput) => this.post<Wallet | PaymentApproval>('/wallets/transfer', input),
+    cashRequests: (id: string) => this.get<CashRequest[]>(`/wallets/${id}/cash-requests`),
+    /** Ask a finance manager for a deposit or a payout (a payout holds the amount meanwhile). */
+    requestCash: (id: string, input: CashRequestInput) =>
+      this.post<CashRequest>(`/wallets/${id}/cash-requests`, input),
+    cancelCashRequest: (requestId: string) => this.post<CashRequest>(`/cash-requests/${requestId}/cancel`),
+    /** The statement as a CSV file, optionally limited to ISO dates. */
+    statementCsv: (id: string, range?: { from?: string; to?: string }) =>
+      this.download(`/wallets/${id}/statement.csv`, range),
+    /** The statement as a printable PDF, optionally limited to ISO dates. */
+    statementPdf: (id: string, range?: { from?: string; to?: string }) =>
+      this.download(`/wallets/${id}/statement.pdf`, range),
+    /** A 5-minute link to the CSV (or `format: 'pdf'`) that works without a token (to open in a browser). */
+    statementLink: (id: string, input: StatementLinkInput = {}) =>
+      this.post<StatementLink>(`/wallets/${id}/statement-link`, input),
+    /** Calendar months with activity: opening and closing balance, money in and out. */
+    statements: (id: string) => this.get<MonthlyStatement[]>(`/wallets/${id}/statements`),
+  };
+
+  invoices = {
+    list: (query?: { direction?: 'incoming' | 'outgoing'; status?: InvoiceStatus }) =>
+      this.get<Invoice[]>('/invoices', query),
+    get: (id: string) => this.get<Invoice>(`/invoices/${id}`),
+    create: (input: CreateInvoiceInput) => this.post<Invoice>('/invoices', input),
+    /** Pay in full from one of the recipient's balances in the invoice currency. */
+    /** Everything still due, or `amount` of it. */
+    pay: (id: string, walletId: string, amount?: string) =>
+      this.post<Invoice | PaymentApproval>(
+        `/invoices/${id}/pay`,
+        amount ? { walletId, amount } : { walletId },
+      ),
+    cancel: (id: string, reason?: string) => this.post<Invoice>(`/invoices/${id}/cancel`, { reason }),
+    schedules: () => this.get<InvoiceSchedule[]>('/invoice-schedules'),
+    /** A recurring invoice; starting today sends the first one at once. */
+    createSchedule: (input: CreateInvoiceScheduleInput) =>
+      this.post<InvoiceSchedule>('/invoice-schedules', input),
+    setScheduleStatus: (id: string, status: 'active' | 'paused' | 'ended') =>
+      this.patch<InvoiceSchedule>(`/invoice-schedules/${id}`, { status }),
   };
 
   organizations = {
     mine: () => this.get<Organization[]>('/organizations/mine'),
     get: (slug: string) => this.get<Organization>(`/organizations/${encodeURIComponent(slug)}`),
-    update: (id: string, input: { description?: string; website?: string }) =>
+    /** approvalLimit: payments of at least this much need two people ("" turns it off). */
+    update: (id: string, input: { description?: string; website?: string; approvalLimit?: string }) =>
       this.patch<Organization>(`/organizations/${id}`, input),
     members: (id: string) => this.get<OrgMember[]>(`/organizations/${id}/members`),
     addMember: (id: string, username: string, role: Exclude<OrgRole, 'owner'>) =>
@@ -263,10 +445,89 @@ export class OvlClient {
     wallets: (id: string) => this.get<Wallet[]>(`/organizations/${id}/wallets`),
     openWallet: (id: string, currency: string) =>
       this.post<Wallet>(`/organizations/${id}/wallets`, { currency }),
+    paymentApprovals: (id: string, status?: 'pending' | 'approved' | 'rejected') =>
+      this.get<PaymentApproval[]>(`/organizations/${id}/payment-approvals`, { status }),
+    approvePayment: (id: string, approvalId: string) =>
+      this.post<PaymentApproval>(`/organizations/${id}/payment-approvals/${approvalId}/approve`),
+    payroll: (id: string) => this.get<PayrollRun[]>(`/organizations/${id}/payroll`),
+    shareholders: (id: string) => this.get<Shareholder[]>(`/organizations/${id}/shareholders`),
+    /** Above the approval limit the dividend comes back "pending". */
+    payDividend: (id: string, input: DividendInput) =>
+      this.post<Dividend>(`/organizations/${id}/dividends`, input),
+    createProposal: (id: string, input: CreateProposalInput) =>
+      this.post<Proposal>(`/organizations/${id}/proposals`, input),
+    closeProposal: (id: string, proposalId: string) =>
+      this.post<Proposal>(`/organizations/${id}/proposals/${proposalId}/close`),
+    publishReport: (id: string, input: CreateReportInput) =>
+      this.post<CompanyReport>(`/organizations/${id}/reports`, input),
+    /** Pay many people at once; above the approval limit the run comes back "pending". */
+    runPayroll: (id: string, input: PayrollInput) =>
+      this.post<PayrollRun>(`/organizations/${id}/payroll`, input),
+    /** Decline a waiting payment, or withdraw your own. */
+    rejectPayment: (id: string, approvalId: string, reason: string) =>
+      this.post<PaymentApproval>(`/organizations/${id}/payment-approvals/${approvalId}/reject`, { reason }),
+  };
+
+  /** Registry and stock listing changes pushed to your service (see verifyWebhookSignature). */
+  webhooks = {
+    list: () => this.get<WebhookEndpoint[]>('/webhooks'),
+    /** The response carries the signing secret, only this once. */
+    create: (input: CreateWebhookInput) => this.post<CreatedWebhook>('/webhooks', input),
+    update: (
+      id: string,
+      input: { url?: string; events?: WebhookEndpoint['events']; description?: string; active?: boolean },
+    ) => this.patch<WebhookEndpoint>(`/webhooks/${id}`, input),
+    remove: (id: string) => this.del(`/webhooks/${id}`),
+    rotateSecret: (id: string) => this.post<CreatedWebhook>(`/webhooks/${id}/rotate-secret`),
+    /** Send a "ping" now and report how it went. */
+    test: (id: string) => this.post<WebhookDelivery>(`/webhooks/${id}/test`),
+    deliveries: (id: string) => this.get<WebhookDelivery[]>(`/webhooks/${id}/deliveries`),
+    redeliver: (id: string, deliveryId: string) =>
+      this.post<WebhookDelivery>(`/webhooks/${id}/deliveries/${deliveryId}/redeliver`),
+  };
+
+  /** Every currency balances can hold (ISO 4217 and virtual-country currencies). No token needed. */
+  currencies = () => this.get<CurrencyInfo[]>('/currencies');
+
+  virtualCurrencies = {
+    get: (code: string) => this.get<VirtualCurrency>(`/virtual-currencies/${code}`),
+    /** Issue a currency for a virtual country you hold (one per country). */
+    create: (registryEntryId: string, input: CreateVirtualCurrencyInput) =>
+      this.post<VirtualCurrency>(`/registry/${registryEntryId}/currency`, input),
+    /** Put new money into circulation on the holder's balance. */
+    issue: (code: string, amount: string, note?: string) =>
+      this.post<VirtualCurrency>(`/virtual-currencies/${code}/issue`, { amount, note }),
+    /** Take money out of circulation from the holder's balance. */
+    redeem: (code: string, amount: string, note?: string) =>
+      this.post<VirtualCurrency>(`/virtual-currencies/${code}/redeem`, { amount, note }),
+  };
+
+  exchange = {
+    info: () => this.get<ExchangeInfo>('/exchange'),
+    quote: (input: ExchangeInput) => this.post<ExchangeQuote>('/exchange/quote', input),
+    /** Company exchanges of at least the approval limit come back as a PaymentApproval (HTTP 202). */
+    execute: (input: ExchangeInput) => this.post<ExchangeResult | PaymentApproval>('/exchange', input),
+  };
+
+  files = {
+    /** Upload a file (it stays private until attached, e.g. to an application). */
+    upload: async (file: Blob, name: string) => {
+      const res = await this.send('POST', `/files${qs({ name })}`, file);
+      const text = await res.text();
+      if (!res.ok) return OvlClient.fail(res, text);
+      return JSON.parse(text) as FileInfo;
+    },
+    remove: (id: string) => this.del(`/files/${id}`),
+    /** Absolute URL of a file link from the API (signed links work in <img> and <a>). */
+    url: (path: string) => `${this.baseUrl}${path}`,
   };
 
   applications = {
-    submit: (input: CreateApplicationInput) => this.post<Application>('/applications', input),
+    submit: (input: CreateApplicationInput & { attachments?: string[] }) =>
+      this.post<Application>('/applications', input),
+    /** Send a corrected application after a reviewer asked for changes. */
+    resubmit: (id: string, payload: Record<string, unknown>, attachments?: string[]) =>
+      this.post<Application>(`/applications/${id}/resubmit`, { payload, attachments }),
     mine: () => this.get<Application[]>('/applications/mine'),
     queue: () => this.get<Application[]>('/applications/queue'),
     list: (query?: { status?: string; type?: string; limit?: number; offset?: number }) =>
@@ -279,6 +540,9 @@ export class OvlClient {
   registry = {
     search: (query: RegistrySearchQuery = {}) => this.get<Page<RegistryEntry>>('/registry', query as Query),
     get: (idOrNumber: string) => this.get<RegistryEntry>(`/registry/${encodeURIComponent(idOrNumber)}`),
+    /** The public certificate PDF (no token needed): open it in a browser tab or download it. */
+    certificateUrl: (idOrNumber: string, download = false) =>
+      `${this.baseUrl}/api/v1/registry/${encodeURIComponent(idOrNumber)}/certificate.pdf${download ? '?download=1' : ''}`,
   };
 
   stock = {
@@ -289,6 +553,31 @@ export class OvlClient {
     invest: (ticker: string, amount: string) =>
       this.post<Investment>(`/stock/listings/${encodeURIComponent(ticker)}/invest`, { amount }),
     portfolio: () => this.get<{ holdings: Holding[]; investments: Investment[] }>('/stock/portfolio'),
+    /** Open buy and sell orders by price, and the latest trades. No token needed. */
+    book: (ticker: string) => this.get<OrderBook>(`/stock/listings/${encodeURIComponent(ticker)}/book`),
+    /** A limit order: it trades at once with matching orders and the rest stays in the book. */
+    placeOrder: (ticker: string, input: PlaceOrderInput) =>
+      this.post<{ order: StockOrder; trades: StockTrade[] }>(
+        `/stock/listings/${encodeURIComponent(ticker)}/orders`,
+        input,
+      ),
+    orders: (status?: 'open' | 'filled' | 'cancelled') => this.get<StockOrder[]>('/stock/orders', { status }),
+    cancelOrder: (id: string) => this.del<StockOrder>(`/stock/orders/${id}`),
+    dividends: (ticker: string) =>
+      this.get<Dividend[]>(`/stock/listings/${encodeURIComponent(ticker)}/dividends`),
+    proposals: (ticker: string) =>
+      this.get<Proposal[]>(`/stock/listings/${encodeURIComponent(ticker)}/proposals`),
+    /** Vote once with the shares you held when the vote opened (option keys: o1, o2…). */
+    vote: (proposalId: string, option: string) =>
+      this.post<Proposal>(`/stock/proposals/${proposalId}/vote`, { option }),
+    reports: (ticker: string) =>
+      this.get<CompanyReport[]>(`/stock/listings/${encodeURIComponent(ticker)}/reports`),
+    /** The risk disclosure to accept before investing or buying (error "risk_disclosure_required"). */
+    risk: () => this.get<RiskDisclosure>('/stock/risk'),
+    acceptRisk: (version: string) => this.post<RiskDisclosure>('/stock/risk/accept', { version }),
+    /** Your holding cap and 30-day limit, and how much of it you used. */
+    limits: () => this.get<MyStockLimits>('/stock/limits'),
+    limitSettings: () => this.get<StockLimits>('/stock/limit-settings'),
   };
 
   chats = {
@@ -300,7 +589,7 @@ export class OvlClient {
     createChannel: (input: { title: string; handle: string; description?: string; ownerId?: string }) =>
       this.post<Chat>('/chats/channels', input),
     discoverChannels: (q?: string) => this.get<Chat[]>('/channels', { q }),
-    update: (id: string, input: { title?: string; description?: string }) =>
+    update: (id: string, input: { title?: string; description?: string; commentsEnabled?: boolean }) =>
       this.patch<Chat>(`/chats/${id}`, input),
     pin: (id: string, pinned: boolean) => this.patch<void>(`/chats/${id}/pin`, { pinned }),
     members: (id: string) => this.get<ChatMember[]>(`/chats/${id}/members`),
@@ -309,12 +598,52 @@ export class OvlClient {
     join: (id: string) => this.post<Chat>(`/chats/${id}/join`),
     messages: (id: string, query?: { before?: number; limit?: number }) =>
       this.get<Message[]>(`/chats/${id}/messages`, query),
-    send: (id: string, body: string, replyToId?: number) =>
-      this.post<Message>(`/chats/${id}/messages`, { body, replyToId }),
+    /** Send a message; `fileIds` are your uploads (files.upload) to attach. @username mentions members. */
+    send: (id: string, body: string, replyToId?: number, fileIds?: string[]) =>
+      this.post<Message>(`/chats/${id}/messages`, { body, replyToId, fileIds }),
     edit: (id: string, messageId: number, body: string) =>
       this.patch<Message>(`/chats/${id}/messages/${messageId}`, { body }),
     deleteMessage: (id: string, messageId: number) => this.del(`/chats/${id}/messages/${messageId}`),
     read: (id: string, messageId: number) => this.post<void>(`/chats/${id}/read`, { messageId }),
+    /** How far the other members read (direct chats and groups). */
+    receipts: (id: string) => this.get<ReadReceipt[]>(`/chats/${id}/receipts`),
+    /** Search messages in your chats (every word as a prefix), newest first. */
+    search: (q: string, query?: { chatId?: string; limit?: number }) =>
+      this.get<MessageSearchResult[]>('/chats/search', { q, ...query }),
+    react: (id: string, messageId: number, emoji: string) =>
+      this.post<Message>(`/chats/${id}/messages/${messageId}/reactions`, { emoji }),
+    unreact: (id: string, messageId: number, emoji: string) =>
+      this.del<Message>(`/chats/${id}/messages/${messageId}/reactions${qs({ emoji })}`),
+    /** Comments under a channel post, newest first. */
+    comments: (id: string, postId: number, query?: { before?: number; limit?: number }) =>
+      this.get<Message[]>(`/chats/${id}/messages/${postId}/comments`, query),
+    comment: (id: string, postId: number, body: string, fileIds?: string[]) =>
+      this.post<Message>(`/chats/${id}/messages/${postId}/comments`, { body, fileIds }),
+  };
+
+  /** Council rules, council members and published transparency reports (public). */
+  governance = {
+    get: () => this.get<Governance>('/governance'),
+    reports: () => this.get<TransparencyReport[]>('/transparency'),
+    report: (id: string) => this.get<TransparencyReport>(`/transparency/${id}`),
+  };
+
+  /** Your notification center, and the devices that receive push notifications. */
+  notifications = {
+    list: (query?: { before?: string; unread?: boolean; limit?: number }) =>
+      this.get<NotificationPage>('/notifications', {
+        ...query,
+        unread: query?.unread === undefined ? undefined : String(query.unread),
+      }),
+    /** Mark these (or, without ids, all) as read. */
+    read: (ids?: string[]) => this.post<{ unreadCount: number }>('/notifications/read', { ids }),
+    remove: (id: string) => this.del(`/notifications/${id}`),
+    pushConfig: () => this.get<PushConfig>('/push/config'),
+    devices: () => this.get<PushDevice[]>('/me/push-subscriptions'),
+    /** Register this device: a browser PushSubscription (toJSON()) or an FCM / APNs token. */
+    addDevice: (input: PushSubscriptionInput) => this.post<PushDevice>('/me/push-subscriptions', input),
+    removeDevice: (id: string) => this.del(`/me/push-subscriptions/${id}`),
+    test: () => this.post<{ devices: number; delivered: number }>('/me/push-subscriptions/test'),
   };
 
   support = {
@@ -357,9 +686,36 @@ export class OvlClient {
       this.get<Wallet[]>('/admin/wallets', { ownerType, ownerId }),
     cashOperations: (query?: { limit?: number; offset?: number }) =>
       this.get<Page<CashOperation>>('/admin/cash-operations', query),
-    cashOperation: (input: CashOperationInput) => this.post<CashOperation>('/admin/cash-operations', input),
-    setRegistryStatus: (id: string, status: 'active' | 'suspended' | 'revoked', reason?: string) =>
+    /** Large amounts come back as a CashApproval waiting for a second manager (HTTP 202). */
+    cashOperation: (input: CashOperationInput) =>
+      this.post<CashOperation | CashApproval>('/admin/cash-operations', input),
+    cashApprovals: (status?: 'pending' | 'approved' | 'rejected') =>
+      this.get<CashApproval[]>('/admin/cash-approvals', { status }),
+    /** Base currency, fee and rates; a null rate removes a currency. */
+    setExchange: (input: {
+      base?: string;
+      feePercent?: string;
+      rates?: { currency: string; rate: string | null }[];
+    }) => this.put<ExchangeInfo>('/admin/exchange', input),
+    approveCash: (id: string) => this.post<CashApproval>(`/admin/cash-approvals/${id}/approve`),
+    rejectCash: (id: string, reason: string) =>
+      this.post<CashApproval>(`/admin/cash-approvals/${id}/reject`, { reason }),
+    cashRequests: (status?: CashRequestStatus) => this.get<CashRequest[]>('/admin/cash-requests', { status }),
+    identityChecks: (status?: 'pending' | 'approved' | 'rejected' | 'revoked') =>
+      this.get<IdentityCheck[]>('/admin/identity-checks', { status }),
+    decideIdentity: (id: string, action: 'approve' | 'reject' | 'revoke', reason?: string) =>
+      this.post<IdentityCheck>(`/admin/identity-checks/${id}/${action}`, reason ? { reason } : {}),
+    completeCashRequest: (id: string, input: { reference: string; note?: string }) =>
+      this.post<CashRequest>(`/admin/cash-requests/${id}/complete`, input),
+    declineCashRequest: (id: string, reason: string) =>
+      this.post<CashRequest>(`/admin/cash-requests/${id}/decline`, { reason }),
+    setRegistryStatus: (id: string, status: RegistryEntry['status'], reason?: string) =>
       this.patch<RegistryEntry>(`/admin/registry/${id}`, { status, reason }),
+    setCurrencyStatus: (code: string, status: 'active' | 'suspended') =>
+      this.patch<VirtualCurrency>(`/admin/virtual-currencies/${code}`, { status }),
+    /** Move a licence's expiry date (ISO date-time), or null for no expiry. */
+    setRegistryExpiry: (id: string, expiresAt: string | null) =>
+      this.patch<RegistryEntry>(`/admin/registry/${id}`, { expiresAt }),
     updateListing: (
       id: string,
       input: {
@@ -369,10 +725,36 @@ export class OvlClient {
         lockDays?: number;
       },
     ) => this.patch<StockListing>(`/admin/stock/listings/${id}`, input),
+    /** Per-investor limits; "" turns a monthly limit off. */
+    setStockLimits: (input: {
+      maxHoldingPercent?: number;
+      monthlyLimit?: string;
+      unverifiedMonthlyLimit?: string;
+    }) => this.put<StockLimits>('/admin/stock/limits', input),
     auditLogs: (query?: { action?: string; limit?: number; offset?: number }) =>
       this.get<Page<AuditLog>>('/admin/audit-logs', query),
+    /** The audit log as a CSV or NDJSON file (oldest first). */
+    exportAuditLogs: (query: { format: 'csv' | 'ndjson'; action?: string; from?: string; to?: string }) =>
+      this.download('/admin/audit-logs/export', query),
+    /** Instances, connections, queues, background jobs and the last backup. */
+    system: () => this.get<SystemStatus>('/admin/system'),
+    /** Council voting rules and term length (owner). */
+    setGovernance: (input: {
+      councilVoting?: 'quorum' | 'majority' | 'two_thirds';
+      councilQuorum?: number;
+      councilTermMonths?: number;
+    }) => this.put<Governance>('/admin/governance', input),
+    /** Start a new term for a council member now (0 months: no limit). */
+    renewCouncilTerm: (userId: string, months: number) =>
+      this.post<{ termEndsAt: string | null }>(`/admin/users/${userId}/council-term`, { months }),
+    transparencyPreview: (from: string, to: string) =>
+      this.get<TransparencyStats>('/admin/transparency/preview', { from, to }),
+    publishTransparency: (input: { title: string; periodStart: string; periodEnd: string; notes?: string }) =>
+      this.post<TransparencyReport>('/admin/transparency', input),
+    retractTransparency: (id: string) => this.del(`/admin/transparency/${id}`),
     apiKeys: (query?: { limit?: number; offset?: number }) =>
       this.get<Page<ApiKey>>('/admin/api-keys', query),
     revokeApiKey: (id: string) => this.del(`/admin/api-keys/${id}`),
+    signOutUser: (id: string) => this.post<{ signedOut: number }>(`/admin/users/${id}/sign-out`),
   };
 }

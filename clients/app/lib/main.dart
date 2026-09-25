@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
+import 'i18n/i18n.dart';
 import 'state/session.dart';
 import 'theme/theme_controller.dart';
 
@@ -26,11 +27,14 @@ Future<void> main(List<String> args) async {
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   final prefs = await SharedPreferences.getInstance();
   final themes = ThemeController(prefs);
-  final session = await Session.start(prefs, themes);
+  final locales = LocaleController(prefs);
+  await locales.init();
+  final session = await Session.start(prefs, themes, locales);
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: themes),
+        ChangeNotifierProvider.value(value: locales),
         ChangeNotifierProvider.value(value: session),
       ],
       child: OvlApp(session: session, initialRoute: _routeArg(args)),

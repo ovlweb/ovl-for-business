@@ -5,8 +5,10 @@
  */
 import { z } from 'zod';
 import { BADGES, ROLES } from './roles';
+import { LOCALES } from './i18n';
 import { THEME_IDS } from './themes';
 import {
+  COUNCIL_VOTING,
   APPLICATION_STATUSES,
   APPLICATION_TYPES,
   LICENSE_TYPES,
@@ -80,6 +82,14 @@ export const preferencesSchema = z.object({
   onboardingCompleted: z.boolean().optional(),
   goals: z.array(z.enum(GOALS)).max(GOALS.length).optional(),
   compactSidebar: z.boolean().optional(),
+  /** Email a PDF statement of every balance at the start of each month. */
+  statementEmails: z.boolean().optional(),
+  /** Let others see when you read their messages (and see theirs); on unless false. */
+  readReceipts: z.boolean().optional(),
+  /** Language of the apps (web, admin panel, native); the device's language until set. */
+  locale: z.enum(LOCALES).optional(),
+  /** Push new direct and group messages to your devices while you are away; on unless false. */
+  pushChats: z.boolean().optional(),
 });
 export type Preferences = z.infer<typeof preferencesSchema>;
 
@@ -89,6 +99,13 @@ export const meSchema = userSummarySchema.extend({
   status: z.enum(['active', 'suspended']),
   permissions: z.array(z.string()),
   preferences: preferencesSchema,
+  twoFactorEnabled: z.boolean(),
+  emailVerified: z.boolean(),
+  identityVerified: z.boolean().describe('Identity documents checked by staff (KYC)'),
+  strongSession: z
+    .boolean()
+    .optional()
+    .describe('On /me and sign-in answers: signed in with a passkey or single sign-on (counts as two-step)'),
   createdAt: isoDate,
 });
 export type Me = z.infer<typeof meSchema>;
@@ -104,6 +121,12 @@ export type RegisterInput = z.input<typeof registerSchema>;
 export const loginSchema = z.object({
   login: z.string().trim().min(1).max(254).describe('Username or email'),
   password: z.string().min(1).max(128),
+  code: z
+    .string()
+    .trim()
+    .max(32)
+    .optional()
+    .describe('Authenticator code or a recovery code, for accounts with two-factor authentication'),
 });
 export type LoginInput = z.input<typeof loginSchema>;
 
@@ -127,10 +150,91 @@ export const updateMeSchema = z.object({
 });
 export type UpdateMeInput = z.input<typeof updateMeSchema>;
 
+export const verifyEmailSchema = z.object({ token: z.string().min(16).max(128) });
+export const forgotPasswordSchema = z.object({ email: z.email().trim().toLowerCase() });
+export const resetPasswordSchema = z.object({
+  token: z.string().min(16).max(128),
+  password: z.string().min(8).max(128),
+});
+export const changeEmailSchema = z.object({
+  email: z.email().trim().toLowerCase(),
+  password: z.string().min(1).max(128),
+});
+
+export const passkeySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  backedUp: z.boolean().describe('Synced by the password manager (usable on other devices)'),
+  createdAt: isoDate,
+  lastUsedAt: isoDate.nullable(),
+});
+export type Passkey = z.infer<typeof passkeySchema>;
+
+/** WebAuthn options for the browser, plus the id of the server-side challenge to send back. */
+export const passkeyOptionsSchema = z.object({
+  challengeId: z.uuid(),
+  options: z.record(z.string(), z.unknown()),
+});
+export const addPasskeySchema = z.object({
+  challengeId: z.uuid(),
+  name: z.string().trim().min(1).max(64),
+  response: z.record(z.string(), z.unknown()).describe('RegistrationResponseJSON from the browser'),
+});
+export const passkeyLoginSchema = z.object({
+  challengeId: z.uuid(),
+  response: z.record(z.string(), z.unknown()).describe('AuthenticationResponseJSON from the browser'),
+});
+
+/** Security rules of this server, published in /meta so clients can guide people. */
+export const securityPolicySchema = z.object({
+  twoFactorForStaff: z.boolean(),
+  twoFactorForCompanyFinance: z.boolean(),
+  verifiedEmailForApplications: z.boolean(),
+  identityForCompanies: z.boolean().describe('Company owners pass an identity check before approval'),
+});
+export type SecurityPolicy = z.infer<typeof securityPolicySchema>;
+
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
   newPassword: z.string().min(8).max(128),
 });
+
+// Two-factor authentication (TOTP authenticator apps + one-time recovery codes)
+
+export const twoFactorStatusSchema = z.object({
+  enabled: z.boolean(),
+  enabledAt: isoDate.nullable(),
+  recoveryCodesLeft: z.number().int(),
+});
+export type TwoFactorStatus = z.infer<typeof twoFactorStatusSchema>;
+
+export const twoFactorSetupSchema = z.object({
+  secret: z.string().describe('Base32 secret for manual entry'),
+  otpauthUrl: z.string(),
+  qr: z.string().describe('PNG data URL of the otpauth QR code'),
+});
+export type TwoFactorSetup = z.infer<typeof twoFactorSetupSchema>;
+
+export const twoFactorCodeSchema = z.object({ code: z.string().trim().min(6).max(32) });
+export const disableTwoFactorSchema = z.object({
+  password: z.string().min(1).max(128),
+  code: z.string().trim().min(6).max(32),
+});
+export const recoveryCodesSchema = z.object({
+  recoveryCodes: z.array(z.string()).describe('Shown once. Each code signs in one time.'),
+});
+
+/** A signed-in device. Every sign-in starts a session; refreshing tokens keeps it alive. */
+export const sessionSchema = z.object({
+  id: uuid,
+  device: z.string().describe('Human description, e.g. "Chrome on Windows"'),
+  kind: z.enum(['desktop', 'mobile', 'tablet', 'app', 'api', 'unknown']),
+  ip: z.string().nullable(),
+  createdAt: isoDate,
+  lastUsedAt: isoDate,
+  current: z.boolean().describe('The session making this request'),
+});
+export type Session = z.infer<typeof sessionSchema>;
 
 export const contactSchema = userSummarySchema.extend({ addedAt: isoDate });
 export type Contact = z.infer<typeof contactSchema>;
@@ -160,6 +264,16 @@ export const LEDGER_KINDS = [
   'transfer_out',
   'investment_in',
   'investment_out',
+  'exchange_in',
+  'exchange_out',
+  'payroll_in',
+  'payroll_out',
+  'issuance',
+  'redemption',
+  'trade_in',
+  'trade_out',
+  'dividend_in',
+  'dividend_out',
   'adjustment',
 ] as const;
 
@@ -229,6 +343,355 @@ export const cashOperationSchema = z.object({
 });
 export type CashOperation = z.infer<typeof cashOperationSchema>;
 
+/** Someone asks a finance manager to deposit to or pay out from one of their balances. */
+export const CASH_REQUEST_STATUSES = ['pending', 'completed', 'declined', 'cancelled'] as const;
+
+export const cashRequestInputSchema = z.object({
+  type: z.enum(['deposit', 'withdrawal']),
+  method: z.enum(CASH_METHODS),
+  amount: decimalAmountSchema,
+  note: z
+    .string()
+    .trim()
+    .max(1000)
+    .optional()
+    .describe('Where the money comes from or goes to, e.g. bank details or a preferred cash desk time'),
+});
+export type CashRequestInput = z.input<typeof cashRequestInputSchema>;
+
+export const cashRequestSchema = z.object({
+  id: uuid,
+  walletId: uuid,
+  ownerType: walletOwnerTypeSchema,
+  ownerId: uuid,
+  ownerName: z.string(),
+  type: z.enum(['deposit', 'withdrawal']),
+  method: z.enum(CASH_METHODS),
+  amount: z.string(),
+  currency: z.string(),
+  note: z.string(),
+  status: z.enum(CASH_REQUEST_STATUSES),
+  requestedBy: userSummarySchema.pick({ id: true, username: true, displayName: true }),
+  handledBy: userSummarySchema.pick({ id: true, username: true, displayName: true }).nullable(),
+  awaitingApproval: z.boolean().describe('A manager completed it; a second one has to confirm'),
+  reference: z.string().nullable().describe('Reference of the cash operation that fulfilled the request'),
+  declineReason: z.string().nullable(),
+  createdAt: isoDate,
+  handledAt: isoDate.nullable(),
+});
+export type CashRequest = z.infer<typeof cashRequestSchema>;
+export type CashRequestStatus = (typeof CASH_REQUEST_STATUSES)[number];
+
+/** A large cash operation waiting for a second finance manager ("four eyes"). */
+export const cashApprovalSchema = z.object({
+  id: uuid,
+  kind: z.enum(['operation', 'request']).describe('A cash desk operation, or completing a cash request'),
+  cashRequestId: uuid.nullable(),
+  walletId: uuid,
+  ownerType: walletOwnerTypeSchema,
+  ownerName: z.string(),
+  type: z.enum(['deposit', 'withdrawal']),
+  method: z.enum(CASH_METHODS),
+  amount: z.string(),
+  currency: z.string(),
+  reference: z.string(),
+  note: z.string(),
+  status: z.enum(['pending', 'approved', 'rejected']),
+  requestedBy: userSummarySchema.pick({ id: true, username: true, displayName: true }),
+  decidedBy: userSummarySchema.pick({ id: true, username: true, displayName: true }).nullable(),
+  rejectReason: z.string().nullable(),
+  createdAt: isoDate,
+  decidedAt: isoDate.nullable(),
+});
+export type CashApproval = z.infer<typeof cashApprovalSchema>;
+
+export const completeCashRequestSchema = z.object({
+  reference: z.string().trim().min(1).max(128).describe('Bank reference, receipt number, cash desk slip…'),
+  note: z.string().trim().max(1000).optional(),
+});
+export const declineCashRequestSchema = z.object({ reason: z.string().trim().min(3).max(500) });
+
+export const statementRangeSchema = z.object({
+  from: z.iso.date().optional().describe('First day to include (YYYY-MM-DD)'),
+  to: z.iso.date().optional().describe('Last day to include (YYYY-MM-DD)'),
+});
+export type StatementRange = z.infer<typeof statementRangeSchema>;
+export const statementLinkInputSchema = statementRangeSchema.extend({
+  format: z.enum(['csv', 'pdf']).default('csv'),
+});
+export type StatementLinkInput = z.input<typeof statementLinkInputSchema>;
+
+/** One calendar month (UTC) of a balance, for the monthly statements list. */
+export const monthlyStatementSchema = z.object({
+  month: z.string().describe('YYYY-MM'),
+  from: z.iso.date(),
+  to: z.iso.date(),
+  opening: z.string(),
+  moneyIn: z.string(),
+  moneyOut: z.string(),
+  closing: z.string(),
+  operations: z.number().int(),
+});
+export type MonthlyStatement = z.infer<typeof monthlyStatementSchema>;
+export const statementLinkSchema = z.object({
+  path: z.string().describe('Append to the server address; works without an Authorization header'),
+  expiresAt: isoDate,
+});
+export type StatementLink = z.infer<typeof statementLinkSchema>;
+
+// ---------------------------------------------------------------------------
+// Currency exchange
+// ---------------------------------------------------------------------------
+
+export const exchangeRateSchema = z.object({
+  currency: z.string(),
+  rate: z.string().describe('How much one unit is worth in the base currency'),
+  updatedAt: isoDate,
+});
+export const exchangeInfoSchema = z.object({
+  base: z.string().describe('Rates are quoted against this currency'),
+  feePercent: z.string().describe('Taken from the amount before converting'),
+  rates: z.array(exchangeRateSchema),
+});
+export type ExchangeInfo = z.infer<typeof exchangeInfoSchema>;
+
+export const exchangeInputSchema = z.object({
+  fromWalletId: uuid,
+  toCurrency: currencyCodeSchema,
+  amount: decimalAmountSchema.describe('How much to exchange, in the source currency'),
+});
+export type ExchangeInput = z.input<typeof exchangeInputSchema>;
+
+export const exchangeQuoteSchema = z.object({
+  fromCurrency: z.string(),
+  toCurrency: z.string(),
+  amount: z.string(),
+  fee: z.string().describe('In the source currency'),
+  receive: z.string().describe('In the target currency'),
+  rate: z.string().describe('Target units per source unit'),
+});
+export type ExchangeQuote = z.infer<typeof exchangeQuoteSchema>;
+export const exchangeResultSchema = exchangeQuoteSchema.extend({
+  id: uuid,
+  fromWalletId: uuid,
+  toWalletId: uuid,
+  createdAt: isoDate,
+});
+export type ExchangeResult = z.infer<typeof exchangeResultSchema>;
+
+export const setExchangeSchema = z.object({
+  base: currencyCodeSchema.optional(),
+  feePercent: z
+    .string()
+    .regex(/^\d{1,2}(\.\d{1,2})?$/, 'A percentage such as "0.5"')
+    .optional(),
+  rates: z
+    .array(
+      z.object({
+        currency: currencyCodeSchema,
+        rate: z
+          .string()
+          .regex(/^\d{1,12}(\.\d{1,12})?$/, 'A positive decimal')
+          .nullable()
+          .describe('null removes the currency from exchange'),
+      }),
+    )
+    .max(200)
+    .optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Multi-signature company payments
+// ---------------------------------------------------------------------------
+
+export const PAYMENT_APPROVAL_KINDS = ['transfer', 'invoice', 'exchange', 'payroll', 'dividend'] as const;
+export const paymentApprovalSchema = z.object({
+  id: uuid,
+  organizationId: uuid,
+  walletId: uuid,
+  kind: z.enum(PAYMENT_APPROVAL_KINDS),
+  amount: z.string(),
+  currency: z.string(),
+  description: z.string(),
+  status: z.enum(['pending', 'approved', 'rejected']),
+  requestedBy: userSummarySchema.pick({ id: true, username: true, displayName: true }),
+  decidedBy: userSummarySchema.pick({ id: true, username: true, displayName: true }).nullable(),
+  reason: z.string().nullable(),
+  createdAt: isoDate,
+  decidedAt: isoDate.nullable(),
+});
+export type PaymentApproval = z.infer<typeof paymentApprovalSchema>;
+
+// ---------------------------------------------------------------------------
+// Invoices
+// ---------------------------------------------------------------------------
+
+export const INVOICE_STATUSES = ['open', 'paid', 'cancelled'] as const;
+export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
+
+/** A person or a company on an invoice. */
+export const invoicePartySchema = z.object({
+  type: walletOwnerTypeSchema,
+  id: uuid,
+  name: z.string(),
+  handle: z.string().describe('@username or company slug'),
+});
+export type InvoiceParty = z.infer<typeof invoicePartySchema>;
+
+export const invoiceItemInputSchema = z.object({
+  description: z.string().trim().min(1).max(200),
+  quantity: z.number().int().min(1).max(1_000_000),
+  unitPrice: decimalAmountSchema,
+});
+
+export const createInvoiceSchema = z.object({
+  from: z
+    .discriminatedUnion('type', [
+      z.object({ type: z.literal('user') }),
+      z.object({ type: z.literal('organization'), organizationId: uuid }),
+    ])
+    .describe('Yourself, or a company where you are an owner, director or accountant'),
+  to: transferSchema.shape.to,
+  currency: currencyCodeSchema,
+  dueDate: z.iso.date(),
+  items: z.array(invoiceItemInputSchema).min(1).max(50),
+  note: z.string().trim().max(1000).optional(),
+});
+export type CreateInvoiceInput = z.input<typeof createInvoiceSchema>;
+
+export const invoiceSchema = z.object({
+  id: uuid,
+  number: z.string().describe('Per issuer and year, e.g. INV-2026-0007'),
+  direction: z
+    .enum(['incoming', 'outgoing'])
+    .describe('Seen from the caller: outgoing when they can act for the issuer'),
+  issuer: invoicePartySchema,
+  recipient: invoicePartySchema,
+  currency: z.string(),
+  items: z.array(
+    z.object({
+      description: z.string(),
+      quantity: z.number().int(),
+      unitPrice: z.string(),
+      amount: z.string(),
+    }),
+  ),
+  total: z.string(),
+  amountPaid: z.string().describe('Paid so far (invoices can be paid in parts)'),
+  amountDue: z.string().describe('Still to pay'),
+  payments: z.array(
+    z.object({
+      id: uuid,
+      amount: z.string(),
+      paidBy: userSummarySchema.pick({ id: true, username: true, displayName: true }),
+      createdAt: isoDate,
+    }),
+  ),
+  note: z.string(),
+  dueDate: z.iso.date(),
+  status: z.enum(INVOICE_STATUSES),
+  overdue: z.boolean(),
+  recurring: z
+    .object({ scheduleId: uuid, interval: z.string() })
+    .nullable()
+    .describe('Issued by a recurring schedule'),
+  createdBy: userSummarySchema.pick({ id: true, username: true, displayName: true }),
+  createdAt: isoDate,
+  paidAt: isoDate.nullable().describe('When it was paid in full'),
+  paidBy: userSummarySchema.pick({ id: true, username: true, displayName: true }).nullable(),
+  cancelledAt: isoDate.nullable(),
+  cancelReason: z.string().nullable(),
+});
+export type Invoice = z.infer<typeof invoiceSchema>;
+
+export const invoiceQuerySchema = z.object({
+  direction: z.enum(['incoming', 'outgoing']).optional(),
+  status: z.enum(INVOICE_STATUSES).optional(),
+});
+export const payInvoiceSchema = z.object({
+  walletId: uuid.describe("One of the recipient's balances in the invoice currency"),
+  amount: decimalAmountSchema.optional().describe('Pay part of it (by default: everything still due)'),
+});
+
+export const INVOICE_INTERVALS = ['weekly', 'monthly', 'quarterly', 'yearly'] as const;
+export type InvoiceInterval = (typeof INVOICE_INTERVALS)[number];
+export const INVOICE_SCHEDULE_STATUSES = ['active', 'paused', 'ended'] as const;
+
+export const createInvoiceScheduleSchema = createInvoiceSchema.omit({ dueDate: true }).extend({
+  interval: z.enum(INVOICE_INTERVALS),
+  startDate: z.iso.date().describe('The first invoice goes out on this day (today: at once)'),
+  endDate: z.iso.date().optional().describe('No invoices after this day'),
+  dueDays: z.number().int().min(0).max(365).default(14).describe('Each invoice is due this many days later'),
+});
+export type CreateInvoiceScheduleInput = z.input<typeof createInvoiceScheduleSchema>;
+
+export const invoiceScheduleSchema = z.object({
+  id: uuid,
+  issuer: invoicePartySchema,
+  recipient: invoicePartySchema,
+  currency: z.string(),
+  items: invoiceSchema.shape.items,
+  total: z.string(),
+  note: z.string(),
+  interval: z.enum(INVOICE_INTERVALS),
+  dueDays: z.number().int(),
+  startDate: z.iso.date(),
+  endDate: z.iso.date().nullable(),
+  nextRunOn: z.iso.date().nullable().describe('When the next invoice goes out; null once ended'),
+  status: z.enum(INVOICE_SCHEDULE_STATUSES),
+  invoiceCount: z.number().int(),
+  lastInvoiceId: uuid.nullable(),
+  createdBy: userSummarySchema.pick({ id: true, username: true, displayName: true }),
+  createdAt: isoDate,
+});
+export type InvoiceSchedule = z.infer<typeof invoiceScheduleSchema>;
+export const updateInvoiceScheduleSchema = z.object({
+  status: z.enum(INVOICE_SCHEDULE_STATUSES).describe('Pause, resume, or end for good'),
+});
+
+// ---------------------------------------------------------------------------
+// Payroll
+// ---------------------------------------------------------------------------
+
+export const PAYROLL_STATUSES = ['pending', 'paid', 'rejected'] as const;
+export const payrollInputSchema = z.object({
+  walletId: uuid.describe('The company balance that pays'),
+  title: z.string().trim().min(1).max(120).describe('For example "Salaries — March"'),
+  items: z
+    .array(
+      z.object({
+        username: usernameSchema,
+        amount: decimalAmountSchema,
+        note: z.string().trim().max(200).optional(),
+      }),
+    )
+    .min(1)
+    .max(200),
+});
+export type PayrollInput = z.input<typeof payrollInputSchema>;
+export const payrollRunSchema = z.object({
+  id: uuid,
+  organizationId: uuid,
+  walletId: uuid,
+  currency: z.string(),
+  title: z.string(),
+  total: z.string(),
+  status: z.enum(PAYROLL_STATUSES).describe('pending: waiting for a second signature'),
+  items: z.array(
+    z.object({
+      user: userSummarySchema.pick({ id: true, username: true, displayName: true }),
+      amount: z.string(),
+      note: z.string(),
+    }),
+  ),
+  approvalId: uuid.nullable(),
+  createdBy: userSummarySchema.pick({ id: true, username: true, displayName: true }),
+  createdAt: isoDate,
+  paidAt: isoDate.nullable(),
+});
+export type PayrollRun = z.infer<typeof payrollRunSchema>;
+export const cancelInvoiceSchema = z.object({ reason: z.string().trim().max(500).optional() });
+
 // ---------------------------------------------------------------------------
 // Organizations
 // ---------------------------------------------------------------------------
@@ -253,6 +716,11 @@ export const organizationSchema = z.object({
   owner: userSummarySchema,
   memberCount: z.number().int(),
   myRole: orgRoleSchema.nullable(),
+  verified: z.boolean().describe('Verified business: its owner passed an identity check'),
+  approvalLimit: z
+    .string()
+    .nullable()
+    .describe('Payments of at least this much (in the base currency) need a second finance member'),
   createdAt: isoDate,
 });
 export type Organization = z.infer<typeof organizationSchema>;
@@ -268,6 +736,10 @@ export const addOrgMemberSchema = z.object({
 export const updateOrganizationSchema = z.object({
   description: z.string().trim().min(10).max(5000).optional(),
   website: z.union([z.url({ protocol: /^https?$/ }), z.literal('')]).optional(),
+  approvalLimit: z
+    .union([decimalAmountSchema, z.literal('')])
+    .optional()
+    .describe('Owners and directors: payments of at least this much need two people ("" turns it off)'),
 });
 
 // ---------------------------------------------------------------------------
@@ -279,12 +751,112 @@ export const applicationReviewSchema = z.object({
   stageKey: z.string(),
   reviewer: userSummarySchema,
   reviewerRole: roleSchema,
-  decision: z.enum(['approve', 'reject']),
+  decision: z.enum(['approve', 'reject', 'request_changes']),
   comment: z.string(),
   checklist: z.array(z.string()).nullable(),
+  round: z.number().int(),
   createdAt: isoDate,
 });
 export type ApplicationReview = z.infer<typeof applicationReviewSchema>;
+
+/** An uploaded file; `url` is a signed link for the caller (works in <img> and <a>, about an hour). */
+export const fileSchema = z.object({
+  id: uuid,
+  name: z.string(),
+  contentType: z.string(),
+  size: z.number().int(),
+  url: z.string(),
+  createdAt: isoDate,
+});
+export type FileInfo = z.infer<typeof fileSchema>;
+
+export const createReportSchema = z.object({
+  period: z
+    .string()
+    .trim()
+    .regex(/^\d{4}(-(Q[1-4]|H[12]|\d{2}))?$/, 'For example "2026-Q3", "2026-H1" or "2026"'),
+  title: z.string().trim().min(3).max(200),
+  body: z.string().trim().min(10).max(20_000),
+  revenue: z
+    .string()
+    .trim()
+    .regex(/^-?\d{1,24}(\.\d+)?$/)
+    .optional(),
+  profit: z
+    .string()
+    .trim()
+    .regex(/^-?\d{1,24}(\.\d+)?$/)
+    .optional(),
+  attachments: z.array(z.uuid()).max(10).optional(),
+});
+export type CreateReportInput = z.input<typeof createReportSchema>;
+export const companyReportSchema = z.object({
+  id: z.uuid(),
+  organizationId: z.uuid(),
+  period: z.string(),
+  title: z.string(),
+  body: z.string(),
+  currency: z.string(),
+  revenue: z.string().nullable(),
+  profit: z.string().nullable(),
+  files: z.array(fileSchema),
+  author: userSummarySchema.pick({ id: true, username: true, displayName: true }),
+  publishedAt: z.string(),
+});
+export type CompanyReport = z.infer<typeof companyReportSchema>;
+
+// Identity verification (KYC)
+
+export const IDENTITY_STATUSES = ['pending', 'approved', 'rejected', 'revoked'] as const;
+export const IDENTITY_DOCUMENTS = ['passport', 'id_card', 'driver_license', 'residence_permit'] as const;
+
+export const identitySubmitSchema = z.object({
+  legalName: z.string().trim().min(2).max(120),
+  dateOfBirth: z.iso.date(),
+  country: z.string().trim().min(2).max(80),
+  documentType: z.enum(IDENTITY_DOCUMENTS),
+  documentNumber: z.string().trim().min(4).max(40),
+  documentFileId: uuid.describe('A photo or scan of the document (uploaded with POST /files)'),
+  selfieFileId: uuid.optional().describe('A photo of you holding the document'),
+});
+export type IdentitySubmitInput = z.infer<typeof identitySubmitSchema>;
+
+export const identityCheckSchema = z.object({
+  id: uuid,
+  user: userSummarySchema,
+  status: z.enum(IDENTITY_STATUSES),
+  legalName: z.string(),
+  dateOfBirth: z.iso.date(),
+  country: z.string(),
+  documentType: z.enum(IDENTITY_DOCUMENTS),
+  documentLast4: z.string().describe('Only the last four characters of the number are kept'),
+  files: z.array(fileSchema),
+  duplicate: z.boolean().describe('The same document number is on another verified account'),
+  rejectionReason: z.string().nullable(),
+  reviewedBy: userSummarySchema.pick({ id: true, username: true, displayName: true }).nullable(),
+  createdAt: isoDate,
+  reviewedAt: isoDate.nullable(),
+});
+export type IdentityCheck = z.infer<typeof identityCheckSchema>;
+export const identityDecisionSchema = z.object({ reason: z.string().trim().min(3).max(500) });
+
+/** Types people can upload: images, PDF, text and office documents (no SVG or HTML). */
+export const UPLOAD_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+  'application/pdf',
+  'text/plain',
+  'text/csv',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.oasis.opendocument.text',
+  'application/vnd.oasis.opendocument.spreadsheet',
+  'application/zip',
+] as const;
 
 export const applicationSchema = z.object({
   id: uuid,
@@ -296,6 +868,10 @@ export const applicationSchema = z.object({
   payload: z.record(z.string(), z.unknown()),
   result: z.record(z.string(), z.unknown()).nullable(),
   rejectionReason: z.string().nullable(),
+  /** Set while the applicant is asked to change something. */
+  changesRequested: z.string().nullable(),
+  round: z.number().int(),
+  attachments: z.array(fileSchema),
   reviews: z.array(applicationReviewSchema),
   createdAt: isoDate,
   updatedAt: isoDate,
@@ -304,18 +880,27 @@ export const applicationSchema = z.object({
 export type Application = z.infer<typeof applicationSchema>;
 
 export const reviewInputSchema = z.object({
-  decision: z.enum(['approve', 'reject']),
+  decision: z.enum(['approve', 'reject', 'request_changes']),
   comment: z.string().trim().max(5000).optional(),
   checklist: z.array(z.string()).optional().describe('Checklist keys the reviewer confirms they reviewed'),
 });
 export type ReviewInput = z.input<typeof reviewInputSchema>;
+
+/** Attach uploaded files (up to 10 per application) when submitting or resubmitting. */
+export const attachmentIdsSchema = z.array(uuid).max(10).optional();
+export const resubmitApplicationSchema = z.object({
+  payload: z
+    .record(z.string(), z.unknown())
+    .describe('The corrected application, same shape as at submission'),
+  attachments: attachmentIdsSchema.describe('More files to attach'),
+});
 
 // ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
 export const REGISTRY_KINDS = ['organization', 'license', 'virtual_country'] as const;
-export const REGISTRY_STATUSES = ['active', 'suspended', 'revoked'] as const;
+export const REGISTRY_STATUSES = ['active', 'suspended', 'revoked', 'expired'] as const;
 
 export const registryEntrySchema = z.object({
   id: uuid,
@@ -331,11 +916,124 @@ export const registryEntrySchema = z.object({
     id: uuid,
     name: z.string(),
     handle: z.string().describe('Username or organization slug'),
+    verified: z.boolean().describe('A verified business (organizations only)'),
   }),
   issuedAt: isoDate,
+  expiresAt: isoDate.nullable().describe('Licences run for a term and are renewed; companies do not expire'),
+  currency: z.string().nullable().describe('The currency a virtual country issues'),
   updatedAt: isoDate,
 });
 export type RegistryEntry = z.infer<typeof registryEntrySchema>;
+
+// ---------------------------------------------------------------------------
+// Webhooks for API consumers
+// ---------------------------------------------------------------------------
+
+/** What an endpoint can subscribe to; "ping" is sent by the test button only. */
+export const WEBHOOK_EVENTS = [
+  'registry.created',
+  'registry.updated',
+  'listing.created',
+  'listing.updated',
+] as const;
+export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number] | 'ping';
+
+export const webhookEndpointSchema = z.object({
+  id: uuid,
+  url: z.string(),
+  description: z.string(),
+  events: z.array(z.enum(WEBHOOK_EVENTS)),
+  active: z.boolean(),
+  failures: z.number().int().describe('Failed deliveries in a row; 20 turn the endpoint off'),
+  disabledReason: z.string().nullable(),
+  lastDeliveryAt: isoDate.nullable(),
+  createdAt: isoDate,
+});
+export type WebhookEndpoint = z.infer<typeof webhookEndpointSchema>;
+export const createdWebhookSchema = webhookEndpointSchema.extend({
+  secret: z.string().describe('Signs every delivery (X-OVL-Signature); shown only now'),
+});
+export type CreatedWebhook = z.infer<typeof createdWebhookSchema>;
+
+const webhookUrl = z.url({ protocol: /^https?$/ }).max(2000);
+export const createWebhookSchema = z.object({
+  url: webhookUrl,
+  events: z.array(z.enum(WEBHOOK_EVENTS)).min(1),
+  description: z.string().trim().max(200).optional(),
+});
+export type CreateWebhookInput = z.input<typeof createWebhookSchema>;
+export const updateWebhookSchema = z.object({
+  url: webhookUrl.optional(),
+  events: z.array(z.enum(WEBHOOK_EVENTS)).min(1).optional(),
+  description: z.string().trim().max(200).optional(),
+  active: z.boolean().optional(),
+});
+
+export const webhookDeliverySchema = z.object({
+  id: uuid,
+  eventId: uuid,
+  event: z.string(),
+  status: z.enum(['pending', 'delivered', 'failed']),
+  attempts: z.number().int(),
+  responseStatus: z.number().int().nullable(),
+  error: z.string().nullable(),
+  nextAttemptAt: isoDate.nullable(),
+  deliveredAt: isoDate.nullable(),
+  createdAt: isoDate,
+});
+export type WebhookDelivery = z.infer<typeof webhookDeliverySchema>;
+
+// ---------------------------------------------------------------------------
+// Virtual-country currencies
+// ---------------------------------------------------------------------------
+
+export const currencyInfoSchema = z.object({
+  code: z.string(),
+  name: z.string(),
+  decimals: z.number().int(),
+  virtual: z.boolean(),
+  issuer: z
+    .object({ registryNumber: z.string(), country: z.string(), status: z.string() })
+    .nullable()
+    .describe('The virtual country that issues it'),
+});
+export type CurrencyInfo = z.infer<typeof currencyInfoSchema>;
+
+export const createVirtualCurrencySchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z]{3}$/, 'Three letters, e.g. "HLX"'),
+  name: z.string().trim().min(2).max(64),
+  decimals: z.number().int().min(0).max(4).default(2),
+});
+export type CreateVirtualCurrencyInput = z.input<typeof createVirtualCurrencySchema>;
+
+export const virtualCurrencySchema = z.object({
+  code: z.string(),
+  name: z.string(),
+  decimals: z.number().int(),
+  status: z.enum(['active', 'suspended']),
+  registryEntryId: uuid,
+  registryNumber: z.string(),
+  country: z.string(),
+  supply: z.string().describe('Issued minus redeemed'),
+  holders: z.number().int().describe('Balances that hold some'),
+  issuerWalletId: uuid.nullable(),
+  createdAt: isoDate,
+});
+export type VirtualCurrency = z.infer<typeof virtualCurrencySchema>;
+export const issueCurrencySchema = z.object({
+  amount: decimalAmountSchema,
+  note: z.string().trim().max(200).optional(),
+});
+
+/** A licence you hold (yourself or through a company you own or direct). */
+export const myLicenceSchema = registryEntrySchema.extend({
+  renewalApplicationId: uuid.nullable().describe('A renewal waiting for moderation'),
+});
+export type MyLicence = z.infer<typeof myLicenceSchema>;
 
 export const registrySearchQuery = paginationQuery.extend({
   q: z.string().trim().max(200).optional(),
@@ -359,6 +1057,7 @@ export const stockListingSchema = z.object({
     name: z.string(),
     slug: z.string(),
     registryNumber: z.string().nullable(),
+    verified: z.boolean(),
   }),
   currency: z.string(),
   sharePrice: z.string(),
@@ -406,10 +1105,188 @@ export const holdingSchema = z.object({
   organizationSlug: z.string(),
   currency: z.string(),
   shares: z.string(),
-  invested: z.string(),
+  sellable: z.string().describe('Unlocked and not already offered for sale'),
+  locked: z.string().describe('From investments still in their lock period'),
+  onSale: z.string().describe('In open sell orders'),
+  invested: z.string().describe('Money put in (investments and purchases) minus sales'),
   currentValue: z.string(),
 });
 export type Holding = z.infer<typeof holdingSchema>;
+
+// ---------------------------------------------------------------------------
+// Secondary market (order book)
+// ---------------------------------------------------------------------------
+
+export const ORDER_SIDES = ['buy', 'sell'] as const;
+export type OrderSide = (typeof ORDER_SIDES)[number];
+export const ORDER_STATUSES = ['open', 'filled', 'cancelled'] as const;
+
+export const placeOrderSchema = z.object({
+  side: z.enum(ORDER_SIDES),
+  shares: z.coerce.number().int().min(1).max(1_000_000_000_000),
+  price: decimalAmountSchema.describe('Limit price per share, in the listing currency'),
+});
+export type PlaceOrderInput = z.input<typeof placeOrderSchema>;
+
+export const stockOrderSchema = z.object({
+  id: uuid,
+  ticker: z.string(),
+  currency: z.string(),
+  side: z.enum(ORDER_SIDES),
+  price: z.string(),
+  shares: z.string(),
+  filled: z.string(),
+  remaining: z.string(),
+  status: z.enum(ORDER_STATUSES),
+  createdAt: isoDate,
+  updatedAt: isoDate,
+});
+export type StockOrder = z.infer<typeof stockOrderSchema>;
+
+export const stockTradeSchema = z.object({
+  id: uuid,
+  price: z.string(),
+  shares: z.string(),
+  side: z.enum(ORDER_SIDES).describe('The side that took liquidity'),
+  at: isoDate,
+});
+export type StockTrade = z.infer<typeof stockTradeSchema>;
+
+const bookLevel = z.object({ price: z.string(), shares: z.string(), orders: z.number().int() });
+export const orderBookSchema = z.object({
+  ticker: z.string(),
+  currency: z.string(),
+  bids: z.array(bookLevel).describe('Buy orders, best (highest) price first'),
+  asks: z.array(bookLevel).describe('Sell orders, best (lowest) price first'),
+  lastPrice: z.string(),
+  trades: z.array(stockTradeSchema).describe('The latest trades, newest first'),
+});
+export type OrderBook = z.infer<typeof orderBookSchema>;
+export const placeOrderResultSchema = z.object({
+  order: stockOrderSchema,
+  trades: z.array(stockTradeSchema),
+});
+
+// ---------------------------------------------------------------------------
+// Investor protection: risk disclosure and limits
+// ---------------------------------------------------------------------------
+
+/** Investors accept this before their first investment or trade (a new version asks again). */
+export const RISK_DISCLOSURE = {
+  version: '2026-09',
+  title: 'Before you invest',
+  points: [
+    'Shares of virtual companies can lose all their value. Only invest money you can afford to lose.',
+    'Prices move with trades between investors and can change quickly; nobody guarantees a buyer.',
+    'Part of every investment is frozen on the company balance and your shares stay locked for the lock period.',
+    'Dividends are paid only when a company decides to, and past results do not predict future ones.',
+    'OVL For Business checks companies before they list, but does not endorse them or give investment advice.',
+  ],
+} as const;
+
+export const riskDisclosureSchema = z.object({
+  version: z.string(),
+  title: z.string(),
+  points: z.array(z.string()),
+  acceptedAt: isoDate.nullable().describe('When you accepted this version (null: not yet)'),
+});
+export type RiskDisclosure = z.infer<typeof riskDisclosureSchema>;
+
+export const stockLimitsSchema = z.object({
+  maxHoldingPercent: z.number().describe('Nobody may hold more of a company than this'),
+  monthlyLimit: z.string().nullable().describe('Investing and buying per 30 days, in the base currency'),
+  unverifiedMonthlyLimit: z.string().nullable().describe('The same for people without a verified identity'),
+  base: z.string(),
+});
+export type StockLimits = z.infer<typeof stockLimitsSchema>;
+export const updateStockLimitsSchema = z.object({
+  maxHoldingPercent: z.number().min(0.01).max(100).optional(),
+  monthlyLimit: z
+    .union([decimalAmountSchema, z.literal('')])
+    .optional()
+    .describe('"" turns it off'),
+  unverifiedMonthlyLimit: z.union([decimalAmountSchema, z.literal('')]).optional(),
+});
+export const myStockLimitsSchema = z.object({
+  maxHoldingPercent: z.number(),
+  monthlyLimit: z.string().nullable().describe('What applies to you (verified or not), in the base currency'),
+  usedThisMonth: z.string().describe('Invested and bought in the last 30 days, in the base currency'),
+  remaining: z.string().nullable(),
+  base: z.string(),
+  identityVerified: z.boolean(),
+});
+export type MyStockLimits = z.infer<typeof myStockLimitsSchema>;
+
+// ---------------------------------------------------------------------------
+// Shareholders: registry, dividends, votes, company reports
+// ---------------------------------------------------------------------------
+
+const personRef = userSummarySchema.pick({ id: true, username: true, displayName: true });
+
+export const shareholderSchema = z.object({
+  user: personRef,
+  shares: z.string(),
+  percent: z.number().describe('Of all shares held by investors'),
+});
+export type Shareholder = z.infer<typeof shareholderSchema>;
+
+export const dividendInputSchema = z.object({
+  walletId: uuid.describe('The company balance that pays, in the listing currency'),
+  perShare: decimalAmountSchema,
+  note: z.string().trim().max(200).optional(),
+});
+export type DividendInput = z.input<typeof dividendInputSchema>;
+export const dividendSchema = z.object({
+  id: uuid,
+  ticker: z.string(),
+  currency: z.string(),
+  perShare: z.string(),
+  shares: z.string().describe('Shares that were paid'),
+  holders: z.number().int(),
+  total: z.string(),
+  note: z.string(),
+  status: z.enum(['pending', 'paid', 'rejected']).describe('pending: waiting for a second signature'),
+  approvalId: uuid.nullable(),
+  createdBy: personRef,
+  createdAt: isoDate,
+  paidAt: isoDate.nullable(),
+});
+export type Dividend = z.infer<typeof dividendSchema>;
+
+export const createProposalSchema = z.object({
+  title: z.string().trim().min(3).max(200),
+  description: z.string().trim().min(10).max(10_000),
+  closesAt: z.iso.datetime({ offset: true }).describe('Voting ends then; at least an hour from now'),
+  options: z
+    .array(z.string().trim().min(1).max(80))
+    .min(2)
+    .max(8)
+    .optional()
+    .describe('Default: For, Against, Abstain'),
+});
+export type CreateProposalInput = z.input<typeof createProposalSchema>;
+export const proposalSchema = z.object({
+  id: uuid,
+  ticker: z.string(),
+  organizationName: z.string(),
+  title: z.string(),
+  description: z.string(),
+  options: z.array(
+    z.object({ key: z.string(), label: z.string(), shares: z.string(), voters: z.number().int() }),
+  ),
+  status: z.enum(['open', 'closed']),
+  closesAt: isoDate,
+  totalShares: z.string().describe('Shares that may vote (held when the vote opened)'),
+  votedShares: z.string(),
+  turnoutPercent: z.number(),
+  winner: z.string().nullable().describe('The option with the most shares once closed (null on a tie)'),
+  myShares: z.string().describe('Your voting weight (0: not a shareholder when it opened)'),
+  myVote: z.string().nullable(),
+  createdBy: personRef,
+  createdAt: isoDate,
+});
+export type Proposal = z.infer<typeof proposalSchema>;
+export const castVoteSchema = z.object({ option: z.string().min(1).max(16) });
 
 export const updateListingSchema = z.object({
   sharePrice: decimalAmountSchema.optional(),
@@ -426,6 +1303,24 @@ export const CHAT_TYPES = ['direct', 'group', 'channel', 'support', 'council', '
 export const chatTypeSchema = z.enum(CHAT_TYPES);
 export type ChatType = z.infer<typeof chatTypeSchema>;
 
+/** Quick reactions the clients offer; any single emoji is accepted. */
+export const QUICK_REACTIONS = ['👍', '❤️', '😂', '🎉', '😮', '😢', '🙏', '🔥'] as const;
+/** One emoji (with skin tones, variation selectors and ZWJ sequences, or a flag). */
+export const reactionEmojiSchema = z
+  .string()
+  .max(32)
+  .regex(
+    /^(?:\p{Regional_Indicator}{2}|[\p{Extended_Pictographic}\p{Emoji_Presentation}][\u{FE0F}\u{20E3}\p{Emoji_Modifier}]*(?:\u{200D}[\p{Extended_Pictographic}\p{Emoji_Presentation}][\u{FE0F}\p{Emoji_Modifier}]*)*)$/u,
+    'One emoji',
+  );
+
+export const messageReactionSchema = z.object({
+  emoji: z.string(),
+  count: z.number().int(),
+  mine: z.boolean().describe('You reacted with this emoji'),
+});
+export type MessageReaction = z.infer<typeof messageReactionSchema>;
+
 export const messageSchema = z.object({
   id: z.number().int(),
   chatId: uuid,
@@ -434,11 +1329,31 @@ export const messageSchema = z.object({
   body: z.string(),
   meta: z.record(z.string(), z.unknown()),
   replyToId: z.number().int().nullable(),
+  /** Set on comments under a channel post: the post's id. */
+  threadId: z.number().int().nullable(),
+  attachments: z.array(fileSchema),
+  /** Ids of the chat members mentioned with @username. */
+  mentions: z.array(uuid),
+  reactions: z.array(messageReactionSchema),
+  /** Comments under a channel post. */
+  commentCount: z.number().int(),
   editedAt: isoDate.nullable(),
   deleted: z.boolean(),
   createdAt: isoDate,
 });
 export type Message = z.infer<typeof messageSchema>;
+
+export const messageSearchResultSchema = z.object({
+  chat: z.object({ id: uuid, type: z.string(), title: z.string() }),
+  message: messageSchema,
+});
+export type MessageSearchResult = z.infer<typeof messageSearchResultSchema>;
+
+export const readReceiptSchema = z.object({
+  user: userSummarySchema,
+  lastReadMessageId: z.number().int(),
+});
+export type ReadReceipt = z.infer<typeof readReceiptSchema>;
 
 export const chatSchema = z.object({
   id: uuid,
@@ -451,7 +1366,13 @@ export const chatSchema = z.object({
   myRole: z.enum(['owner', 'admin', 'member']).nullable(),
   pinned: z.boolean(),
   unreadCount: z.number().int(),
+  /** Unread messages that mention you. */
+  unreadMentions: z.number().int(),
   lastMessage: messageSchema.nullable(),
+  /** Direct chats: the newest message the other person has read (null when either hides receipts). */
+  peerReadMessageId: z.number().int().nullable(),
+  /** Channels: subscribers may comment on posts. */
+  commentsEnabled: z.boolean(),
   peer: userSummarySchema.nullable().describe('The other participant of a direct chat'),
   support: z
     .object({ status: z.enum(['open', 'closed']), requester: userSummarySchema })
@@ -468,9 +1389,21 @@ export const chatMemberSchema = z.object({
 });
 export type ChatMember = z.infer<typeof chatMemberSchema>;
 
-export const sendMessageSchema = z.object({
-  body: z.string().trim().min(1).max(4000),
-  replyToId: z.number().int().positive().optional(),
+export const sendMessageSchema = z
+  .object({
+    body: z.string().trim().max(4000).default(''),
+    replyToId: z.number().int().positive().optional(),
+    fileIds: z.array(uuid).max(10).optional().describe('Your uploads (POST /files) to attach'),
+  })
+  .refine((m) => m.body.length > 0 || (m.fileIds?.length ?? 0) > 0, {
+    message: 'Write something or attach a file',
+    path: ['body'],
+  });
+
+export const messageSearchQuery = z.object({
+  q: z.string().trim().min(2).max(100),
+  chatId: uuid.optional().describe('Search one chat only'),
+  limit: z.coerce.number().int().min(1).max(50).default(30),
 });
 
 export const createGroupSchema = z.object({
@@ -489,6 +1422,7 @@ export const createChannelSchema = z.object({
 export const updateChatSchema = z.object({
   title: z.string().trim().min(1).max(128).optional(),
   description: z.string().trim().max(2000).optional(),
+  commentsEnabled: z.boolean().optional().describe('Channels: let subscribers comment on posts'),
 });
 
 export const messagesQuery = z.object({
@@ -587,6 +1521,124 @@ export const auditLogSchema = z.object({
 });
 export type AuditLog = z.infer<typeof auditLogSchema>;
 
+// ---------------------------------------------------------------------------
+// Governance and transparency
+// ---------------------------------------------------------------------------
+
+export const governanceSchema = z.object({
+  councilVoting: z.enum(COUNCIL_VOTING),
+  councilQuorum: z.number().int().describe('Votes needed in quorum mode (capped by the council size)'),
+  councilTermMonths: z.number().int().describe('How long a council seat lasts; 0: no term limit'),
+  activeCouncilMembers: z.number().int(),
+  votesNeeded: z.number().int().describe('What a council stage needs right now'),
+  council: z.array(
+    z.object({
+      user: userSummarySchema,
+      termEndsAt: isoDate.nullable(),
+    }),
+  ),
+});
+export type Governance = z.infer<typeof governanceSchema>;
+
+export const updateGovernanceSchema = z.object({
+  councilVoting: z.enum(COUNCIL_VOTING).optional(),
+  councilQuorum: z.number().int().min(1).max(100).optional(),
+  councilTermMonths: z.number().int().min(0).max(120).optional(),
+});
+
+export const transparencyStatsSchema = z.object({
+  applications: z.object({
+    received: z.number().int(),
+    approved: z.number().int(),
+    rejected: z.number().int(),
+    changesRequested: z.number().int(),
+    medianDecisionHours: z.number().nullable(),
+    byType: z.array(
+      z.object({
+        type: z.string(),
+        label: z.string(),
+        received: z.number().int(),
+        approved: z.number().int(),
+        rejected: z.number().int(),
+      }),
+    ),
+  }),
+  council: z.object({
+    members: z.number().int(),
+    votes: z.number().int(),
+    approvals: z.number().int(),
+    rejections: z.number().int(),
+  }),
+  moderation: z.object({
+    accountsSuspended: z.number().int(),
+    identityApproved: z.number().int(),
+    identityRejected: z.number().int(),
+    registryRevoked: z.number().int(),
+  }),
+  support: z.object({ ticketsOpened: z.number().int(), ticketsOpenNow: z.number().int() }),
+  registry: z.object({ added: z.number().int(), expired: z.number().int(), active: z.number().int() }),
+  economy: z.object({
+    newAccounts: z.number().int(),
+    companiesListed: z.number().int(),
+    investments: z.number().int(),
+    trades: z.number().int(),
+  }),
+});
+export type TransparencyStats = z.infer<typeof transparencyStatsSchema>;
+
+export const transparencyReportSchema = z.object({
+  id: uuid,
+  title: z.string(),
+  periodStart: isoDate,
+  periodEnd: isoDate,
+  notes: z.string(),
+  stats: transparencyStatsSchema,
+  publishedAt: isoDate,
+  publishedBy: userSummarySchema.pick({ id: true, username: true, displayName: true }).nullable(),
+});
+export type TransparencyReport = z.infer<typeof transparencyReportSchema>;
+
+export const transparencyPeriodQuery = z.object({ from: isoDate, to: isoDate });
+export const publishTransparencySchema = z.object({
+  title: z.string().trim().min(3).max(200),
+  periodStart: isoDate,
+  periodEnd: isoDate,
+  notes: z.string().trim().max(10_000).default(''),
+});
+
+export const auditExportQuery = z.object({
+  format: z.enum(['csv', 'ndjson']).default('csv'),
+  action: z.string().trim().max(64).optional().describe('Actions starting with this, e.g. "cash."'),
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+});
+
+export const systemStatusSchema = z.object({
+  instance: z.object({ id: z.string(), uptimeSeconds: z.number().int(), version: z.string() }),
+  /** Instances with people connected in the last 90 seconds (this one included). */
+  instances: z.number().int(),
+  onlineUsers: z.number().int(),
+  queues: z.object({
+    notifications: z.number().int().describe('Written, not sent out yet'),
+    webhooks: z.number().int().describe('Deliveries waiting for an attempt'),
+  }),
+  jobs: z.array(
+    z.object({
+      name: z.string(),
+      everySeconds: z.number().int(),
+      runs: z.number().int(),
+      failures: z.number().int(),
+      lastRunAt: isoDate.nullable(),
+      lastError: z.string().nullable(),
+    }),
+  ),
+  lastBackup: z
+    .object({ at: isoDate, file: z.string(), bytes: z.number().int() })
+    .nullable()
+    .describe('Written by the backup service after each successful dump'),
+});
+export type SystemStatus = z.infer<typeof systemStatusSchema>;
+
 export const adminStatsSchema = z.object({
   users: z.record(z.string(), z.number()),
   organizations: z.number(),
@@ -594,6 +1646,9 @@ export const adminStatsSchema = z.object({
   openTickets: z.number(),
   activeListings: z.number(),
   registryEntries: z.number(),
+  pendingCashRequests: z.number(),
+  pendingIdentityChecks: z.number(),
+  pendingCashApprovals: z.number(),
   balances: z.array(z.object({ currency: z.string(), total: z.string(), wallets: z.number() })),
   /** The last 14 days, oldest first (UTC dates). */
   activity: z.array(
@@ -601,6 +1656,80 @@ export const adminStatsSchema = z.object({
   ),
 });
 export type AdminStats = z.infer<typeof adminStatsSchema>;
+
+// ---------------------------------------------------------------------------
+// Notification center and push notifications
+// ---------------------------------------------------------------------------
+
+export const NOTIFICATION_TYPES = [
+  'mention',
+  'reply',
+  'comment',
+  'money',
+  'invoice',
+  'payment_approval',
+  'application',
+  'identity',
+  'cash_request',
+  'licence',
+  'test',
+] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+export const notificationSchema = z.object({
+  id: uuid,
+  type: z.enum(NOTIFICATION_TYPES),
+  title: z.string(),
+  body: z.string(),
+  link: z.string().nullable().describe('Where it leads in the apps, e.g. /chats/<id> or /invoices'),
+  read: z.boolean(),
+  createdAt: isoDate,
+});
+export type Notification = z.infer<typeof notificationSchema>;
+
+export const notificationPageSchema = z.object({
+  items: z.array(notificationSchema),
+  unreadCount: z.number().int(),
+});
+export type NotificationPage = z.infer<typeof notificationPageSchema>;
+
+export const notificationsQuery = z.object({
+  before: isoDate.optional().describe('Older than this (the createdAt of the last one you have)'),
+  unread: z.enum(['true', 'false']).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+});
+
+export const pushConfigSchema = z.object({
+  webPushKey: z
+    .string()
+    .nullable()
+    .describe('VAPID public key for PushManager.subscribe (applicationServerKey)'),
+  fcm: z.boolean().describe('Firebase Cloud Messaging is configured'),
+  apns: z.boolean().describe('Apple Push Notification service is configured'),
+});
+export type PushConfig = z.infer<typeof pushConfigSchema>;
+
+const deviceLabel = z.string().trim().max(100).optional().describe('Shown in your device list');
+export const pushSubscriptionInputSchema = z.union([
+  z.object({
+    kind: z.literal('webpush'),
+    endpoint: z.url().max(2000),
+    keys: z.object({ p256dh: z.string().min(20).max(200), auth: z.string().min(8).max(100) }),
+    label: deviceLabel,
+  }),
+  z.object({ kind: z.literal('fcm'), token: z.string().min(16).max(4096), label: deviceLabel }),
+  z.object({ kind: z.literal('apns'), token: z.string().regex(/^[0-9a-fA-F]{32,200}$/), label: deviceLabel }),
+]);
+export type PushSubscriptionInput = z.infer<typeof pushSubscriptionInputSchema>;
+
+export const pushDeviceSchema = z.object({
+  id: uuid,
+  kind: z.enum(['webpush', 'fcm', 'apns']),
+  label: z.string(),
+  createdAt: isoDate,
+  lastUsedAt: isoDate.nullable(),
+});
+export type PushDevice = z.infer<typeof pushDeviceSchema>;
 
 // ---------------------------------------------------------------------------
 // Realtime (WebSocket /api/v1/realtime?token=ACCESS_TOKEN)
@@ -613,9 +1742,17 @@ export type RealtimeEvent =
   | { type: 'chat.updated'; chatId: string }
   | { type: 'chat.removed'; chatId: string }
   | { type: 'typing'; chatId: string; userId: string }
+  | { type: 'chat.read'; chatId: string; userId: string; messageId: number }
+  | { type: 'notification.created'; notification: Notification }
   | { type: 'application.updated'; applicationId: string; status: string; stageIndex: number }
   | { type: 'story.created'; storyId: string }
-  | { type: 'wallet.updated'; walletId: string };
+  | { type: 'wallet.updated'; walletId: string }
+  | { type: 'cash_request.updated'; requestId: string; walletId: string; status: string }
+  | { type: 'invoice.updated'; invoiceId: string; status: string }
+  | { type: 'identity.updated'; status: string }
+  | { type: 'payment_approval.updated'; organizationId: string; approvalId: string; status: string }
+  | { type: 'payroll.updated'; organizationId: string; runId: string; status: string }
+  | { type: 'stock.updated'; ticker: string };
 
 /** Messages a client may send over the realtime socket. */
 export type RealtimeClientMessage = { type: 'typing'; chatId: string } | { type: 'ping' };

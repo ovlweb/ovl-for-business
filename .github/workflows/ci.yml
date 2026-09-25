@@ -38,6 +38,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
       - run: pnpm typecheck
+      - name: Every text has a Russian translation and the catalogs are up to date
+        run: pnpm i18n --strict && git diff --exit-code -- scripts/i18n/keys.json packages/shared/src/locales clients/app/lib/i18n
       - run: pnpm --filter @ovl/shared test
       - run: pnpm --filter @ovl/server test
       - run: pnpm --filter @ovl/server build

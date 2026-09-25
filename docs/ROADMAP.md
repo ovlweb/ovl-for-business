@@ -19,45 +19,73 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
 
 ### Trust & security
 
-- Two-factor authentication (TOTP, passkeys) — mandatory for staff and company owners.
-- Email verification, password reset, active sessions list with remote sign-out.
-- Identity verification (KYC) for company owners before approval; "verified business" badge.
-- Admin panel behind SSO / IP allow-list; four-eyes approval for large cash operations.
+- ✅ Two-step verification with authenticator apps and recovery codes (0.2), mandatory for staff
+  and for people who move company money.
+- ✅ Active sessions list with remote sign-out, refresh-token theft detection (0.2).
+- ✅ Passkeys (WebAuthn) for the web client and the admin panel (0.2). Next: passkeys in the native
+  apps (platform credential managers with associated domains).
+- ✅ Email confirmation, email change and password reset by emailed links (SMTP) (0.2).
+- ✅ Identity verification (KYC) for company owners before approval; "verified business" badge on
+  companies, the registry and the exchange (0.2).
+- ✅ Admin panel with single sign-on (OpenID Connect) and an IP allow-list; four-eyes approval for
+  large cash operations (0.2).
 
 ### Money
 
-- Withdrawal and deposit _requests_ from users that managers fulfil, with statuses.
-- Invoices and payment requests between companies; recurring payments / payroll.
-- Currency exchange between balances with managed rates and fees.
-- Multi-signature company payments (e.g. director + accountant above a limit).
-- Statement exports (CSV / PDF) and monthly statements.
+- ✅ Deposit and payout requests that finance managers fulfil or decline, with statuses; a payout
+  holds its amount until handled (0.2).
+- ✅ Invoices between people and companies, paid from a balance in one step, printable (0.2).
+- ✅ Partial invoice payments, recurring invoices (weekly to yearly, issued by a background
+  scheduler) and payroll runs that pay a whole team from a company balance (0.2).
+- ✅ Currency exchange between balances with managed rates and a fee, on web, in the apps and in
+  the admin panel (0.2).
+- ✅ Multi-signature company payments: above a company's approval limit, transfers, exchanges and
+  invoice payments wait for a second owner, director or accountant, with the money set aside (0.2).
+- ✅ Statement export as CSV and PDF on web and in the apps, monthly statements with an optional
+  email at the start of each month (0.2).
 
 ### Stock exchange
 
-- Secondary market: order book so investors can sell shares to each other after the lock period;
-  price discovery from trades.
-- Dividends, shareholder registry, shareholder voting.
-- Company reports (quarterly results) published on the listing page.
-- Per-investor limits and risk disclosures.
+- ✅ Secondary market: a limit-order book so investors trade shares with each other after the lock
+  period; the listing price follows the last trade (0.2).
+- ✅ Dividends, shareholder registry, shareholder voting weighted by shares at the start (0.2).
+- ✅ Company reports (quarterly results with revenue, profit and documents) on the listing page
+  (0.2).
+- ✅ Per-investor limits (the most of one company a person may hold, and how much they invest per
+  30 days, lower without a verified identity) and a risk disclosure accepted before investing (0.2).
 
 ### Licenses & registry
 
-- Expiry dates and renewals; license certificates (PDF with a QR code that verifies against the
-  public registry).
-- "Request changes" step in workflows and file attachments (S3 / MinIO storage).
-- Virtual-country currencies issued under a virtual-country license.
-- Webhooks for API consumers (new / changed registry entries, listing changes).
+- ✅ Certificates for every registry entry (PDF with a QR code that opens a public verification
+  page; revoked entries print as not valid) (0.2).
+- ✅ Expiry dates and renewals: licences run for a term (`LICENSE_TERM_MONTHS`), holders get
+  reminders 30 and 7 days before, and renew through a one-step moderation (0.2).
+- ✅ "Request changes" step in every workflow, and documents attached to applications, stored on
+  disk or in S3 / MinIO (0.2).
+- ✅ Virtual-country currencies: the holder of a virtual country issues one currency (a three-letter
+  code outside ISO 4217) and controls its supply; balances anywhere can hold, send and invoice in it
+  (0.2).
+- ✅ Webhooks for API consumers: new and changed registry entries and stock listings, signed with
+  HMAC-SHA256, retried with backoff, with a delivery log and a test button (0.2).
 
 ### Messaging
 
-- Attachments (images, documents), message search, mentions, reactions, read receipts.
-- OS push notifications (Web Push, FCM, APNs) and a notification center (in-app banners exist).
-- Channel posts with comments.
+- ✅ Attachments (images, documents), message search, mentions, reactions, read receipts (0.2;
+  the apps show attachments, sending files is on the web).
+- ✅ OS push notifications (Web Push, FCM, APNs) and a notification center (0.2; the browser
+  subscribes itself, the apps register FCM / APNs tokens with `POST /me/push-subscriptions` once a
+  Firebase / Apple project is configured for them).
+- ✅ Channel posts with comments (0.2).
 
 ### Platform
 
-- Horizontal scaling of realtime (Redis or Postgres `LISTEN/NOTIFY` behind `RealtimeHub`) and shared
-  rate-limit storage.
-- Localisation (English, Russian, …).
-- Observability: metrics, tracing, structured audit export; automated backups.
-- Governance settings: majority vs. quorum voting, council terms, published transparency reports.
+- ✅ Horizontal scaling of realtime (Postgres `LISTEN/NOTIFY` behind `RealtimeHub`, shared
+  presence) and shared rate-limit storage (0.2).
+- ✅ Localisation: English and Russian in the web client, the admin panel and the apps, with
+  Russian plural forms and dates, numbers and money in the language's format; the server answers
+  errors, notifications, emails and chat events in each person's language. The choice is saved
+  with the account for every device (0.2).
+- ✅ Observability: Prometheus metrics, W3C trace context in logs, structured audit export
+  (CSV / NDJSON); automated backups with retention and a restore script (0.2).
+- ✅ Governance settings: quorum, majority or two-thirds council voting, council terms that end on
+  their own, published transparency reports (0.2).

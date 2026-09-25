@@ -1,5 +1,5 @@
 import type { Chat } from '@ovl/shared';
-import { Avatar, Icon, useDebounced, type IconName } from '@ovl/ui';
+import { Avatar, Icon, useDebounced, type IconName, t } from '@ovl/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -55,7 +55,7 @@ export function CommandPalette({
   const results = useMemo<Result[]>(() => {
     const needle = q.trim().toLowerCase();
     const pages = items
-      .filter((i) => !needle || i.label.toLowerCase().includes(needle))
+      .filter((i) => !needle || t(i.label).toLowerCase().includes(needle))
       .map((i) => ({ id: `page:${i.to}`, group: 'Pages', label: i.label, icon: i.icon, to: i.to }));
     const chats = (queryClient.getQueryData<Chat[]>(['chats']) ?? [])
       .filter((c) => needle && c.title.toLowerCase().includes(needle))
@@ -64,7 +64,7 @@ export function CommandPalette({
         id: `chat:${c.id}`,
         group: 'Chats',
         label: c.title,
-        hint: c.type === 'direct' ? 'Direct message' : c.type,
+        hint: c.type === 'direct' ? t('Direct message') : c.type,
         avatar: { name: c.title, url: c.peer?.avatarUrl },
         to: `/chats/${c.id}`,
       }));
@@ -107,7 +107,7 @@ export function CommandPalette({
           <motion.div
             className="palette"
             role="dialog"
-            aria-label="Search"
+            aria-label={t('Search')}
             initial={{ opacity: 0, y: -16, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -10, scale: 0.98 }}
@@ -119,7 +119,7 @@ export function CommandPalette({
                 ref={input}
                 autoFocus
                 value={q}
-                placeholder="Search pages, chats, people, registry numbers…"
+                placeholder={t('Search pages, chats, people, registry numbers…')}
                 onChange={(e) => {
                   setQ(e.target.value);
                   setCursor(0);
@@ -137,7 +137,7 @@ export function CommandPalette({
                   if (e.key === 'Enter') choose(results[cursor]);
                 }}
               />
-              <kbd>Esc</kbd>
+              <kbd>{t('Esc')}</kbd>
             </div>
             <div className="palette-results">
               {results.map((r, i) => {
@@ -145,7 +145,7 @@ export function CommandPalette({
                 lastGroup = r.group;
                 return (
                   <div key={r.id}>
-                    {header && <div className="palette-group">{header}</div>}
+                    {header && <div className="palette-group">{t(header)}</div>}
                     <button
                       className={`palette-item${i === cursor ? ' active' : ''}`}
                       onMouseEnter={() => setCursor(i)}
@@ -158,14 +158,14 @@ export function CommandPalette({
                           <Icon name={r.icon ?? 'arrowRight'} size={16} />
                         </span>
                       )}
-                      <span className="grow ellipsis">{r.label}</span>
-                      {r.hint && <span className="tiny muted">{r.hint}</span>}
+                      <span className="grow ellipsis">{t(r.label)}</span>
+                      {r.hint && <span className="tiny muted">{t(r.hint)}</span>}
                       {i === cursor && <Icon name="arrowRight" size={14} />}
                     </button>
                   </div>
                 );
               })}
-              {results.length === 0 && <div className="palette-empty">No results for “{q}”</div>}
+              {results.length === 0 && <div className="palette-empty">{t('No results for “{0}”', q)}</div>}
             </div>
           </motion.div>
         </motion.div>

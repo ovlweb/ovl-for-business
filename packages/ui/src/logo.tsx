@@ -1,11 +1,12 @@
 import { motion } from 'motion/react';
 import { useId } from 'react';
+import { t } from './i18n';
 
 /** The OVL mark: an orbit around a core, drawn in the theme gradient. */
 export function Logo({ size = 32, animated = false }: { size?: number; animated?: boolean }) {
   const id = useId().replace(/:/g, '');
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" role="img" aria-label="OVL For Business">
+    <svg width={size} height={size} viewBox="0 0 64 64" role="img" aria-label={t('OVL For Business')}>
       <defs>
         <linearGradient id={`logo-${id}`} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="var(--grad-from)" />
