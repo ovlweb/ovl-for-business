@@ -69,6 +69,18 @@ const envSchema = z.object({
   /** Applications (companies, licenses, roles) need a confirmed email address. */
   REQUIRE_VERIFIED_EMAIL: flag(true),
 
+  /** Networks allowed to call the admin API (/api/v1/admin/*), e.g. "10.0.0.0/8, 203.0.113.7". Empty: anywhere. */
+  ADMIN_IP_ALLOWLIST: z.string().optional(),
+  /** Cash desk operations of at least this amount (in the operation's currency) need a second manager. 0 turns it off. */
+  CASH_FOUR_EYES_AMOUNT: z.coerce.number().min(0).default(10_000),
+
+  /** Single sign-on for the admin panel (OpenID Connect: Google Workspace, Microsoft Entra, Okta, Keycloak…). */
+  OIDC_ISSUER: z.string().url().optional(),
+  OIDC_CLIENT_ID: z.string().optional(),
+  OIDC_CLIENT_SECRET: z.string().optional(),
+  /** The button text, e.g. "Sign in with Okta". */
+  OIDC_LABEL: z.string().default('Sign in with single sign-on'),
+
   /** Uploaded files: a directory (local) or an S3-compatible bucket (s3: AWS, MinIO, R2…). */
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
   STORAGE_DIR: z.string().default('data/uploads'),
@@ -89,7 +101,22 @@ const envSchema = z.object({
 
 export type Config = z.infer<typeof envSchema>;
 
+/**
+ * Rules that make a laptop demo awkward (two-step verification for staff and company money,
+ * identity checks) are on by default in production and off by default in development.
+ * Setting them explicitly always wins.
+ */
+const RELAXED_IN_DEVELOPMENT = [
+  'REQUIRE_2FA_FOR_STAFF',
+  'REQUIRE_2FA_FOR_COMPANY_FINANCE',
+  'REQUIRE_IDENTITY_FOR_COMPANIES',
+] as const;
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  if ((env.NODE_ENV ?? 'development') === 'development') {
+    env = { ...env };
+    for (const key of RELAXED_IN_DEVELOPMENT) env[key] ??= 'false';
+  }
   const parsed = envSchema.safeParse(env);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`).join('\n');

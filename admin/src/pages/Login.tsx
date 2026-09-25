@@ -10,6 +10,7 @@ import {
   TwoFactorPrompt,
   type IconName,
 } from '@ovl/ui';
+import { useQuery } from '@tanstack/react-query';
 import { motion } from 'motion/react';
 import { useState } from 'react';
 import { api } from '../api';
@@ -25,7 +26,8 @@ const DUTIES: { icon: IconName; title: string; text: string }[] = [
 ];
 
 export function LoginPage() {
-  const { login, loginWithPasskey } = useAdminAuth();
+  const { login, loginWithPasskey, ssoError } = useAdminAuth();
+  const sso = useQuery({ queryKey: ['sso'], queryFn: api.auth.sso, staleTime: Infinity, retry: false });
   const [form, setForm] = useState({ login: '', password: '' });
   const [show, setShow] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -124,7 +126,28 @@ export function LoginPage() {
               <h2 style={{ marginTop: 10 }}>Admin console</h2>
               <p className="small muted">Staff only: moderators, finance managers, admins and the owner.</p>
             </div>
-            <ErrorAlert error={error} />
+            <ErrorAlert error={error ?? ssoError} />
+            {sso.data?.enabled && (
+              <>
+                <button
+                  type="button"
+                  className="btn gradient lg block"
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      window.location.assign((await api.auth.ssoStart()).url);
+                    } catch (err) {
+                      setError(err);
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  <Icon name="shield" size={17} /> {sso.data.label}
+                </button>
+                <div className="or-divider small muted">or with a password</div>
+              </>
+            )}
             <Field label="Username or email">
               <div className="input-with-icon">
                 <Icon name="user" size={17} />

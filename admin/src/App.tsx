@@ -32,7 +32,12 @@ import { SupportPage } from './pages/Support';
 import { UsersPage } from './pages/Users';
 import { useAdminTheme } from './theme';
 
-type CountKey = 'pendingApplications' | 'openTickets' | 'pendingCashRequests' | 'pendingIdentityChecks';
+type CountKey =
+  | 'pendingApplications'
+  | 'openTickets'
+  | 'pendingCashRequests'
+  | 'pendingCashApprovals'
+  | 'pendingIdentityChecks';
 
 interface Section {
   path: string;
@@ -41,7 +46,8 @@ interface Section {
   group: string;
   permission: Permission;
   element: React.ReactNode;
-  count?: CountKey;
+  /** Stats shown as a badge (added up when several). */
+  count?: CountKey | CountKey[];
 }
 
 export const SECTIONS: Section[] = [
@@ -68,7 +74,7 @@ export const SECTIONS: Section[] = [
     group: 'People & money',
     permission: 'wallet.view_all',
     element: <CashDeskPage />,
-    count: 'pendingCashRequests',
+    count: ['pendingCashRequests', 'pendingCashApprovals'],
   },
   {
     path: 'identity',
@@ -157,7 +163,7 @@ function NavGroups({ sections, counts }: { sections: Section[]; counts?: Record<
           {sections
             .filter((s) => s.group === g)
             .map((s) => {
-              const count = s.count ? (counts?.[s.count] ?? 0) : 0;
+              const count = [s.count ?? []].flat().reduce((sum, key) => sum + (counts?.[key] ?? 0), 0);
               return (
                 <NavLink
                   key={s.path}
@@ -373,7 +379,8 @@ export function App() {
   if (!me) return <LoginPage />;
   const policy = meta.data?.security as SecurityPolicy | undefined;
   if (!meta.data) return <Splash />;
-  if (policy?.twoFactorForStaff && !me.twoFactorEnabled) return <TwoFactorGate />;
+  // A passkey or single sign-on session already counts as two-step.
+  if (policy?.twoFactorForStaff && !me.twoFactorEnabled && !me.strongSession) return <TwoFactorGate />;
   return (
     <Routes>
       <Route element={<Shell />}>

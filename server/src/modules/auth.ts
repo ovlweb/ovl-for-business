@@ -50,7 +50,7 @@ export async function issueTokens(
     accessToken: await app.signAccessToken(user, sid),
     refreshToken,
     expiresIn: app.config.ACCESS_TOKEN_TTL_SECONDS,
-    user: toMe(user),
+    user: { ...toMe(user), strongSession: ctx.method === 'passkey' || ctx.method === 'sso' },
   };
 }
 
@@ -190,7 +190,7 @@ export async function authRoutes(fastify: FastifyInstance) {
         .from(users)
         .where(eq(users.id, currentUser(req).id));
       if (!user) throw notFound('Account');
-      return toMe(user);
+      return { ...toMe(user), strongSession: currentUser(req).strongSession };
     },
   );
 

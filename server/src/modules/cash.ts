@@ -32,6 +32,7 @@ import { badRequest, conflict, forbidden, insufficientFunds, notFound, unauthori
 import { iso, isoOrNull } from '../lib/mappers';
 import { openLink, signLink } from '../lib/signed-links';
 import { currentUser } from '../plugins/auth';
+import { createApproval, dropPendingApprovals, needsFourEyes } from './cash-approvals';
 import { walletAudience } from './wallets/routes';
 import {
   assertWalletAccess,
@@ -111,6 +112,7 @@ export async function cashRequestDtos(db: Db, where?: SQL, limit = 100): Promise
       ownerUserName: ownerUser.displayName,
       orgName: organizations.name,
       reference: cashOperations.reference,
+      awaitingApproval: sql<boolean>`exists (select 1 from cash_approvals a where a.cash_request_id = ${cashRequests.id} and a.status = 'pending')`,
     })
     .from(cashRequests)
     .innerJoin(wallets, eq(wallets.id, cashRequests.walletId))
@@ -122,35 +124,38 @@ export async function cashRequestDtos(db: Db, where?: SQL, limit = 100): Promise
     .where(where)
     .orderBy(desc(cashRequests.createdAt))
     .limit(limit);
-  return rows.map(({ r, wallet, requester, handler, ownerUserName, orgName, reference }) => ({
-    id: r.id,
-    walletId: r.walletId,
-    ownerType: wallet.ownerType,
-    ownerId: (wallet.userId ?? wallet.organizationId)!,
-    ownerName: ownerUserName ?? orgName ?? '',
-    type: r.type,
-    method: r.method,
-    amount: formatAmount(r.amount, r.currency),
-    currency: r.currency,
-    note: r.note,
-    status: r.status,
-    requestedBy: requester,
-    handledBy: handler?.id ? handler : null,
-    reference: reference ?? null,
-    declineReason: r.declineReason,
-    createdAt: iso(r.createdAt),
-    handledAt: isoOrNull(r.handledAt),
-  }));
+  return rows.map(
+    ({ r, wallet, requester, handler, ownerUserName, orgName, reference, awaitingApproval }) => ({
+      id: r.id,
+      walletId: r.walletId,
+      ownerType: wallet.ownerType,
+      ownerId: (wallet.userId ?? wallet.organizationId)!,
+      ownerName: ownerUserName ?? orgName ?? '',
+      type: r.type,
+      method: r.method,
+      amount: formatAmount(r.amount, r.currency),
+      currency: r.currency,
+      note: r.note,
+      status: r.status,
+      requestedBy: requester,
+      handledBy: handler?.id ? handler : null,
+      awaitingApproval,
+      reference: reference ?? null,
+      declineReason: r.declineReason,
+      createdAt: iso(r.createdAt),
+      handledAt: isoOrNull(r.handledAt),
+    }),
+  );
 }
 
-async function releaseHold(tx: Db, requestId: string) {
+export async function releaseHold(tx: Db, requestId: string) {
   await tx
     .delete(fundLocks)
     .where(and(eq(fundLocks.referenceId, requestId), eq(fundLocks.reason, WITHDRAWAL_HOLD)));
 }
 
 /** Lock a pending request for the rest of the transaction. */
-async function lockPending(tx: Db, id: string) {
+export async function lockPending(tx: Db, id: string) {
   const [request] = await tx.select().from(cashRequests).where(eq(cashRequests.id, id)).for('update');
   if (!request) throw notFound('Request');
   if (request.status !== 'pending') throw conflict(`This request is already ${request.status}`);
@@ -174,6 +179,33 @@ function csvCell(value: string): string {
 /** Free text: spreadsheets must not run it as a formula. */
 function csvText(value: string): string {
   return csvCell(/^[=+\-@\t\r]/.test(value) ? `'${value}` : value);
+}
+
+type CashRequestRow = typeof cashRequests.$inferSelect;
+
+/** Pay out / confirm a cash request: record the cash operation, move the money, mark it done. */
+export async function completeCashRequest(
+  tx: Db,
+  request: CashRequestRow,
+  opts: { managerId: string; reference: string; note?: string; ip?: string },
+): Promise<string> {
+  const wallet = await lockWallet(tx, request.walletId);
+  if (request.type === 'withdrawal') await releaseHold(tx, request.id);
+  const opId = await recordCashOperation(tx, {
+    wallet,
+    type: request.type,
+    method: request.method,
+    amount: request.amount,
+    reference: opts.reference,
+    note: opts.note,
+    actorId: opts.managerId,
+    ip: opts.ip,
+  });
+  await tx
+    .update(cashRequests)
+    .set({ status: 'completed', handledBy: opts.managerId, handledAt: new Date(), cashOperationId: opId })
+    .where(eq(cashRequests.id, request.id));
+  return opId;
 }
 
 export async function cashRoutes(fastify: FastifyInstance) {
@@ -427,29 +459,36 @@ export async function cashRoutes(fastify: FastifyInstance) {
     },
     async (req) => {
       const me = currentUser(req);
-      const walletId = await app.db.transaction(async (tx) => {
+      const { walletId, done } = await app.db.transaction(async (tx) => {
         const request = await lockPending(tx, req.params.id);
         if (request.requestedBy === me.id)
           throw forbidden('Another finance manager must handle your own request');
-        const wallet = await lockWallet(tx, request.walletId);
-        if (request.type === 'withdrawal') await releaseHold(tx, request.id);
-        const opId = await recordCashOperation(tx, {
-          wallet,
-          type: request.type,
-          method: request.method,
-          amount: request.amount,
+        if (needsFourEyes(app.config, request.amount, request.currency)) {
+          // Large amounts: a second manager confirms (see cash-approvals.ts).
+          await createApproval(tx, {
+            kind: 'request',
+            cashRequestId: request.id,
+            walletId: request.walletId,
+            type: request.type,
+            method: request.method,
+            amount: request.amount,
+            currency: request.currency,
+            reference: req.body.reference,
+            note: req.body.note,
+            requestedBy: me.id,
+            ip: req.ip,
+          });
+          return { walletId: request.walletId, done: false };
+        }
+        await completeCashRequest(tx, request, {
+          managerId: me.id,
           reference: req.body.reference,
           note: req.body.note,
-          actorId: me.id,
           ip: req.ip,
         });
-        await tx
-          .update(cashRequests)
-          .set({ status: 'completed', handledBy: me.id, handledAt: new Date(), cashOperationId: opId })
-          .where(eq(cashRequests.id, request.id));
-        return request.walletId;
+        return { walletId: request.walletId, done: true };
       });
-      await announce(walletId, req.params.id, 'completed');
+      if (done) await announce(walletId, req.params.id, 'completed');
       const [dto] = await cashRequestDtos(app.db, eq(cashRequests.id, req.params.id), 1);
       return dto!;
     },
@@ -471,6 +510,7 @@ export async function cashRoutes(fastify: FastifyInstance) {
       const walletId = await app.db.transaction(async (tx) => {
         const request = await lockPending(tx, req.params.id);
         await releaseHold(tx, request.id);
+        await dropPendingApprovals(tx, request.id, me.id, 'The request was declined');
         await tx
           .update(cashRequests)
           .set({

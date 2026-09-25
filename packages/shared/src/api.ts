@@ -92,6 +92,10 @@ export const meSchema = userSummarySchema.extend({
   twoFactorEnabled: z.boolean(),
   emailVerified: z.boolean(),
   identityVerified: z.boolean().describe('Identity documents checked by staff (KYC)'),
+  strongSession: z
+    .boolean()
+    .optional()
+    .describe('On /me and sign-in answers: signed in with a passkey or single sign-on (counts as two-step)'),
   createdAt: isoDate,
 });
 export type Me = z.infer<typeof meSchema>;
@@ -349,6 +353,7 @@ export const cashRequestSchema = z.object({
   status: z.enum(CASH_REQUEST_STATUSES),
   requestedBy: userSummarySchema.pick({ id: true, username: true, displayName: true }),
   handledBy: userSummarySchema.pick({ id: true, username: true, displayName: true }).nullable(),
+  awaitingApproval: z.boolean().describe('A manager completed it; a second one has to confirm'),
   reference: z.string().nullable().describe('Reference of the cash operation that fulfilled the request'),
   declineReason: z.string().nullable(),
   createdAt: isoDate,
@@ -356,6 +361,29 @@ export const cashRequestSchema = z.object({
 });
 export type CashRequest = z.infer<typeof cashRequestSchema>;
 export type CashRequestStatus = (typeof CASH_REQUEST_STATUSES)[number];
+
+/** A large cash operation waiting for a second finance manager ("four eyes"). */
+export const cashApprovalSchema = z.object({
+  id: uuid,
+  kind: z.enum(['operation', 'request']).describe('A cash desk operation, or completing a cash request'),
+  cashRequestId: uuid.nullable(),
+  walletId: uuid,
+  ownerType: walletOwnerTypeSchema,
+  ownerName: z.string(),
+  type: z.enum(['deposit', 'withdrawal']),
+  method: z.enum(CASH_METHODS),
+  amount: z.string(),
+  currency: z.string(),
+  reference: z.string(),
+  note: z.string(),
+  status: z.enum(['pending', 'approved', 'rejected']),
+  requestedBy: userSummarySchema.pick({ id: true, username: true, displayName: true }),
+  decidedBy: userSummarySchema.pick({ id: true, username: true, displayName: true }).nullable(),
+  rejectReason: z.string().nullable(),
+  createdAt: isoDate,
+  decidedAt: isoDate.nullable(),
+});
+export type CashApproval = z.infer<typeof cashApprovalSchema>;
 
 export const completeCashRequestSchema = z.object({
   reference: z.string().trim().min(1).max(128).describe('Bank reference, receipt number, cash desk slip…'),
@@ -899,6 +927,7 @@ export const adminStatsSchema = z.object({
   registryEntries: z.number(),
   pendingCashRequests: z.number(),
   pendingIdentityChecks: z.number(),
+  pendingCashApprovals: z.number(),
   balances: z.array(z.object({ currency: z.string(), total: z.string(), wallets: z.number() })),
   /** The last 14 days, oldest first (UTC dates). */
   activity: z.array(

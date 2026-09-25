@@ -511,3 +511,16 @@ a.admin-kpi:hover {
 .admin-attention.security > svg {
   color: var(--danger);
 }
+
+.or-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.or-divider::before,
+.or-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}

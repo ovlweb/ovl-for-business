@@ -71,6 +71,20 @@
       "when": 1790296335691,
       "tag": "0009_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790297021285,
+      "tag": "0010_cash_approvals",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790297337774,
+      "tag": "0011_session_method",
+      "breakpoints": true
     }
   ]
 }

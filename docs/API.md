@@ -123,6 +123,22 @@ password and an authenticator code.
 - company owners, directors and accountants need it to move company money (same error);
 - applications need a confirmed email (`403 email_not_verified`).
 
+## Admin security
+
+- **IP allow-list**: with `ADMIN_IP_ALLOWLIST` (IPv4/IPv6 addresses and networks) every
+  `/api/v1/admin/*` call from elsewhere gets `403 ip_not_allowed`. Put the admin panel's own site
+  behind the same list in Caddy if you want the page hidden too.
+- **Four eyes**: a cash desk operation (or completing a cash request) of at least
+  `CASH_FOUR_EYES_AMOUNT` in its currency answers `202` with a pending approval instead. A
+  different finance manager — not the one who asked and not the owner of the balance — confirms it
+  with `POST /admin/cash-approvals/:id/approve` (the money moves then) or rejects it. Payouts hold
+  their amount while they wait. `GET /admin/cash-approvals?status=pending` lists them.
+- **Single sign-on**: set `OIDC_ISSUER`, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` (and register
+  `PUBLIC_ADMIN_URL/` as the redirect URI). The admin panel then shows `OIDC_LABEL`; the provider
+  confirms the email address and the matching staff account signs in (authorization code with
+  PKCE, ID token checked against the provider's keys). Accounts are never created by single sign-on.
+  Passkey and single sign-on sessions satisfy the two-step rules.
+
 ## Identity checks and verified businesses
 
 `POST /me/identity` sends legal name, date of birth, country, document type and number, and the id

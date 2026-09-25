@@ -1,4 +1,4 @@
-import { CURRENCIES, type CashRequest } from '@ovl/shared';
+import { CURRENCIES, type CashApproval, type CashRequest } from '@ovl/shared';
 import {
   Empty,
   ErrorAlert,
@@ -35,6 +35,7 @@ function OperationForm({ owner }: { owner: Owner }) {
     note: '',
   });
   const [confirming, setConfirming] = useState(false);
+  const toast = useToast();
   const submit = useMutation({
     mutationFn: () =>
       api.admin.cashOperation({
@@ -47,10 +48,13 @@ function OperationForm({ owner }: { owner: Owner }) {
         reference: form.reference,
         note: form.note || undefined,
       }),
-    onSuccess: () => {
+    onSuccess: (result) => {
       setConfirming(false);
       setForm({ ...form, amount: '', reference: '', note: '' });
       invalidateCash(queryClient);
+      if ('kind' in result)
+        toast.info('Large amount: it waits for a second finance manager under “Waiting for approval”');
+      else toast.success('Operation recorded');
     },
   });
 
@@ -164,7 +168,7 @@ function OperationForm({ owner }: { owner: Owner }) {
 const METHOD = { manager_transfer: 'bank transfer', physical_cash: 'cash desk' } as const;
 
 function invalidateCash(queryClient: ReturnType<typeof useQueryClient>) {
-  for (const key of ['cashRequests', 'cash', 'ownerWallets', 'stats'])
+  for (const key of ['cashRequests', 'cashApprovals', 'cash', 'ownerWallets', 'stats'])
     queryClient.invalidateQueries({ queryKey: [key] });
 }
 
@@ -264,6 +268,132 @@ function HandleRequestModal({
   );
 }
 
+/** Four eyes: large operations wait here until a second finance manager confirms them. */
+function ApprovalQueue() {
+  const { can, me } = useAdmin();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const approvals = useQuery({
+    queryKey: ['cashApprovals'],
+    queryFn: () => api.admin.cashApprovals('pending'),
+    refetchInterval: 30_000,
+  });
+  const [rejecting, setRejecting] = useState<CashApproval | null>(null);
+  const [reason, setReason] = useState('');
+  const approve = useMutation({
+    mutationFn: (id: string) => api.admin.approveCash(id),
+    onSuccess: (a) => {
+      invalidateCash(queryClient);
+      toast.success(
+        `${a.type === 'deposit' ? 'Deposit' : 'Payout'} of ${formatMoney(a.amount, a.currency)} done`,
+      );
+    },
+  });
+  const reject = useMutation({
+    mutationFn: () => api.admin.rejectCash(rejecting!.id, reason),
+    onSuccess: () => {
+      invalidateCash(queryClient);
+      setRejecting(null);
+      setReason('');
+    },
+  });
+  if (!approvals.data?.length) return null;
+  return (
+    <div className="card pad-0 table-wrap four-eyes">
+      <div className="card-header" style={{ padding: '16px 18px 0' }}>
+        <div>
+          <h3>Waiting for approval</h3>
+          <p className="small muted" style={{ margin: '2px 0 0' }}>
+            Large operations need a second finance manager. They happen when confirmed; payouts hold the money
+            meanwhile.
+          </p>
+        </div>
+      </div>
+      <ErrorAlert error={approve.error} />
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Asked</th>
+            <th>Account</th>
+            <th>Operation</th>
+            <th className="right">Amount</th>
+            <th>By</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {approvals.data.map((a) => {
+            const own = a.requestedBy.id === me.id;
+            return (
+              <tr key={a.id}>
+                <td className="small nowrap">{formatDate(a.createdAt)}</td>
+                <td>
+                  <b>{a.ownerName}</b>
+                  <div className="small muted">
+                    {a.kind === 'request' ? 'Completing a request' : 'Cash desk'}
+                  </div>
+                </td>
+                <td className="small">
+                  {a.type === 'deposit' ? 'Deposit' : 'Payout'} · {METHOD[a.method]} · ref.{' '}
+                  <code>{a.reference}</code>
+                </td>
+                <td className={`right ${a.type === 'deposit' ? 'pos' : 'neg'}`}>
+                  <Money amount={a.amount} currency={a.currency} />
+                </td>
+                <td className="small">@{a.requestedBy.username}</td>
+                <td className="right nowrap">
+                  {can('wallet.cash') && (
+                    <span className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
+                      <button
+                        className="btn sm success"
+                        disabled={own || approve.isPending}
+                        title={own ? 'A different finance manager must confirm this' : undefined}
+                        onClick={() => approve.mutate(a.id)}
+                      >
+                        <Icon name="check" size={14} /> Confirm
+                      </button>
+                      <button className="btn sm ghost" onClick={() => setRejecting(a)}>
+                        Reject
+                      </button>
+                    </span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {rejecting && (
+        <Modal title="Reject operation" onClose={() => setRejecting(null)}>
+          <form
+            className="stack"
+            onSubmit={(e) => {
+              e.preventDefault();
+              reject.mutate();
+            }}
+          >
+            <Field label="Reason" hint="Recorded in the audit log.">
+              <input
+                className="input"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                minLength={3}
+                maxLength={500}
+                autoFocus
+                required
+              />
+            </Field>
+            <ErrorAlert error={reject.error} />
+            <button className="btn danger" disabled={reject.isPending}>
+              Reject
+            </button>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 function RequestQueue() {
   const { can, me } = useAdmin();
   const [status, setStatus] = useState<'pending' | 'all'>('pending');
@@ -336,10 +466,10 @@ function RequestQueue() {
                   <Money amount={r.amount} currency={r.currency} />
                 </td>
                 <td>
-                  <StatusBadge status={r.status} />
+                  <StatusBadge status={r.awaitingApproval ? 'awaiting_approval' : r.status} />
                 </td>
                 <td className="right nowrap">
-                  {r.status === 'pending' && can('wallet.cash') && (
+                  {r.status === 'pending' && !r.awaitingApproval && can('wallet.cash') && (
                     <span className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
                       <button
                         className="btn sm success"
@@ -402,6 +532,7 @@ export function CashDeskPage() {
         title="Cash desk"
         subtitle="Deposits and withdrawals for personal and business balances in any world currency — by manager transfer or physical cash."
       />
+      <ApprovalQueue />
       <RequestQueue />
       <div className="grid-2" style={{ alignItems: 'start' }}>
         <div className="card stack">

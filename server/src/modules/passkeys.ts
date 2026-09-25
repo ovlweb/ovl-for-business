@@ -248,7 +248,7 @@ export async function passkeyRoutes(fastify: FastifyInstance) {
         .update(passkeys)
         .set({ counter: verification.authenticationInfo.newCounter, lastUsedAt: new Date() })
         .where(eq(passkeys.id, key.id));
-      return issueTokens(app, user, clientContext(req));
+      return issueTokens(app, user, { ...clientContext(req), method: 'passkey' });
     },
   );
 }

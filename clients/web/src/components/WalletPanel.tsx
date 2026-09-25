@@ -419,6 +419,7 @@ function requestDetail(r: CashRequest): string {
     return `Done by ${r.handledBy?.displayName ?? 'finance'} · ref. ${r.reference}`;
   if (r.status === 'declined') return `Declined: ${r.declineReason}`;
   if (r.status === 'cancelled') return 'Cancelled';
+  if (r.awaitingApproval) return 'Being handled · a second finance manager confirms large amounts';
   return r.type === 'withdrawal'
     ? 'Waiting for a finance manager · amount held'
     : 'Waiting for a finance manager';

@@ -20,6 +20,8 @@ export interface AuthUser {
   /** Set when the account must turn on two-step verification before moving company money. */
   companyMoneyLocked: boolean;
   emailVerified: boolean;
+  /** Signed in with a passkey or single sign-on. */
+  strongSession: boolean;
   /** The signed-in session behind the access token (null for tokens issued before sessions existed). */
   sessionId: string | null;
 }
@@ -95,6 +97,7 @@ export function registerAuth(app: FastifyInstance): void {
         totpEnabledAt: users.totpEnabledAt,
         emailVerifiedAt: users.emailVerifiedAt,
         liveSession: sessions.id,
+        sessionMethod: sessions.method,
       })
       .from(users)
       .leftJoin(
@@ -107,8 +110,17 @@ export function registerAuth(app: FastifyInstance): void {
     if (!user) throw unauthorized('Account no longer exists');
     if (user.status !== 'active') throw forbidden('This account is suspended');
     if (sessionId && !user.liveSession) throw unauthorized('This session was signed out');
-    const { status: _status, liveSession: _live, totpEnabledAt, emailVerifiedAt, ...authUser } = user;
-    const twoFactor = totpEnabledAt !== null;
+    const {
+      status: _status,
+      liveSession: _live,
+      sessionMethod,
+      totpEnabledAt,
+      emailVerifiedAt,
+      ...authUser
+    } = user;
+    // A passkey (device + fingerprint/PIN) or single sign-on counts as two-step for the rules.
+    const strongSession = sessionMethod === 'passkey' || sessionMethod === 'sso';
+    const twoFactor = totpEnabledAt !== null || strongSession;
     const staffLocked = app.config.REQUIRE_2FA_FOR_STAFF && user.role !== 'user' && !twoFactor;
     return {
       ...authUser,
@@ -117,6 +129,7 @@ export function registerAuth(app: FastifyInstance): void {
       twoFactor,
       companyMoneyLocked: app.config.REQUIRE_2FA_FOR_COMPANY_FINANCE && !twoFactor,
       emailVerified: emailVerifiedAt !== null,
+      strongSession,
       sessionId,
     };
   });

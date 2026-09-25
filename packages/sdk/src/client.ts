@@ -5,6 +5,7 @@ import type {
   Application,
   AuditLog,
   AuthResult,
+  CashApproval,
   CashOperation,
   CashOperationInput,
   CashRequest,
@@ -264,6 +265,11 @@ export class OvlClient {
     /** Passkey sign-in, step 2: send the browser's answer. */
     passkeyLogin: async (challengeId: string, response: unknown) =>
       this.storeAuth(await this.post<AuthResult>('/auth/passkey', { challengeId, response })),
+    /** Single sign-on (admin panel): whether it is offered, then start and finish it. */
+    sso: () => this.get<{ enabled: boolean; label: string }>('/auth/sso'),
+    ssoStart: () => this.post<{ url: string }>('/auth/sso/start'),
+    ssoCallback: async (code: string, state: string) =>
+      this.storeAuth(await this.post<AuthResult>('/auth/sso/callback', { code, state })),
     /** Confirm an email address with the token from the link. */
     verifyEmail: (token: string) => this.post<{ email: string }>('/auth/verify-email', { token }),
     /** Email a reset link (always succeeds, so it never reveals whether an address is registered). */
@@ -478,7 +484,14 @@ export class OvlClient {
       this.get<Wallet[]>('/admin/wallets', { ownerType, ownerId }),
     cashOperations: (query?: { limit?: number; offset?: number }) =>
       this.get<Page<CashOperation>>('/admin/cash-operations', query),
-    cashOperation: (input: CashOperationInput) => this.post<CashOperation>('/admin/cash-operations', input),
+    /** Large amounts come back as a CashApproval waiting for a second manager (HTTP 202). */
+    cashOperation: (input: CashOperationInput) =>
+      this.post<CashOperation | CashApproval>('/admin/cash-operations', input),
+    cashApprovals: (status?: 'pending' | 'approved' | 'rejected') =>
+      this.get<CashApproval[]>('/admin/cash-approvals', { status }),
+    approveCash: (id: string) => this.post<CashApproval>(`/admin/cash-approvals/${id}/approve`),
+    rejectCash: (id: string, reason: string) =>
+      this.post<CashApproval>(`/admin/cash-approvals/${id}/reject`, { reason }),
     cashRequests: (status?: CashRequestStatus) => this.get<CashRequest[]>('/admin/cash-requests', { status }),
     identityChecks: (status?: 'pending' | 'approved' | 'rejected' | 'revoked') =>
       this.get<IdentityCheck[]>('/admin/identity-checks', { status }),

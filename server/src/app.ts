@@ -20,15 +20,18 @@ import { createDatabase, type Database } from './db/client';
 import { HttpError, isUniqueViolation } from './lib/errors';
 import { createMailer, type Mailer } from './lib/mailer';
 import { createStorage, type Storage } from './lib/storage';
+import { ipAllowlist } from './lib/ip-allowlist';
 import { adminRoutes } from './modules/admin';
 import { apiKeyRoutes } from './modules/api-keys';
 import { applicationRoutes } from './modules/applications/routes';
 import { authRoutes } from './modules/auth';
 import { emailRoutes } from './modules/email';
 import { passkeyRoutes } from './modules/passkeys';
+import { ssoRoutes } from './modules/sso';
 import { fileRoutes } from './modules/files';
 import { identityRoutes } from './modules/identity';
 import { cashRoutes } from './modules/cash';
+import { cashApprovalRoutes } from './modules/cash-approvals';
 import { invoiceRoutes } from './modules/invoices';
 import { sessionRoutes } from './modules/sessions';
 import { twoFactorRoutes } from './modules/two-factor';
@@ -174,6 +177,15 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
 
   registerAuth(app);
 
+  // The admin API answers only from the allowed networks (when a list is configured).
+  const adminAllowed = ipAllowlist(config.ADMIN_IP_ALLOWLIST);
+  if (adminAllowed) {
+    app.addHook('onRequest', async (req) => {
+      if (req.url.startsWith('/api/v1/admin/') && !adminAllowed(req.ip))
+        throw new HttpError(403, 'ip_not_allowed', 'The admin API is not available from this network');
+    });
+  }
+
   app.get('/health', { schema: { hide: true } }, async () => {
     await db.execute(sql`select 1`);
     return { status: 'ok', online: app.hub.onlineCount };
@@ -185,6 +197,7 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
       await api.register(authRoutes);
       await api.register(emailRoutes);
       await api.register(passkeyRoutes);
+      await api.register(ssoRoutes);
       await api.register(fileRoutes);
       await api.register(identityRoutes);
       await api.register(sessionRoutes);
@@ -192,6 +205,7 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
       await api.register(userRoutes);
       await api.register(walletRoutes);
       await api.register(cashRoutes);
+      await api.register(cashApprovalRoutes);
       await api.register(invoiceRoutes);
       await api.register(organizationRoutes);
       await api.register(applicationRoutes);

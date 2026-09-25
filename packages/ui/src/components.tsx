@@ -413,6 +413,7 @@ const STATUS_TONES: Record<string, string> = {
   open: 'info',
   pending: 'warn',
   changes_requested: 'warn',
+  awaiting_approval: 'warn',
   not_confirmed: 'warn',
   overdue: 'bad',
   halted: 'warn',

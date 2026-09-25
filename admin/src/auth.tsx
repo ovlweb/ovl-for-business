@@ -10,6 +10,8 @@ interface AdminAuth {
   login: (login: string, password: string, code?: string) => Promise<void>;
   loginWithPasskey: () => Promise<void>;
   logout: () => Promise<void>;
+  /** Why the last single sign-on did not work, if it did not. */
+  ssoError: unknown;
   /** Load the account again (after turning on two-step verification). */
   reload: () => Promise<void>;
   can: (permission: Permission) => boolean;
@@ -19,10 +21,23 @@ const Ctx = createContext<AdminAuth | null>(null);
 
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
+  const [ssoError, setSsoError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
   const queryClient = useQueryClient();
 
   const load = useCallback(async () => {
+    // Coming back from the single sign-on provider: ?code=…&state=… on the admin URL.
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const state = params.get('state');
+    if (code && state) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.hash);
+      try {
+        await api.auth.ssoCallback(code, state);
+      } catch (error) {
+        setSsoError(error);
+      }
+    }
     if (!api.isSignedIn) return setMe(null);
     try {
       const user = await api.me.get();
@@ -67,6 +82,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       setMe(null);
     },
     reload: load,
+    ssoError,
     can: (p) => !!me?.permissions.includes(p),
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

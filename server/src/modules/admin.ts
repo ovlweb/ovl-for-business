@@ -6,6 +6,7 @@ import {
   auditLogSchema,
   canAssignRole,
   cashOperationInputSchema,
+  cashApprovalSchema,
   cashOperationSchema,
   formatAmount,
   organizationSchema,
@@ -30,6 +31,7 @@ import {
   apiKeys,
   applications,
   auditLogs,
+  cashApprovals,
   cashOperations,
   cashRequests,
   chats,
@@ -51,6 +53,7 @@ import { toApiKeyDto } from './api-keys';
 import { organizationDtos } from './organizations';
 import { getRegistryEntry } from './registry';
 import { recordCashOperation } from './cash';
+import { approvalDtos, createApproval, needsFourEyes, pendingApprovalCount } from './cash-approvals';
 import { pendingIdentityChecks } from './identity';
 import { changeRole } from './roles';
 import { revokeSessions } from './sessions';
@@ -151,6 +154,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         [registry],
         [cash],
         identity,
+        approvals,
         balances,
         daily,
       ] = await Promise.all([
@@ -165,6 +169,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         app.db.select({ n: count() }).from(registryEntries),
         app.db.select({ n: count() }).from(cashRequests).where(eq(cashRequests.status, 'pending')),
         pendingIdentityChecks(app.db),
+        pendingApprovalCount(app.db),
         app.db
           .select({ currency: wallets.currency, total: sql<string>`sum(${wallets.balance})`, n: count() })
           .from(wallets)
@@ -181,6 +186,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         registryEntries: registry?.n ?? 0,
         pendingCashRequests: cash?.n ?? 0,
         pendingIdentityChecks: identity,
+        pendingCashApprovals: approvals,
         balances: balances.map((b) => ({
           currency: b.currency,
           total: formatAmount(BigInt(b.total), b.currency),
@@ -471,14 +477,14 @@ export async function adminRoutes(fastify: FastifyInstance) {
           'Deposit to or withdraw from a personal or business balance in any currency. ' +
           'Method is either a transfer handled by a manager or physical cash at the desk.',
         body: cashOperationInputSchema,
-        response: { 201: cashOperationSchema },
+        response: { 201: cashOperationSchema, 202: cashApprovalSchema },
       },
     },
     async (req, reply) => {
       const me = currentUser(req);
       const input = req.body;
       const amount = parseAmount(input.amount, input.currency);
-      const { opId, wallet } = await app.db.transaction(async (tx) => {
+      const { opId, approvalId, wallet } = await app.db.transaction(async (tx) => {
         const ownerTable = input.ownerType === 'user' ? users : organizations;
         const [owner] = await tx
           .select({ id: ownerTable.id })
@@ -490,6 +496,21 @@ export async function adminRoutes(fastify: FastifyInstance) {
           { type: input.ownerType, id: input.ownerId },
           input.currency,
         );
+        if (needsFourEyes(app.config, amount, input.currency)) {
+          const approval = await createApproval(tx, {
+            kind: 'operation',
+            walletId: wallet.id,
+            type: input.type,
+            method: input.method,
+            amount,
+            currency: input.currency,
+            reference: input.reference,
+            note: input.note,
+            requestedBy: me.id,
+            ip: req.ip,
+          });
+          return { opId: null, approvalId: approval.id, wallet };
+        }
         const opId = await recordCashOperation(tx, {
           wallet,
           type: input.type,
@@ -500,13 +521,18 @@ export async function adminRoutes(fastify: FastifyInstance) {
           actorId: me.id,
           ip: req.ip,
         });
-        return { opId, wallet };
+        return { opId, approvalId: null, wallet };
       });
+      if (approvalId) {
+        // Large amount: a second finance manager confirms it under Cash desk → Waiting for approval.
+        const [pending] = await approvalDtos(app.db, eq(cashApprovals.id, approvalId), 1);
+        return reply.status(202).send(pending!);
+      }
       app.hub.sendToUsers(await walletAudience(app.db, wallet), {
         type: 'wallet.updated',
         walletId: wallet.id,
       });
-      const [dto] = await cashOperationDtos(app.db, eq(cashOperations.id, opId), 1);
+      const [dto] = await cashOperationDtos(app.db, eq(cashOperations.id, opId!), 1);
       return reply.status(201).send(dto!);
     },
   );

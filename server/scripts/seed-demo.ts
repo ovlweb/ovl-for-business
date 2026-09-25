@@ -160,7 +160,7 @@ async function main() {
     ['elena', 'CHF', '7200'],
   ];
   for (const [name, currency, amount] of deposits) {
-    await sofia.admin.cashOperation({
+    const done = await sofia.admin.cashOperation({
       ownerType: 'user',
       ownerId: u(name).me.id,
       currency,
@@ -169,6 +169,8 @@ async function main() {
       method: Number(amount) > 20000 ? 'manager_transfer' : 'physical_cash',
       reference: `DEMO-${name.toUpperCase()}-${currency}`,
     });
+    // Large amounts wait for a second finance manager ("four eyes"): the owner confirms.
+    if ('kind' in done) await owner.client.admin.approveCash(done.id);
   }
 
   // --- Companies through the full approval workflow -----------------------------------

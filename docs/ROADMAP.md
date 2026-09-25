@@ -27,7 +27,8 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
 - ✅ Email confirmation, email change and password reset by emailed links (SMTP) (0.2).
 - ✅ Identity verification (KYC) for company owners before approval; "verified business" badge on
   companies, the registry and the exchange (0.2).
-- Admin panel behind SSO / IP allow-list; four-eyes approval for large cash operations.
+- ✅ Admin panel with single sign-on (OpenID Connect) and an IP allow-list; four-eyes approval for
+  large cash operations (0.2).
 
 ### Money
 

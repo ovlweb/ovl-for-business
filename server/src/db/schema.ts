@@ -184,6 +184,8 @@ export const sessions = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     userAgent: text('user_agent'),
     ip: text('ip'),
+    /** How it signed in: password (+ code), passkey or single sign-on. */
+    method: varchar('method', { length: 16 }).notNull().default('password'),
     createdAt: createdAt(),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }).notNull().defaultNow(),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
@@ -403,6 +405,37 @@ export const invoices = pgTable(
     check('invoices_single_recipient', sql`(${t.recipientUserId} is null) <> (${t.recipientOrgId} is null)`),
     check('invoices_total_positive', sql`${t.total} > 0`),
   ],
+);
+
+export const cashApprovalStatusEnum = pgEnum('cash_approval_status', ['pending', 'approved', 'rejected']);
+
+/** Four eyes: a large cash operation (or request completion) waiting for a second manager. */
+export const cashApprovals = pgTable(
+  'cash_approvals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    kind: varchar('kind', { length: 16 }).$type<'operation' | 'request'>().notNull(),
+    cashRequestId: uuid('cash_request_id').references(() => cashRequests.id),
+    walletId: uuid('wallet_id')
+      .notNull()
+      .references(() => wallets.id),
+    type: cashTypeEnum('type').notNull(),
+    method: cashMethodEnum('method').notNull(),
+    amount: money('amount').notNull(),
+    currency: char('currency', { length: 3 }).notNull(),
+    reference: varchar('reference', { length: 128 }).notNull(),
+    note: text('note').notNull().default(''),
+    status: cashApprovalStatusEnum('status').notNull().default('pending'),
+    requestedBy: uuid('requested_by')
+      .notNull()
+      .references(() => users.id),
+    decidedBy: uuid('decided_by').references(() => users.id),
+    rejectReason: text('reject_reason'),
+    cashOperationId: uuid('cash_operation_id').references(() => cashOperations.id),
+    createdAt: createdAt(),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+  },
+  (t) => [index('cash_approvals_status_idx').on(t.status, t.createdAt)],
 );
 
 export const fundLocks = pgTable(

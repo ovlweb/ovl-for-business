@@ -9,9 +9,13 @@ import { notFound } from '../lib/errors';
 import { iso } from '../lib/mappers';
 import { currentUser } from '../plugins/auth';
 
+export type SignInMethod = 'password' | 'passkey' | 'sso';
+
 export interface ClientContext {
   userAgent: string | null;
   ip: string | null;
+  /** Passkeys and single sign-on count as strong sign-ins (they satisfy the two-step rules). */
+  method?: SignInMethod;
 }
 
 export function clientContext(req: FastifyRequest): ClientContext {
@@ -21,7 +25,7 @@ export function clientContext(req: FastifyRequest): ClientContext {
 export async function startSession(db: Db, userId: string, ctx: ClientContext): Promise<string> {
   const [session] = await db
     .insert(sessions)
-    .values({ userId, userAgent: ctx.userAgent, ip: ctx.ip })
+    .values({ userId, userAgent: ctx.userAgent, ip: ctx.ip, method: ctx.method ?? 'password' })
     .returning({ id: sessions.id });
   return session!.id;
 }
