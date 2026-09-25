@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { BADGES, ROLES } from './roles';
 import { THEME_IDS } from './themes';
 import {
+  COUNCIL_VOTING,
   APPLICATION_STATUSES,
   APPLICATION_TYPES,
   LICENSE_TYPES,
@@ -1516,6 +1517,91 @@ export const auditLogSchema = z.object({
   createdAt: isoDate,
 });
 export type AuditLog = z.infer<typeof auditLogSchema>;
+
+// ---------------------------------------------------------------------------
+// Governance and transparency
+// ---------------------------------------------------------------------------
+
+export const governanceSchema = z.object({
+  councilVoting: z.enum(COUNCIL_VOTING),
+  councilQuorum: z.number().int().describe('Votes needed in quorum mode (capped by the council size)'),
+  councilTermMonths: z.number().int().describe('How long a council seat lasts; 0: no term limit'),
+  activeCouncilMembers: z.number().int(),
+  votesNeeded: z.number().int().describe('What a council stage needs right now'),
+  council: z.array(
+    z.object({
+      user: userSummarySchema,
+      termEndsAt: isoDate.nullable(),
+    }),
+  ),
+});
+export type Governance = z.infer<typeof governanceSchema>;
+
+export const updateGovernanceSchema = z.object({
+  councilVoting: z.enum(COUNCIL_VOTING).optional(),
+  councilQuorum: z.number().int().min(1).max(100).optional(),
+  councilTermMonths: z.number().int().min(0).max(120).optional(),
+});
+
+export const transparencyStatsSchema = z.object({
+  applications: z.object({
+    received: z.number().int(),
+    approved: z.number().int(),
+    rejected: z.number().int(),
+    changesRequested: z.number().int(),
+    medianDecisionHours: z.number().nullable(),
+    byType: z.array(
+      z.object({
+        type: z.string(),
+        label: z.string(),
+        received: z.number().int(),
+        approved: z.number().int(),
+        rejected: z.number().int(),
+      }),
+    ),
+  }),
+  council: z.object({
+    members: z.number().int(),
+    votes: z.number().int(),
+    approvals: z.number().int(),
+    rejections: z.number().int(),
+  }),
+  moderation: z.object({
+    accountsSuspended: z.number().int(),
+    identityApproved: z.number().int(),
+    identityRejected: z.number().int(),
+    registryRevoked: z.number().int(),
+  }),
+  support: z.object({ ticketsOpened: z.number().int(), ticketsOpenNow: z.number().int() }),
+  registry: z.object({ added: z.number().int(), expired: z.number().int(), active: z.number().int() }),
+  economy: z.object({
+    newAccounts: z.number().int(),
+    companiesListed: z.number().int(),
+    investments: z.number().int(),
+    trades: z.number().int(),
+  }),
+});
+export type TransparencyStats = z.infer<typeof transparencyStatsSchema>;
+
+export const transparencyReportSchema = z.object({
+  id: uuid,
+  title: z.string(),
+  periodStart: isoDate,
+  periodEnd: isoDate,
+  notes: z.string(),
+  stats: transparencyStatsSchema,
+  publishedAt: isoDate,
+  publishedBy: userSummarySchema.pick({ id: true, username: true, displayName: true }).nullable(),
+});
+export type TransparencyReport = z.infer<typeof transparencyReportSchema>;
+
+export const transparencyPeriodQuery = z.object({ from: isoDate, to: isoDate });
+export const publishTransparencySchema = z.object({
+  title: z.string().trim().min(3).max(200),
+  periodStart: isoDate,
+  periodEnd: isoDate,
+  notes: z.string().trim().max(10_000).default(''),
+});
 
 export const auditExportQuery = z.object({
   format: z.enum(['csv', 'ndjson']).default('csv'),

@@ -82,6 +82,8 @@ export const users = pgTable('users', {
   emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
   /** Identity documents checked by staff (KYC). */
   identityVerifiedAt: timestamp('identity_verified_at', { withTimezone: true }),
+  /** When a council seat ends (governance term length); null: no term limit or not on the council. */
+  councilTermEndsAt: timestamp('council_term_ends_at', { withTimezone: true }),
   createdAt: createdAt(),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
 });
@@ -1311,3 +1313,23 @@ export const rateLimits = pgTable('rate_limits', {
   count: integer('count').notNull(),
   resetAt: timestamp('reset_at', { withTimezone: true }).notNull(),
 });
+
+// ---------------------------------------------------------------------------
+// Transparency
+// ---------------------------------------------------------------------------
+
+/** Published statistics about how the platform was governed in a period (a snapshot). */
+export const transparencyReports = pgTable(
+  'transparency_reports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    title: varchar('title', { length: 200 }).notNull(),
+    periodStart: timestamp('period_start', { withTimezone: true }).notNull(),
+    periodEnd: timestamp('period_end', { withTimezone: true }).notNull(),
+    notes: text('notes').notNull().default(''),
+    stats: jsonb('stats').$type<Record<string, unknown>>().notNull(),
+    publishedBy: uuid('published_by').references(() => users.id, { onDelete: 'set null' }),
+    publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('transparency_reports_period_idx').on(t.periodEnd)],
+);

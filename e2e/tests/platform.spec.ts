@@ -722,6 +722,44 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(ivan.getByText(/Dividend from Northwind Studio: 20 × 0\.10 USD a share/)).toBeVisible();
   });
 
+  test('governance: the owner sets the council rule and publishes a transparency report', async ({
+    browser,
+  }) => {
+    await admin.goto(`${ADMIN_URL}#/governance`);
+    const rules = admin.getByRole('form', { name: 'Council rules' });
+    await rules.getByLabel('A council stage passes with').selectOption('majority');
+    await rules.getByLabel('Council term (months)').fill('12');
+    await rules.getByRole('button', { name: 'Save rules' }).click();
+    await expect(admin.getByText('Governance rules saved')).toBeVisible();
+
+    const report = admin.getByRole('form', { name: 'New transparency report' });
+    const today = new Date();
+    const tomorrow = new Date(today.getTime() + 86_400_000);
+    await report
+      .getByLabel('From')
+      .fill(new Date(today.getTime() - 30 * 86_400_000).toISOString().slice(0, 10));
+    await report.getByLabel('Until (not included)').fill(tomorrow.toISOString().slice(0, 10));
+    await report.getByLabel('Title').fill('Launch month');
+    await report.getByLabel('Notes (optional)').fill('How the first month went.');
+    await expect(report.getByText(/received · \d+ approved/)).toBeVisible();
+    await report.getByRole('button', { name: 'Publish report' }).click();
+    await expect(admin.getByText('Report published')).toBeVisible();
+
+    await ivan.goto('./#/transparency');
+    await expect(
+      ivan.getByText('More than half of the council'.toLowerCase(), { exact: false }),
+    ).toBeVisible();
+    const published = ivan.getByRole('article', { name: 'Launch month' });
+    await expect(published.getByText('How the first month went.')).toBeVisible();
+
+    // The reports are public: no account needed.
+    const context = await browser.newContext();
+    const visitor = await context.newPage();
+    await visitor.goto('./#/transparency');
+    await expect(visitor.getByRole('article', { name: 'Launch month' })).toBeVisible();
+    await context.close();
+  });
+
   test('settings: switching the theme applies instantly and is saved', async () => {
     await maria.goto('./#/settings?section=appearance');
     await maria.getByRole('radio', { name: 'Midnight' }).click();

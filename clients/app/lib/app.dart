@@ -18,6 +18,7 @@ import 'screens/settings.dart';
 import 'screens/shell.dart';
 import 'screens/splash.dart';
 import 'screens/support.dart';
+import 'screens/transparency.dart';
 import 'screens/invoices.dart';
 import 'screens/notifications.dart';
 import 'screens/wallet.dart';
@@ -192,6 +193,13 @@ final sections = <Section>[
       path: '/registry',
       builder: (_, s) => RegistryScreen(initialQuery: s.uri.queryParameters['q']),
     ),
+  ),
+  Section(
+    '/transparency',
+    'Transparency',
+    navIcons['transparency']!,
+    'Registry',
+    GoRoute(path: '/transparency', builder: (_, _) => const TransparencyScreen()),
   ),
   Section(
     '/applications',

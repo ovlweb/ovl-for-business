@@ -460,6 +460,11 @@ class OvlApi {
   Future<void> markRead(String chatId, int messageId) => _post('/chats/$chatId/read', {'messageId': messageId});
   Future<void> leave(String chatId, String myId) => _delete('/chats/$chatId/members/$myId');
 
+  // --- governance --------------------------------------------------------------------------
+
+  Future<GovernanceInfo> governance() async => GovernanceInfo.fromJson(await _get('/governance'));
+  Future<List<TransparencyReport>> transparencyReports() => _getList('/transparency', TransparencyReport.fromJson);
+
   // --- notification center ----------------------------------------------------------------
 
   Future<NotificationPage> notifications({DateTime? before, bool unreadOnly = false, int limit = 30}) async =>

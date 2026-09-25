@@ -17,6 +17,7 @@ import { RegistryPage } from './pages/Registry';
 import { ReviewPage } from './pages/Review';
 import { SettingsPage } from './pages/Settings';
 import { NotificationsPage } from './pages/Notifications';
+import { PublicTransparencyPage, TransparencyPage } from './pages/Transparency';
 import { SupportPage } from './pages/Support';
 import { UserPage } from './pages/User';
 import { VerifyPage } from './pages/Verify';
@@ -53,6 +54,9 @@ export function App() {
         <Route path="/verify/:number" element={<VerifyPage />} />
       </Routes>
     );
+  // Transparency reports are public.
+  else if (pathname === '/transparency' && !me && !loading)
+    content = <PublicTransparencyPage key="transparency" />;
   else if (loading && !me) content = <Splash key="splash" />;
   else if (!me || addingAccount) content = <LoginPage key="login" />;
   else if (!me.preferences.onboardingCompleted)
@@ -90,6 +94,7 @@ export function App() {
             <Route path="/review" element={<ReviewPage />} />
             <Route path="/review/:id" element={<ReviewPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/transparency" element={<TransparencyPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/profile" element={<Navigate to="/settings" replace />} />
             <Route path="/u/:username" element={<UserPage />} />

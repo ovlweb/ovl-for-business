@@ -1309,3 +1309,49 @@ class NotificationPage {
   final List<AppNotification> items;
   final int unreadCount;
 }
+
+/// Council rules and members (GET /governance).
+class GovernanceInfo {
+  GovernanceInfo.fromJson(Json j)
+    : councilVoting = j['councilVoting'] as String,
+      councilQuorum = j['councilQuorum'] as int,
+      councilTermMonths = j['councilTermMonths'] as int,
+      activeCouncilMembers = j['activeCouncilMembers'] as int,
+      votesNeeded = j['votesNeeded'] as int,
+      council = [
+        for (final c in j['council'] as List)
+          (user: UserSummary.fromJson((c as Json)['user'] as Json), termEndsAt: _dateOrNull(c['termEndsAt'])),
+      ];
+
+  /// quorum, majority or two_thirds
+  final String councilVoting;
+  final int councilQuorum;
+  final int councilTermMonths;
+  final int activeCouncilMembers;
+  final int votesNeeded;
+  final List<({UserSummary user, DateTime? termEndsAt})> council;
+
+  String get votingLabel => switch (councilVoting) {
+    'majority' => 'more than half of the council',
+    'two_thirds' => 'two thirds of the council',
+    _ => 'a fixed number of votes',
+  };
+}
+
+/// A published transparency report; `stats` keeps the server's sections as they are.
+class TransparencyReport {
+  TransparencyReport.fromJson(Json j)
+    : id = j['id'] as String,
+      title = j['title'] as String,
+      periodStart = _date(j['periodStart']),
+      periodEnd = _date(j['periodEnd']),
+      notes = j['notes'] as String? ?? '',
+      stats = j['stats'] as Json;
+
+  final String id;
+  final String title;
+  final DateTime periodStart;
+  final DateTime periodEnd;
+  final String notes;
+  final Json stats;
+}

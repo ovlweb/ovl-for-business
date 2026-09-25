@@ -332,12 +332,41 @@ export type StaffApplication = z.infer<typeof staffApplicationSchema>;
 export type NewsChannelApplication = z.infer<typeof newsChannelApplicationSchema>;
 export type RenewalApplication = z.infer<typeof renewalApplicationSchema>;
 
-/** Resolve the numeric quorum of an approver group. */
+/** How council stages are decided (governance settings). */
+export const COUNCIL_VOTING = ['quorum', 'majority', 'two_thirds'] as const;
+export type CouncilVoting = (typeof COUNCIL_VOTING)[number];
+export const COUNCIL_VOTING_LABELS: Record<CouncilVoting, string> = {
+  quorum: 'A fixed number of votes (quorum)',
+  majority: 'More than half of the council',
+  two_thirds: 'Two thirds of the council',
+};
+
+export interface CouncilRules {
+  councilVoting: CouncilVoting;
+  councilQuorum: number;
+}
+
+/** Votes a council stage needs (to pass, or to fail) with this many active members. */
+export function councilVotesNeeded(rules: CouncilRules, activeCouncilMembers: number): number {
+  const members = Math.max(1, activeCouncilMembers);
+  switch (rules.councilVoting) {
+    case 'majority':
+      return Math.floor(members / 2) + 1;
+    case 'two_thirds':
+      return Math.ceil((members * 2) / 3);
+    default:
+      return Math.max(1, Math.min(rules.councilQuorum, members));
+  }
+}
+
+/** Resolve the numeric quorum of an approver group (a number is the council quorum, as before). */
 export function resolveQuorum(
   group: ApproverGroup,
-  councilQuorum: number,
+  council: number | CouncilRules,
   activeCouncilMembers: number,
 ): number {
   if (group.quorum !== 'council') return group.quorum;
-  return Math.max(1, Math.min(councilQuorum, activeCouncilMembers));
+  const rules =
+    typeof council === 'number' ? { councilVoting: 'quorum' as const, councilQuorum: council } : council;
+  return councilVotesNeeded(rules, activeCouncilMembers);
 }

@@ -191,6 +191,23 @@ direct and group messages unless the `pushChats` preference is off:
 `POST /me/push-subscriptions/test` sends a test to all of them. Devices the push service reports as
 gone are forgotten, as are ones that fail 10 times in a row.
 
+## Governance and transparency
+
+`GET /governance` (public) shows how council stages are decided (`councilVoting`: `quorum` with
+`councilQuorum` votes capped by the council size, `majority`, or `two_thirds` of active members),
+the `votesNeeded` right now, the term length and every council member with the end of their term.
+The owner changes the rules with `PUT /admin/governance {councilVoting?, councilQuorum?,
+councilTermMonths?}`; new council seats get a term of that many months, and an hourly job returns
+members whose term ended to regular accounts (they are told, and it is audited).
+`POST /admin/users/:id/council-term {months}` starts a new term.
+
+Transparency reports freeze the numbers of a period: `GET /admin/transparency/preview?from=&to=`
+(`transparency.publish`) shows them, `POST /admin/transparency {title, periodStart, periodEnd, notes}`
+publishes, `DELETE /admin/transparency/:id` retracts. `GET /transparency` and
+`GET /transparency/:id` are public: applications received and decided (by type, with the median time
+to decide), council votes, suspensions, identity checks, revoked licences, support tickets, registry
+and economy activity. The web client shows them at `/#/transparency`, signed in or not.
+
 ## Operations
 
 - `GET /metrics` (outside `/api/v1`): Prometheus text format; `Authorization: Bearer $METRICS_TOKEN`

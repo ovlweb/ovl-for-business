@@ -24,6 +24,7 @@ const navIcons = <String, IconData>{
   'exchange': LucideIcons.chartLine,
   'registry': LucideIcons.bookOpen,
   'applications': LucideIcons.fileText,
+  'transparency': LucideIcons.award,
   'support': LucideIcons.lifeBuoy,
   'review': LucideIcons.clipboardCheck,
   'settings': LucideIcons.settings,

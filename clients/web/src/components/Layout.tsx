@@ -306,6 +306,7 @@ export function Layout() {
       items: [
         { to: '/registry', icon: 'book', label: 'Public registry' },
         { to: '/applications', icon: 'file', label: 'Applications' },
+        { to: '/transparency', icon: 'award', label: 'Transparency' },
       ],
     },
     {

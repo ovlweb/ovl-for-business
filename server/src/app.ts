@@ -41,6 +41,7 @@ import { payrollRoutes } from './modules/payroll';
 import { webhookRoutes } from './modules/webhooks';
 import { notificationRoutes } from './modules/notifications';
 import { operationsRoutes } from './modules/operations';
+import { governanceRoutes } from './modules/governance';
 import { deliverNotifications, hasQueuedNotifications } from './lib/notify';
 import { PushService } from './lib/push';
 import { registerObservability, traceIdFor } from './plugins/observability';
@@ -277,6 +278,7 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
       await api.register(webhookRoutes);
       await api.register(notificationRoutes);
       await api.register(operationsRoutes);
+      await api.register(governanceRoutes);
       await api.register(adminRoutes);
       await api.register(realtimeRoutes);
     },

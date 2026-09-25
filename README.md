@@ -88,7 +88,8 @@ Android, iOS, macOS and Windows.
 - **Registration** — applications to create a company / business account, request a license, join
   the moderation team, join the council or open a news channel.
 - **Council** — a role with a pinned council chat where applications waiting for a vote are posted as
-  cards, plus normal chit-chat.
+  cards, plus normal chit-chat. The owner chooses quorum, majority or two-thirds voting and how long
+  council seats last; the platform publishes transparency reports anyone can read.
 - **Themes, onboarding and multi-account**: eight themes (Daylight, Midnight, Graphite,
   Emerald, Obsidian, Ivory, Aurora, High contrast) shared by the web client, the admin panel and
   the native apps. Your choice follows your account to every device. New accounts get a

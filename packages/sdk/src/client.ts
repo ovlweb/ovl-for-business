@@ -32,6 +32,7 @@ import type {
   CurrencyInfo,
   CreateStoryInput,
   FileInfo,
+  Governance,
   FundLock,
   Holding,
   IdentityCheck,
@@ -82,6 +83,8 @@ import type {
   StockLimits,
   StockOrder,
   SystemStatus,
+  TransparencyReport,
+  TransparencyStats,
   StockTrade,
   Story,
   TransferInput,
@@ -612,6 +615,13 @@ export class OvlClient {
       this.post<Message>(`/chats/${id}/messages/${postId}/comments`, { body, fileIds }),
   };
 
+  /** Council rules, council members and published transparency reports (public). */
+  governance = {
+    get: () => this.get<Governance>('/governance'),
+    reports: () => this.get<TransparencyReport[]>('/transparency'),
+    report: (id: string) => this.get<TransparencyReport>(`/transparency/${id}`),
+  };
+
   /** Your notification center, and the devices that receive push notifications. */
   notifications = {
     list: (query?: { before?: string; unread?: boolean; limit?: number }) =>
@@ -722,6 +732,20 @@ export class OvlClient {
       this.download('/admin/audit-logs/export', query),
     /** Instances, connections, queues, background jobs and the last backup. */
     system: () => this.get<SystemStatus>('/admin/system'),
+    /** Council voting rules and term length (owner). */
+    setGovernance: (input: {
+      councilVoting?: 'quorum' | 'majority' | 'two_thirds';
+      councilQuorum?: number;
+      councilTermMonths?: number;
+    }) => this.put<Governance>('/admin/governance', input),
+    /** Start a new term for a council member now (0 months: no limit). */
+    renewCouncilTerm: (userId: string, months: number) =>
+      this.post<{ termEndsAt: string | null }>(`/admin/users/${userId}/council-term`, { months }),
+    transparencyPreview: (from: string, to: string) =>
+      this.get<TransparencyStats>('/admin/transparency/preview', { from, to }),
+    publishTransparency: (input: { title: string; periodStart: string; periodEnd: string; notes?: string }) =>
+      this.post<TransparencyReport>('/admin/transparency', input),
+    retractTransparency: (id: string) => this.del(`/admin/transparency/${id}`),
     apiKeys: (query?: { limit?: number; offset?: number }) =>
       this.get<Page<ApiKey>>('/admin/api-keys', query),
     revokeApiKey: (id: string) => this.del(`/admin/api-keys/${id}`),

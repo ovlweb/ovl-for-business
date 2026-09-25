@@ -84,4 +84,5 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
 - Localisation (English, Russian, …).
 - ✅ Observability: Prometheus metrics, W3C trace context in logs, structured audit export
   (CSV / NDJSON); automated backups with retention and a restore script (0.2).
-- Governance settings: majority vs. quorum voting, council terms, published transparency reports.
+- ✅ Governance settings: quorum, majority or two-thirds council voting, council terms that end on
+  their own, published transparency reports (0.2).

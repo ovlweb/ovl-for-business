@@ -17,6 +17,7 @@ import { iso, isoOrNull, summaryColumns, toUserSummary } from '../../lib/mappers
 import { getStaffChat, insertMessage, type ChatRow, type MessageRow } from '../chats/service';
 import { fileDtos, filesOf } from '../files';
 import { applyApprovedApplication, type EffectResult } from './effects';
+import { loadGovernance } from '../../lib/governance';
 
 export type ApplicationRow = typeof applications.$inferSelect;
 type ReviewRow = typeof applicationReviews.$inferSelect;
@@ -248,13 +249,14 @@ export async function reviewApplication(
         eq(applicationReviews.round, application.round),
       ),
     );
-  const councilSize = await activeCouncilSize(db);
+  const [councilSize, rules] = await Promise.all([
+    activeCouncilSize(db),
+    loadGovernance(db, config.COUNCIL_QUORUM),
+  ]);
   const tally = (group: ApproverGroup, decision: 'approve' | 'reject') =>
     reviews.filter((r) => r.decision === decision && group.roles.includes(r.reviewerRole)).length;
   const reached = (decision: 'approve' | 'reject') =>
-    stageGroups(stage).some(
-      (g) => tally(g, decision) >= resolveQuorum(g, config.COUNCIL_QUORUM, councilSize),
-    );
+    stageGroups(stage).some((g) => tally(g, decision) >= resolveQuorum(g, rules, councilSize));
 
   const now = new Date();
   let patch: Partial<ApplicationRow> = { updatedAt: now };

@@ -20,6 +20,7 @@ import { useAdmin, useAdminAuth } from './auth';
 import { ApiKeysPage } from './pages/ApiKeys';
 import { ApplicationsPage } from './pages/Applications';
 import { AuditPage } from './pages/Audit';
+import { GovernancePage } from './pages/Governance';
 import { CashDeskPage } from './pages/CashDesk';
 import { DashboardPage } from './pages/Dashboard';
 import { IdentityPage } from './pages/Identity';
@@ -143,6 +144,14 @@ export const SECTIONS: Section[] = [
     group: 'Communication',
     permission: 'stories.publish',
     element: <StoriesPage />,
+  },
+  {
+    path: 'governance',
+    label: 'Governance',
+    icon: 'award',
+    group: 'System',
+    permission: 'audit.view',
+    element: <GovernancePage />,
   },
   {
     path: 'audit',

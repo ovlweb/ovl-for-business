@@ -56,6 +56,10 @@ export const PERMISSIONS = {
   'audit.view': ['admin', 'owner'],
   /** Revoke any developer API key. */
   'apikeys.manage': ['admin', 'owner'],
+  /** Council voting rules and term length. */
+  'governance.manage': ['owner'],
+  /** Publish transparency reports. */
+  'transparency.publish': ['admin', 'owner'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;
