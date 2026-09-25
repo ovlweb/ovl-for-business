@@ -50,7 +50,8 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
 
 - Expiry dates and renewals; license certificates (PDF with a QR code that verifies against the
   public registry).
-- "Request changes" step in workflows and file attachments (S3 / MinIO storage).
+- ✅ "Request changes" step in every workflow, and documents attached to applications, stored on
+  disk or in S3 / MinIO (0.2).
 - Virtual-country currencies issued under a virtual-country license.
 - Webhooks for API consumers (new / changed registry entries, listing changes).
 

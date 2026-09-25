@@ -371,7 +371,7 @@ class StatusPill extends StatelessWidget {
     final (fg, bg) = switch (status) {
       'active' || 'approved' || 'completed' || 'paid' || 'confirmed' => (c.success, c.successSoft),
       'open' => (c.accent, c.accentSoft),
-      'pending' || 'halted' || 'not confirmed' => (c.warning, c.warningSoft),
+      'pending' || 'halted' || 'not confirmed' || 'changes_requested' => (c.warning, c.warningSoft),
       'rejected' || 'revoked' || 'suspended' || 'delisted' || 'declined' || 'overdue' => (c.danger, c.dangerSoft),
       _ => (c.text3, c.surface3),
     };
@@ -387,7 +387,10 @@ class StatusPill extends StatelessWidget {
             decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
           ),
           const SizedBox(width: 5),
-          Text(status.toUpperCase(), style: font(body, 10, FontWeight.w800, letterSpacing: 0.6, color: fg)),
+          Text(
+            status.replaceAll('_', ' ').toUpperCase(),
+            style: font(body, 10, FontWeight.w800, letterSpacing: 0.6, color: fg),
+          ),
         ],
       ),
     );

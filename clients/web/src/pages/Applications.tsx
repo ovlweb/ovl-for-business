@@ -6,12 +6,17 @@ import {
   type Application,
   type ApplicationType,
   type CreateApplicationInput,
+  type FileInfo,
 } from '@ovl/shared';
 import {
+  AttachmentList,
+  AttachmentPicker,
+  DecisionBadge,
   Empty,
   ErrorAlert,
   Field,
   formatDate,
+  Icon,
   Modal,
   PageHeader,
   PayloadView,
@@ -85,7 +90,28 @@ function buildInput(type: ApplicationType, v: Values): CreateApplicationInput {
   }
 }
 
-function NewApplicationModal({ type, onClose }: { type: ApplicationType; onClose: () => void }) {
+/** Form values from a submitted payload (to edit an application after "request changes"). */
+function valuesFromPayload(payload: Record<string, unknown>): Values {
+  const values: Values = {};
+  for (const [k, v] of Object.entries(payload)) {
+    if (k === 'listing' && v && typeof v === 'object') {
+      for (const [lk, lv] of Object.entries(v)) values[lk] = String(lv);
+    } else if (typeof v === 'boolean') values[k] = v;
+    else if (v !== undefined && v !== null) values[k] = String(v);
+  }
+  return values;
+}
+
+function NewApplicationModal({
+  type,
+  onClose,
+  resubmit,
+}: {
+  type: ApplicationType;
+  onClose: () => void;
+  /** Edit this application and send it again (after a reviewer asked for changes). */
+  resubmit?: Application;
+}) {
   const queryClient = useQueryClient();
   const orgs = useQuery({
     queryKey: ['orgs', 'mine'],
@@ -98,15 +124,26 @@ function NewApplicationModal({ type, onClose }: { type: ApplicationType; onClose
     enabled: type === 'company',
     staleTime: Infinity,
   });
-  const { values, setValues, bind } = useForm({
-    baseCurrency: 'USD',
-    licenseType: 'project',
-    listOnExchange: false,
-    totalShares: '1000000',
-    sharePrice: '1.00',
-  });
+  const { values, setValues, bind } = useForm(
+    resubmit
+      ? valuesFromPayload(resubmit.payload)
+      : {
+          baseCurrency: 'USD',
+          licenseType: 'project',
+          listOnExchange: false,
+          totalShares: '1000000',
+          sharePrice: '1.00',
+        },
+  );
+  const [files, setFiles] = useState<FileInfo[]>([]);
   const submit = useMutation({
-    mutationFn: () => api.applications.submit(buildInput(type, values)),
+    mutationFn: () => {
+      const attachments = files.map((f) => f.id);
+      const input = buildInput(type, values);
+      return resubmit
+        ? api.applications.resubmit(resubmit.id, input.payload as Record<string, unknown>, attachments)
+        : api.applications.submit({ ...input, attachments });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['applications'] });
       onClose();
@@ -263,14 +300,36 @@ function NewApplicationModal({ type, onClose }: { type: ApplicationType; onClose
   }
 
   return (
-    <Modal title={workflow.label} onClose={onClose} wide>
+    <Modal title={resubmit ? `Edit: ${workflow.label}` : workflow.label} onClose={onClose} wide>
       <form className="stack" onSubmit={onSubmit}>
-        <p className="small muted">{workflow.description}</p>
-        <WorkflowStepper application={{ type, status: 'pending', stageIndex: -1 }} />
+        {resubmit?.changesRequested ? (
+          <div className="alert warning small">
+            <Icon name="info" size={16} />
+            <span>
+              <b>Requested changes:</b> {resubmit.changesRequested}
+            </span>
+          </div>
+        ) : (
+          <p className="small muted">{workflow.description}</p>
+        )}
+        <WorkflowStepper application={resubmit ?? { type, status: 'pending', stageIndex: -1 }} />
         {fields}
+        <Field label="Documents (optional)" hint="Business license, plans, IDs… Images, PDF or office files.">
+          <div className="stack-sm">
+            {resubmit && <AttachmentList files={resubmit.attachments} href={api.files.url} />}
+            <AttachmentPicker
+              value={files}
+              onChange={setFiles}
+              upload={(file) => api.files.upload(file, file.name)}
+              remove={(file) => api.files.remove(file.id)}
+              href={api.files.url}
+              max={10 - (resubmit?.attachments.length ?? 0)}
+            />
+          </div>
+        </Field>
         <ErrorAlert error={submit.error} />
         <button className="btn primary" disabled={submit.isPending}>
-          Submit application
+          {resubmit ? 'Send the changes' : 'Submit application'}
         </button>
       </form>
     </Modal>
@@ -326,6 +385,7 @@ export function ApplicationsPage() {
   const [params, setParams] = useSearchParams();
   const creating = params.get('new') as ApplicationType | null;
   const [open, setOpen] = useState<Application | null>(null);
+  const [editing, setEditing] = useState<Application | null>(null);
   const mine = useQuery({ queryKey: ['applications', 'mine'], queryFn: api.applications.mine });
   const withdraw = useMutation({
     mutationFn: api.applications.withdraw,
@@ -383,6 +443,21 @@ export function ApplicationsPage() {
             {a.status === 'rejected' && a.rejectionReason && (
               <div className="alert error small">Rejected: {a.rejectionReason}</div>
             )}
+            {a.status === 'changes_requested' && (
+              <div className="alert warning small">
+                <Icon name="info" size={16} />
+                <span className="grow">Changes requested: {a.changesRequested}</span>
+                <button
+                  className="btn sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditing(a);
+                  }}
+                >
+                  Edit and resubmit
+                </button>
+              </div>
+            )}
             {a.status === 'approved' && <ResultLinks application={a} />}
             <span className="tiny muted">Submitted {formatDate(a.createdAt)}</span>
           </div>
@@ -392,25 +467,45 @@ export function ApplicationsPage() {
       {creating && WORKFLOWS[creating] && (
         <NewApplicationModal type={creating} onClose={() => setParams({})} />
       )}
+      {editing && (
+        <NewApplicationModal type={editing.type} resubmit={editing} onClose={() => setEditing(null)} />
+      )}
       {open && (
         <Modal title={WORKFLOWS[open.type].label} onClose={() => setOpen(null)} wide>
           <div className="stack">
             <WorkflowStepper application={open} />
             <PayloadView payload={open.payload} />
+            {open.attachments.length > 0 && (
+              <div className="stack-sm">
+                <h3>Documents</h3>
+                <AttachmentList files={open.attachments} href={api.files.url} />
+              </div>
+            )}
             {open.reviews.length > 0 && (
               <div className="stack-sm">
                 <h3>Decisions</h3>
                 {open.reviews.map((r) => (
                   <div key={r.id} className="small">
-                    <span className={`badge ${r.decision === 'approve' ? 'ok' : 'bad'}`}>{r.decision}</span>{' '}
-                    {r.reviewer.displayName} ({r.reviewerRole}) · {r.stageKey} · {formatDate(r.createdAt)}
+                    <DecisionBadge decision={r.decision} /> {r.reviewer.displayName} ({r.reviewerRole}) ·{' '}
+                    {r.stageKey} · {formatDate(r.createdAt)}
                     {r.comment && <div className="muted">“{r.comment}”</div>}
                   </div>
                 ))}
               </div>
             )}
             <ErrorAlert error={withdraw.error} />
-            {open.status === 'pending' && (
+            {open.status === 'changes_requested' && (
+              <button
+                className="btn primary"
+                onClick={() => {
+                  setEditing(open);
+                  setOpen(null);
+                }}
+              >
+                Edit and resubmit
+              </button>
+            )}
+            {(open.status === 'pending' || open.status === 'changes_requested') && (
               <button className="btn danger" onClick={() => withdraw.mutate(open.id)}>
                 Withdraw application
               </button>

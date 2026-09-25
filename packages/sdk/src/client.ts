@@ -16,6 +16,7 @@ import type {
   CreateApplicationInput,
   CreateInvoiceInput,
   CreateStoryInput,
+  FileInfo,
   FundLock,
   Holding,
   Investment,
@@ -147,12 +148,15 @@ export class OvlClient {
     const tokens = this.tokens.get();
     if (tokens) headers.authorization = `Bearer ${tokens.accessToken}`;
     if (this.apiKey) headers['x-api-key'] = this.apiKey;
-    if (body !== undefined) headers['content-type'] = 'application/json';
+    // A Blob (a file upload) goes as it is, with its own type; everything else is JSON.
+    const raw = typeof Blob !== 'undefined' && body instanceof Blob;
+    if (raw) headers['content-type'] = (body as Blob).type || 'application/octet-stream';
+    else if (body !== undefined) headers['content-type'] = 'application/json';
 
     const res = await this.fetchImpl(`${this.baseUrl}/api/v1${path}`, {
       method,
       headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: raw ? (body as Blob) : body !== undefined ? JSON.stringify(body) : undefined,
     });
 
     if (res.status === 401 && retry && tokens && !path.startsWith('/auth/')) {
@@ -360,8 +364,25 @@ export class OvlClient {
       this.post<Wallet>(`/organizations/${id}/wallets`, { currency }),
   };
 
+  files = {
+    /** Upload a file (it stays private until attached, e.g. to an application). */
+    upload: async (file: Blob, name: string) => {
+      const res = await this.send('POST', `/files${qs({ name })}`, file);
+      const text = await res.text();
+      if (!res.ok) return OvlClient.fail(res, text);
+      return JSON.parse(text) as FileInfo;
+    },
+    remove: (id: string) => this.del(`/files/${id}`),
+    /** Absolute URL of a file link from the API (signed links work in <img> and <a>). */
+    url: (path: string) => `${this.baseUrl}${path}`,
+  };
+
   applications = {
-    submit: (input: CreateApplicationInput) => this.post<Application>('/applications', input),
+    submit: (input: CreateApplicationInput & { attachments?: string[] }) =>
+      this.post<Application>('/applications', input),
+    /** Send a corrected application after a reviewer asked for changes. */
+    resubmit: (id: string, payload: Record<string, unknown>, attachments?: string[]) =>
+      this.post<Application>(`/applications/${id}/resubmit`, { payload, attachments }),
     mine: () => this.get<Application[]>('/applications/mine'),
     queue: () => this.get<Application[]>('/applications/queue'),
     list: (query?: { status?: string; type?: string; limit?: number; offset?: number }) =>

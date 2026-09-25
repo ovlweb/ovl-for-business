@@ -7,6 +7,8 @@ import {
   Modal,
   PageHeader,
   PayloadView,
+  AttachmentList,
+  DecisionBadge,
   Spinner,
   StatusBadge,
   UserName,
@@ -26,7 +28,7 @@ function ApplicationModal({ application, onClose }: { application: Application; 
   const stage =
     application.status === 'pending' ? WORKFLOWS[application.type].stages[application.stageIndex] : undefined;
   const review = useMutation({
-    mutationFn: (decision: 'approve' | 'reject') =>
+    mutationFn: (decision: 'approve' | 'reject' | 'request_changes') =>
       api.applications.review(application.id, {
         decision,
         comment: comment || undefined,
@@ -38,7 +40,11 @@ function ApplicationModal({ application, onClose }: { application: Application; 
       onClose();
     },
   });
-  const voted = stage && application.reviews.some((r) => r.stageKey === stage.key && r.reviewer.id === me.id);
+  const voted =
+    stage &&
+    application.reviews.some(
+      (r) => r.stageKey === stage.key && r.round === application.round && r.reviewer.id === me.id,
+    );
   const canAct =
     stage &&
     !voted &&
@@ -55,6 +61,12 @@ function ApplicationModal({ application, onClose }: { application: Application; 
         </div>
         <WorkflowStepper application={application} />
         <PayloadView payload={application.payload} />
+        {application.attachments.length > 0 && (
+          <div className="stack-sm">
+            <div className="label">Documents</div>
+            <AttachmentList files={application.attachments} href={api.files.url} />
+          </div>
+        )}
         {application.result && (
           <div className="alert success small">
             Result: <PayloadView payload={application.result} />
@@ -68,8 +80,8 @@ function ApplicationModal({ application, onClose }: { application: Application; 
             <h3>Decisions</h3>
             {application.reviews.map((r) => (
               <div key={r.id} className="small">
-                <span className={`badge ${r.decision === 'approve' ? 'ok' : 'bad'}`}>{r.decision}</span>{' '}
-                {r.reviewer.displayName} ({r.reviewerRole}) · {r.stageKey} · {formatDate(r.createdAt)}
+                <DecisionBadge decision={r.decision} /> {r.reviewer.displayName} ({r.reviewerRole}) ·{' '}
+                {r.stageKey} · {formatDate(r.createdAt)}
                 {r.comment && <div className="muted">“{r.comment}”</div>}
               </div>
             ))}
@@ -96,7 +108,7 @@ function ApplicationModal({ application, onClose }: { application: Application; 
                     {item.label}
                   </label>
                 ))}
-                <Field label="Comment" hint="Required when rejecting.">
+                <Field label="Comment" hint="Required when rejecting or asking for changes.">
                   <textarea
                     className="textarea"
                     value={comment}
@@ -118,6 +130,13 @@ function ApplicationModal({ application, onClose }: { application: Application; 
                     onClick={() => review.mutate('reject')}
                   >
                     Reject
+                  </button>
+                  <button
+                    className="btn"
+                    disabled={!comment.trim() || review.isPending}
+                    onClick={() => review.mutate('request_changes')}
+                  >
+                    Request changes
                   </button>
                 </div>
               </>

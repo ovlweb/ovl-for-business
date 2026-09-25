@@ -399,14 +399,34 @@ class Organization {
   bool get canSeeMoney => const ['owner', 'director', 'accountant'].contains(myRole);
 }
 
+/// An uploaded file; `url` is a signed API path (open it in the browser, about an hour).
+class FileInfo {
+  FileInfo.fromJson(Json j)
+    : id = j['id'] as String,
+      name = j['name'] as String,
+      contentType = j['contentType'] as String,
+      size = j['size'] as int,
+      url = j['url'] as String;
+
+  final String id;
+  final String name;
+  final String contentType;
+  final int size;
+  final String url;
+
+  bool get isImage => contentType.startsWith('image/');
+}
+
 class ApplicationReview {
   ApplicationReview.fromJson(Json j)
     : stageKey = j['stageKey'] as String,
       reviewer = UserSummary.fromJson(j['reviewer'] as Json),
       decision = j['decision'] as String,
       comment = j['comment'] as String? ?? '',
+      round = j['round'] as int? ?? 1,
       createdAt = _date(j['createdAt']);
 
+  final int round;
   final String stageKey;
   final UserSummary reviewer;
   final String decision;
@@ -425,6 +445,9 @@ class Application {
       payload = (j['payload'] as Json?) ?? {},
       result = j['result'] as Json?,
       rejectionReason = j['rejectionReason'] as String?,
+      changesRequested = j['changesRequested'] as String?,
+      round = j['round'] as int? ?? 1,
+      attachments = _list(j['attachments'], FileInfo.fromJson),
       reviews = _list(j['reviews'], ApplicationReview.fromJson),
       createdAt = _date(j['createdAt']),
       decidedAt = _dateOrNull(j['decidedAt']);
@@ -438,6 +461,9 @@ class Application {
   final Json payload;
   final Json? result;
   final String? rejectionReason;
+  final String? changesRequested;
+  final int round;
+  final List<FileInfo> attachments;
   final List<ApplicationReview> reviews;
   final DateTime createdAt;
   final DateTime? decidedAt;

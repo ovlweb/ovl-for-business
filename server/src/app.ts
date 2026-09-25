@@ -19,12 +19,14 @@ import type { Config } from './config';
 import { createDatabase, type Database } from './db/client';
 import { HttpError, isUniqueViolation } from './lib/errors';
 import { createMailer, type Mailer } from './lib/mailer';
+import { createStorage, type Storage } from './lib/storage';
 import { adminRoutes } from './modules/admin';
 import { apiKeyRoutes } from './modules/api-keys';
 import { applicationRoutes } from './modules/applications/routes';
 import { authRoutes } from './modules/auth';
 import { emailRoutes } from './modules/email';
 import { passkeyRoutes } from './modules/passkeys';
+import { fileRoutes } from './modules/files';
 import { cashRoutes } from './modules/cash';
 import { invoiceRoutes } from './modules/invoices';
 import { sessionRoutes } from './modules/sessions';
@@ -48,6 +50,7 @@ declare module 'fastify' {
     db: Database;
     hub: RealtimeHub;
     mailer: Mailer;
+    storage: Storage;
   }
 }
 
@@ -86,6 +89,7 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
   app.decorate('db', db);
   app.decorate('hub', new RealtimeHub());
   app.decorate('mailer', createMailer(config, app.log));
+  app.decorate('storage', createStorage(config));
 
   app.addHook('onClose', async () => {
     app.hub.closeAll();
@@ -180,6 +184,7 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
       await api.register(authRoutes);
       await api.register(emailRoutes);
       await api.register(passkeyRoutes);
+      await api.register(fileRoutes);
       await api.register(sessionRoutes);
       await api.register(twoFactorRoutes);
       await api.register(userRoutes);

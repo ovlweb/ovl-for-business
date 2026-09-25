@@ -15,7 +15,13 @@ import type { Role } from './roles';
 export const APPLICATION_TYPES = ['company', 'license', 'moderator', 'council', 'news_channel'] as const;
 export type ApplicationType = (typeof APPLICATION_TYPES)[number];
 
-export const APPLICATION_STATUSES = ['pending', 'approved', 'rejected', 'withdrawn'] as const;
+export const APPLICATION_STATUSES = [
+  'pending',
+  'changes_requested',
+  'approved',
+  'rejected',
+  'withdrawn',
+] as const;
 export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
 
 export interface ApproverGroup {

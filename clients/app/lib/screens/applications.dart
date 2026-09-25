@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api/currencies.g.dart';
 import '../api/models.dart';
@@ -34,7 +35,7 @@ class WorkflowSteps extends StatelessWidget {
             builder: (_) {
               final done = a.status == 'approved' || i < a.stageIndex;
               final failed = a.status == 'rejected' && i == a.stageIndex;
-              final current = a.status == 'pending' && i == a.stageIndex;
+              final current = (a.status == 'pending' || a.status == 'changes_requested') && i == a.stageIndex;
               final color = failed
                   ? c.danger
                   : done
@@ -226,6 +227,33 @@ class _ApplicationCard extends StatelessWidget {
             const SizedBox(height: 10),
             Text('Reason: ${a.rejectionReason}', style: TextStyle(color: context.c.danger, fontSize: 13.5)),
           ],
+          if (a.status == 'changes_requested') ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: context.c.warningSoft, borderRadius: BorderRadius.circular(12)),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Changes requested: ${a.changesRequested ?? ''}',
+                      style: TextStyle(color: context.c.warning, fontSize: 13.5),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => NewApplicationScreen(type: a.type, resubmit: a),
+                      ),
+                    ),
+                    child: const Text('Edit and resubmit'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (a.attachments.isNotEmpty) ...[const SizedBox(height: 10), AttachmentChips(files: a.attachments)],
           if (a.status == 'approved' && a.type == 'company') ...[
             const SizedBox(height: 10),
             TextButton.icon(
@@ -234,7 +262,7 @@ class _ApplicationCard extends StatelessWidget {
               label: const Text('Open company'),
             ),
           ],
-          if (a.status == 'pending') ...[
+          if (a.status == 'pending' || a.status == 'changes_requested') ...[
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerRight,
@@ -265,10 +293,37 @@ class _ApplicationCard extends StatelessWidget {
   }
 }
 
+/// Documents attached to an application; they open in the browser.
+class AttachmentChips extends StatelessWidget {
+  const AttachmentChips({super.key, required this.files});
+
+  final List<FileInfo> files;
+
+  @override
+  Widget build(BuildContext context) {
+    final session = context.read<Session>();
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final f in files)
+          ActionChip(
+            avatar: Icon(f.isImage ? LucideIcons.image : LucideIcons.fileText, size: 16),
+            label: Text(f.name, overflow: TextOverflow.ellipsis),
+            onPressed: () => launchUrl(session.api.fileUrl(f.url), mode: LaunchMode.externalApplication),
+          ),
+      ],
+    );
+  }
+}
+
 class NewApplicationScreen extends StatefulWidget {
-  const NewApplicationScreen({super.key, required this.type});
+  const NewApplicationScreen({super.key, required this.type, this.resubmit});
 
   final String type;
+
+  /// Edit this application and send it again (after a reviewer asked for changes).
+  final Application? resubmit;
 
   @override
   State<NewApplicationScreen> createState() => _NewApplicationScreenState();
@@ -283,6 +338,26 @@ class _NewApplicationScreenState extends State<NewApplicationScreen> {
   String? _orgId;
   bool _busy = false;
   Object? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final p = widget.resubmit?.payload;
+    if (p == null) return;
+    for (final e in p.entries) {
+      if (e.value is String || e.value is num) f(e.key).text = '${e.value}';
+    }
+    final listing = p['listing'];
+    if (listing is Map) {
+      for (final e in listing.entries) {
+        f('${e.key}').text = '${e.value}';
+      }
+    }
+    _list = p['listOnExchange'] == true;
+    _currency = p['baseCurrency'] as String? ?? _currency;
+    _licenseType = p['licenseType'] as String? ?? _licenseType;
+    _orgId = p['organizationId'] as String?;
+  }
 
   Json _payload() {
     String v(String k) => f(k).text.trim();
@@ -322,11 +397,25 @@ class _NewApplicationScreenState extends State<NewApplicationScreen> {
     });
     final session = context.read<Session>();
     try {
-      await session.api.submitApplication(widget.type, _payload());
+      final again = widget.resubmit;
+      if (again != null) {
+        await session.api.resubmitApplication(again.id, _payload());
+      } else {
+        await session.api.submitApplication(widget.type, _payload());
+      }
       session.queries.invalidate('applications');
       if (mounted) {
-        toast(context, 'Application submitted — you will see every approval step here.');
-        context.go('/applications');
+        toast(
+          context,
+          again != null
+              ? 'Changes sent — the reviewers look at it again.'
+              : 'Application submitted — you will see every approval step here.',
+        );
+        if (again != null) {
+          Navigator.of(context).pop();
+        } else {
+          context.go('/applications');
+        }
       }
     } catch (e) {
       setState(() => _error = e);

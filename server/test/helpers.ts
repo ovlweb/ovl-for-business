@@ -1,4 +1,6 @@
 import type { AuthResult } from '@ovl/shared';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app';
@@ -23,6 +25,7 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
     REQUIRE_2FA_FOR_STAFF: 'false',
     REQUIRE_2FA_FOR_COMPANY_FINANCE: 'false',
     REQUIRE_VERIFIED_EMAIL: 'false',
+    STORAGE_DIR: join(tmpdir(), 'ovl-test-uploads'),
     ...overrides,
   });
   const app = await buildApp(config);

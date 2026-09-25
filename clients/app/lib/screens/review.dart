@@ -117,12 +117,12 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
       _checked.clear();
       _comment.clear();
       if (mounted) {
-        toast(
-          context,
-          decision == 'approve'
-              ? 'Approved — ${updated.currentStage == null ? 'the application is complete' : 'moved to the next stage'}'
-              : 'Rejected',
-        );
+        toast(context, switch (decision) {
+          'approve' =>
+            'Approved — ${updated.currentStage == null ? 'the application is complete' : 'moved to the next stage'}',
+          'request_changes' => 'Sent back to the applicant for changes',
+          _ => 'Rejected',
+        });
       }
     } catch (e) {
       setState(() => _error = e);
@@ -245,9 +245,17 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: IconTile(
-                      r.decision == 'approve' ? LucideIcons.check : LucideIcons.x,
+                      switch (r.decision) {
+                        'approve' => LucideIcons.check,
+                        'request_changes' => LucideIcons.pencil,
+                        _ => LucideIcons.x,
+                      },
                       size: 34,
-                      color: r.decision == 'approve' ? c.success : c.danger,
+                      color: switch (r.decision) {
+                        'approve' => c.success,
+                        'request_changes' => c.warning,
+                        _ => c.danger,
+                      },
                     ),
                     title: Row(
                       children: [
@@ -288,7 +296,18 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                           ),
                       ],
                       const SizedBox(height: 12),
-                      LabeledField(label: 'Comment (optional)', controller: _comment, maxLines: 2),
+                      LabeledField(
+                        label: 'Comment',
+                        controller: _comment,
+                        maxLines: 2,
+                        helper: 'Required when rejecting or asking for changes.',
+                      ),
+                      if (a.attachments.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Caption('Documents'),
+                        const SizedBox(height: 6),
+                        AttachmentChips(files: a.attachments),
+                      ],
                       if (_error != null) ...[const SizedBox(height: 12), ErrorBox(_error)],
                       const SizedBox(height: 16),
                       Row(
@@ -302,6 +321,14 @@ class _ReviewDetailScreenState extends State<ReviewDetailScreen> {
                               onPressed: _busy != null ? null : () => _decide(a, 'reject'),
                               icon: const Icon(LucideIcons.x, size: 17),
                               label: const Text('Reject'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _busy != null ? null : () => _decide(a, 'request_changes'),
+                              icon: const Icon(LucideIcons.pencil, size: 17),
+                              label: const Text('Ask for changes'),
                             ),
                           ),
                           const SizedBox(width: 12),

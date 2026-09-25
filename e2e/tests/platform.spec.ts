@@ -176,11 +176,34 @@ test.describe.serial('OVL For Business end to end', () => {
     await maria.getByLabel('Ticker').fill('NWS');
     await maria.getByLabel('Share price (USD)').fill('5');
     await maria.getByLabel('Total shares').fill('1000');
+    await maria.locator('input[type=file]').setInputFiles({
+      name: 'business-plan.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4 Northwind business plan'),
+    });
+    await expect(maria.getByText('business-plan.pdf')).toBeVisible();
     await maria.getByRole('button', { name: 'Submit application' }).click();
     await maria.getByRole('heading', { name: 'Your applications' }).waitFor();
 
+    // A first round: the reviewer reads the attached document and asks for one more detail.
     await owner.goto('./#/review');
     await owner.getByText('Northwind Studio').first().click();
+    await expect(owner.getByRole('link', { name: /business-plan\.pdf/ })).toBeVisible();
+    await owner.getByLabel(/^Comment/).fill('Please add a contact email for investors.');
+    await owner.getByRole('button', { name: 'Request changes' }).click();
+    await expect(owner.getByText('Changes requested', { exact: true }).first()).toBeVisible();
+
+    await expect(
+      maria.getByText('Changes requested: Please add a contact email for investors.'),
+    ).toBeVisible();
+    await maria.getByRole('button', { name: 'Edit and resubmit' }).click();
+    await maria.getByLabel('Contact email (optional)').fill('invest@northwind.example');
+    await maria.getByRole('button', { name: 'Send the changes' }).click();
+    await expect(maria.getByText('Changes requested:')).toBeHidden();
+
+    await owner.goto('./#/review');
+    await owner.getByText('Northwind Studio').first().click();
+    await expect(owner.getByText('invest@northwind.example')).toBeVisible();
     await expect(owner.getByRole('button', { name: 'Approve' })).toBeDisabled();
     for (const item of [
       'Applicant identity',
@@ -352,7 +375,7 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(maria.getByRole('heading', { name: 'Add another account' })).toBeVisible();
     await maria.getByLabel('Username or email').fill('ivan');
     await maria.getByLabel('Password').fill(PASSWORD);
-    await maria.getByRole('button', { name: 'Sign in' }).click();
+    await maria.getByRole('button', { name: 'Sign in', exact: true }).click();
     await greeting(maria, 'Ivan').waitFor();
 
     await maria
@@ -379,7 +402,7 @@ test.describe.serial('OVL For Business end to end', () => {
     await maria.getByRole('button', { name: 'Add another account' }).click();
     await maria.getByLabel('Username or email').fill('maria');
     await maria.getByLabel('Password').fill(PASSWORD);
-    await maria.getByRole('button', { name: 'Sign in' }).click();
+    await maria.getByRole('button', { name: 'Sign in', exact: true }).click();
     await greeting(maria, 'Maria').waitFor();
   });
 
@@ -471,7 +494,7 @@ test.describe.serial('OVL For Business end to end', () => {
     await guest.getByLabel('Repeat the new password').fill('a-brand-new-password');
     await guest.getByRole('button', { name: 'Set new password' }).click();
     await expect(guest.getByRole('heading', { name: 'Password changed' })).toBeVisible();
-    await guest.getByRole('button', { name: 'Sign in' }).click();
+    await guest.getByRole('button', { name: 'Sign in', exact: true }).click();
     await login(guest, 'nina', 'a-brand-new-password');
     await greeting(guest, 'Nina').waitFor();
   });

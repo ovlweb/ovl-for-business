@@ -7,6 +7,8 @@ import {
   formatDate,
   PageHeader,
   PayloadView,
+  AttachmentList,
+  DecisionBadge,
   Spinner,
   StatusBadge,
   Tabs,
@@ -28,7 +30,7 @@ function ReviewPanel({ application }: { application: Application }) {
   const [checked, setChecked] = useState<string[]>([]);
   const [comment, setComment] = useState('');
   const review = useMutation({
-    mutationFn: (decision: 'approve' | 'reject') =>
+    mutationFn: (decision: 'approve' | 'reject' | 'request_changes') =>
       api.applications.review(application.id, {
         decision,
         comment: comment || undefined,
@@ -41,7 +43,10 @@ function ReviewPanel({ application }: { application: Application }) {
     },
   });
   const alreadyVoted =
-    stage && application.reviews.some((r) => r.stageKey === stage.key && r.reviewer.id === me.id);
+    stage &&
+    application.reviews.some(
+      (r) => r.stageKey === stage.key && r.round === application.round && r.reviewer.id === me.id,
+    );
   const canAct =
     stage &&
     application.applicant.id !== me.id &&
@@ -72,6 +77,12 @@ function ReviewPanel({ application }: { application: Application }) {
         </div>
         <WorkflowStepper application={application} />
         <PayloadView payload={application.payload} />
+        {application.attachments.length > 0 && (
+          <div className="stack-sm">
+            <div className="label">Documents</div>
+            <AttachmentList files={application.attachments} href={api.files.url} />
+          </div>
+        )}
       </div>
 
       {application.reviews.length > 0 && (
@@ -79,9 +90,8 @@ function ReviewPanel({ application }: { application: Application }) {
           <h3>Decisions so far</h3>
           {application.reviews.map((r) => (
             <div key={r.id} className="small">
-              <span className={`badge ${r.decision === 'approve' ? 'ok' : 'bad'}`}>{r.decision}</span>{' '}
-              <b>{r.reviewer.displayName}</b> ({r.reviewerRole}) at stage “{r.stageKey}” ·{' '}
-              {timeAgo(r.createdAt)}
+              <DecisionBadge decision={r.decision} /> <b>{r.reviewer.displayName}</b> ({r.reviewerRole}) at
+              stage “{r.stageKey}” · {timeAgo(r.createdAt)}
               {r.checklist && (
                 <span className="muted"> · confirmed {r.checklist.length} checklist items</span>
               )}
@@ -126,7 +136,7 @@ function ReviewPanel({ application }: { application: Application }) {
                   ))}
                 </div>
               )}
-              <Field label="Comment" hint="Required when rejecting.">
+              <Field label="Comment" hint="Required when rejecting or asking for changes.">
                 <textarea className="textarea" value={comment} onChange={(e) => setComment(e.target.value)} />
               </Field>
               <ErrorAlert error={review.error} />
@@ -144,6 +154,13 @@ function ReviewPanel({ application }: { application: Application }) {
                   onClick={() => review.mutate('reject')}
                 >
                   Reject
+                </button>
+                <button
+                  className="btn"
+                  disabled={!comment.trim() || review.isPending}
+                  onClick={() => review.mutate('request_changes')}
+                >
+                  Request changes
                 </button>
               </div>
             </>

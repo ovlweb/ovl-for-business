@@ -123,6 +123,20 @@ password and an authenticator code.
 - company owners, directors and accountants need it to move company money (same error);
 - applications need a confirmed email (`403 email_not_verified`).
 
+## Files and applications
+
+Upload with `POST /files?name=plan.pdf`, sending the file's bytes as the body with its own
+`Content-Type` (images, PDF, text, office documents, zip; no SVG or HTML; up to `MAX_UPLOAD_MB`).
+Every file listing carries a signed `url` that works for about an hour without a token (for
+`<img>` and links); `GET /files/:id` also works with a normal token when the caller may read the
+file. Files are private to the uploader until attached.
+
+Attach up to 10 files when submitting an application (`attachments: [fileId…]`); the applicant and
+staff who review applications can read them. A reviewer can answer `request_changes` (with a
+comment): the application becomes `changes_requested` and the applicant sends the corrected payload
+(and more files) with `POST /applications/:id/resubmit`. The stage then starts again in a new
+`round`; each review records its round.
+
 ## Deposits, payouts and statements
 
 People and company finance roles ask for money to come in or go out; a finance manager handles it
@@ -165,7 +179,7 @@ Both sides receive `invoice.updated`.
 | Wallets      | `GET/POST /wallets`, `GET /wallets/:id`, `/entries`, `/locks`, `POST /wallets/transfer`, `GET/POST /wallets/:id/cash-requests`, `POST /cash-requests/:id/cancel`, `GET /wallets/:id/statement.csv`, `POST /wallets/:id/statement-link`                                                                                                                                                 |
 | Invoices     | `GET/POST /invoices`, `GET /invoices/:id`, `POST /invoices/:id/pay`, `POST /invoices/:id/cancel`                                                                                                                                                                                                                                                                                       |
 | Companies    | `GET /organizations/mine`, `GET /organizations/:slug`, `PATCH /organizations/:id`, members, wallets                                                                                                                                                                                                                                                                                    |
-| Applications | `POST /applications`, `GET /applications/mine`, `/queue`, `/:id`, `POST /:id/review`, `/:id/withdraw`                                                                                                                                                                                                                                                                                  |
+| Applications | `POST /applications`, `GET /applications/mine`, `/queue`, `/:id`, `POST /:id/review`, `/:id/withdraw`, `/:id/resubmit`; `POST /files`, `GET/DELETE /files/:id`                                                                                                                                                                                                                         |
 | Registry     | `GET /registry`, `GET /registry/:idOrNumber`                                                                                                                                                                                                                                                                                                                                           |
 | Stock        | `GET /stock/listings`, `/stock/listings/:ticker`, `POST …/invest`, `GET /stock/portfolio`                                                                                                                                                                                                                                                                                              |
 | Chats        | `GET /chats`, `POST /chats/direct`, `/chats/groups`, `/chats/channels`, `GET /channels`, messages, members, read, pin                                                                                                                                                                                                                                                                  |

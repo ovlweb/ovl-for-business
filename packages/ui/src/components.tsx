@@ -411,6 +411,7 @@ const STATUS_TONES: Record<string, string> = {
   paid: 'ok',
   open: 'info',
   pending: 'warn',
+  changes_requested: 'warn',
   not_confirmed: 'warn',
   overdue: 'bad',
   halted: 'warn',
@@ -420,6 +421,18 @@ const STATUS_TONES: Record<string, string> = {
   revoked: 'bad',
   delisted: 'bad',
 };
+
+const DECISIONS: Record<string, [string, string]> = {
+  approve: ['ok', 'Approved'],
+  reject: ['bad', 'Rejected'],
+  request_changes: ['warn', 'Changes requested'],
+};
+
+/** A reviewer's decision on an application stage. */
+export function DecisionBadge({ decision }: { decision: string }) {
+  const [tone, label] = DECISIONS[decision] ?? ['', decision];
+  return <span className={`badge ${tone}`}>{label}</span>;
+}
 
 export function StatusBadge({ status }: { status: string }) {
   return (

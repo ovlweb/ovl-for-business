@@ -45,7 +45,7 @@ export const cashTypeEnum = pgEnum('cash_type', ['deposit', 'withdrawal']);
 export const cashMethodEnum = pgEnum('cash_method', CASH_METHODS);
 export const applicationTypeEnum = pgEnum('application_type', APPLICATION_TYPES);
 export const applicationStatusEnum = pgEnum('application_status', APPLICATION_STATUSES);
-export const reviewDecisionEnum = pgEnum('review_decision', ['approve', 'reject']);
+export const reviewDecisionEnum = pgEnum('review_decision', ['approve', 'reject', 'request_changes']);
 export const registryKindEnum = pgEnum('registry_kind', REGISTRY_KINDS);
 export const registryStatusEnum = pgEnum('registry_status', REGISTRY_STATUSES);
 export const listingStatusEnum = pgEnum('listing_status', LISTING_STATUSES);
@@ -407,6 +407,8 @@ export const applications = pgTable(
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
     result: jsonb('result').$type<Record<string, unknown>>(),
     rejectionReason: text('rejection_reason'),
+    /** Bumped each time the applicant resubmits after "request changes"; reviews count per round. */
+    round: integer('round').notNull().default(1),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
@@ -432,9 +434,33 @@ export const applicationReviews = pgTable(
     decision: reviewDecisionEnum('decision').notNull(),
     comment: text('comment').notNull().default(''),
     checklist: jsonb('checklist').$type<string[]>(),
+    round: integer('round').notNull().default(1),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex('application_reviews_once_uq').on(t.applicationId, t.stageKey, t.reviewerId)],
+  (t) => [uniqueIndex('application_reviews_once_uq').on(t.applicationId, t.stageKey, t.reviewerId, t.round)],
+);
+
+/**
+ * Uploaded files. A file starts private to its uploader and is attached to something (an
+ * application, a chat message…) through `scope` + `scopeId`, which decides who may read it.
+ */
+export const files = pgTable(
+  'files',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id')
+      .notNull()
+      .references(() => users.id),
+    storageKey: text('storage_key').notNull(),
+    name: varchar('name', { length: 255 }).notNull(),
+    contentType: varchar('content_type', { length: 127 }).notNull(),
+    size: integer('size').notNull(),
+    sha256: varchar('sha256', { length: 64 }).notNull(),
+    scope: varchar('scope', { length: 24 }),
+    scopeId: uuid('scope_id'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('files_scope_idx').on(t.scope, t.scopeId), index('files_owner_idx').on(t.ownerId)],
 );
 
 // ---------------------------------------------------------------------------

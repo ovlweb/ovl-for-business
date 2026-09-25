@@ -67,6 +67,18 @@ const envSchema = z.object({
   /** Applications (companies, licenses, roles) need a confirmed email address. */
   REQUIRE_VERIFIED_EMAIL: flag(true),
 
+  /** Uploaded files: a directory (local) or an S3-compatible bucket (s3: AWS, MinIO, R2…). */
+  STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  STORAGE_DIR: z.string().default('data/uploads'),
+  S3_ENDPOINT: z.string().url().optional(),
+  S3_REGION: z.string().default('us-east-1'),
+  S3_BUCKET: z.string().optional(),
+  S3_ACCESS_KEY_ID: z.string().optional(),
+  S3_SECRET_ACCESS_KEY: z.string().optional(),
+  /** MinIO and most self-hosted stores want bucket-in-path URLs. */
+  S3_FORCE_PATH_STYLE: flag(true),
+  MAX_UPLOAD_MB: z.coerce.number().min(1).max(100).default(10),
+
   /** Requests per minute for the public registry / stock API. */
   PUBLIC_RATE_LIMIT: z.coerce.number().int().default(60),
   API_KEY_RATE_LIMIT: z.coerce.number().int().default(600),

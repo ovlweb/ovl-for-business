@@ -499,12 +499,42 @@ export const applicationReviewSchema = z.object({
   stageKey: z.string(),
   reviewer: userSummarySchema,
   reviewerRole: roleSchema,
-  decision: z.enum(['approve', 'reject']),
+  decision: z.enum(['approve', 'reject', 'request_changes']),
   comment: z.string(),
   checklist: z.array(z.string()).nullable(),
+  round: z.number().int(),
   createdAt: isoDate,
 });
 export type ApplicationReview = z.infer<typeof applicationReviewSchema>;
+
+/** An uploaded file; `url` is a signed link for the caller (works in <img> and <a>, about an hour). */
+export const fileSchema = z.object({
+  id: uuid,
+  name: z.string(),
+  contentType: z.string(),
+  size: z.number().int(),
+  url: z.string(),
+  createdAt: isoDate,
+});
+export type FileInfo = z.infer<typeof fileSchema>;
+
+/** Types people can upload: images, PDF, text and office documents (no SVG or HTML). */
+export const UPLOAD_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+  'application/pdf',
+  'text/plain',
+  'text/csv',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.oasis.opendocument.text',
+  'application/vnd.oasis.opendocument.spreadsheet',
+  'application/zip',
+] as const;
 
 export const applicationSchema = z.object({
   id: uuid,
@@ -516,6 +546,10 @@ export const applicationSchema = z.object({
   payload: z.record(z.string(), z.unknown()),
   result: z.record(z.string(), z.unknown()).nullable(),
   rejectionReason: z.string().nullable(),
+  /** Set while the applicant is asked to change something. */
+  changesRequested: z.string().nullable(),
+  round: z.number().int(),
+  attachments: z.array(fileSchema),
   reviews: z.array(applicationReviewSchema),
   createdAt: isoDate,
   updatedAt: isoDate,
@@ -524,11 +558,20 @@ export const applicationSchema = z.object({
 export type Application = z.infer<typeof applicationSchema>;
 
 export const reviewInputSchema = z.object({
-  decision: z.enum(['approve', 'reject']),
+  decision: z.enum(['approve', 'reject', 'request_changes']),
   comment: z.string().trim().max(5000).optional(),
   checklist: z.array(z.string()).optional().describe('Checklist keys the reviewer confirms they reviewed'),
 });
 export type ReviewInput = z.input<typeof reviewInputSchema>;
+
+/** Attach uploaded files (up to 10 per application) when submitting or resubmitting. */
+export const attachmentIdsSchema = z.array(uuid).max(10).optional();
+export const resubmitApplicationSchema = z.object({
+  payload: z
+    .record(z.string(), z.unknown())
+    .describe('The corrected application, same shape as at submission'),
+  attachments: attachmentIdsSchema.describe('More files to attach'),
+});
 
 // ---------------------------------------------------------------------------
 // Registry

@@ -305,6 +305,14 @@ class OvlApi {
           'checklist': ?checklist,
         }) as Json,
       );
+
+  /// Send a corrected application after a reviewer asked for changes.
+  Future<Application> resubmitApplication(String id, Json payload) async =>
+      Application.fromJson(await _post('/applications/$id/resubmit', {'payload': payload}) as Json);
+
+  /// A full URL for a file path from the API (signed links open without a token).
+  Uri fileUrl(String path) => Uri.parse('${baseUrl.replaceAll(RegExp(r'/+$'), '')}$path');
+
   Future<Application> withdraw(String id) async =>
       Application.fromJson(await _post('/applications/$id/withdraw') as Json);
 

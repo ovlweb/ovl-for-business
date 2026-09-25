@@ -57,6 +57,13 @@
       "when": 1790283679429,
       "tag": "0007_passkeys",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790284107876,
+      "tag": "0008_files_request_changes",
+      "breakpoints": true
     }
   ]
 }

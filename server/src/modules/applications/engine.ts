@@ -8,12 +8,14 @@ import {
   type WorkflowStage,
 } from '@ovl/shared';
 import { and, count, eq, inArray } from 'drizzle-orm';
+import type { FastifyInstance } from 'fastify';
 import type { Config } from '../../config';
 import type { Db } from '../../db/client';
 import { applicationReviews, applications, users } from '../../db/schema';
 import { badRequest, conflict, forbidden, isUniqueViolation, notFound } from '../../lib/errors';
 import { iso, isoOrNull, summaryColumns, toUserSummary } from '../../lib/mappers';
 import { getStaffChat, insertMessage, type ChatRow, type MessageRow } from '../chats/service';
+import { fileDtos, filesOf } from '../files';
 import { applyApprovedApplication, type EffectResult } from './effects';
 
 export type ApplicationRow = typeof applications.$inferSelect;
@@ -49,8 +51,14 @@ export async function activeCouncilSize(db: Db): Promise<number> {
 // DTOs
 // ---------------------------------------------------------------------------
 
-export async function applicationDtos(db: Db, rows: ApplicationRow[]): Promise<Application[]> {
+export async function applicationDtos(app: FastifyInstance, rows: ApplicationRow[]): Promise<Application[]> {
   if (!rows.length) return [];
+  const db = app.db;
+  const attachments = await filesOf(
+    db,
+    'application',
+    rows.map((a) => a.id),
+  );
   const reviews = await db
     .select({ review: applicationReviews, reviewer: summaryColumns(users) })
     .from(applicationReviews)
@@ -82,6 +90,17 @@ export async function applicationDtos(db: Db, rows: ApplicationRow[]): Promise<A
     payload: a.payload,
     result: a.result,
     rejectionReason: a.rejectionReason,
+    changesRequested:
+      a.status === 'changes_requested'
+        ? (reviews
+            .filter((r) => r.review.applicationId === a.id && r.review.decision === 'request_changes')
+            .at(-1)?.review.comment ?? '')
+        : null,
+    round: a.round,
+    attachments: fileDtos(
+      app,
+      attachments.filter((f) => f.scopeId === a.id),
+    ),
     reviews: reviews
       .filter((r) => r.review.applicationId === a.id)
       .map(({ review, reviewer }) => ({
@@ -92,6 +111,7 @@ export async function applicationDtos(db: Db, rows: ApplicationRow[]): Promise<A
         decision: review.decision,
         comment: review.comment,
         checklist: review.checklist,
+        round: review.round,
         createdAt: iso(review.createdAt),
       })),
     createdAt: iso(a.createdAt),
@@ -183,6 +203,8 @@ export async function reviewApplication(
   }
   if (input.decision === 'reject' && !input.comment?.trim())
     throw badRequest('Give a reason for the rejection');
+  if (input.decision === 'request_changes' && !input.comment?.trim())
+    throw badRequest('Say what the applicant should change');
 
   try {
     await db.insert(applicationReviews).values({
@@ -192,7 +214,8 @@ export async function reviewApplication(
       reviewerRole: reviewer.role,
       decision: input.decision,
       comment: input.comment?.trim() ?? '',
-      checklist: stage.checklist ? checklist : null,
+      checklist: stage.checklist && input.decision === 'approve' ? checklist : null,
+      round: application.round,
     });
   } catch (error) {
     if (isUniqueViolation(error)) throw conflict('You already reviewed this stage');
@@ -203,7 +226,11 @@ export async function reviewApplication(
     .select()
     .from(applicationReviews)
     .where(
-      and(eq(applicationReviews.applicationId, applicationId), eq(applicationReviews.stageKey, stage.key)),
+      and(
+        eq(applicationReviews.applicationId, applicationId),
+        eq(applicationReviews.stageKey, stage.key),
+        eq(applicationReviews.round, application.round),
+      ),
     );
   const councilSize = await activeCouncilSize(db);
   const tally = (group: ApproverGroup, decision: 'approve' | 'reject') =>
@@ -217,7 +244,10 @@ export async function reviewApplication(
   let patch: Partial<ApplicationRow> = { updatedAt: now };
   let effects: EffectResult | null = null;
 
-  if (reached('reject')) {
+  if (input.decision === 'request_changes') {
+    // One reviewer is enough to send it back; the stage starts over when it is resubmitted.
+    patch = { ...patch, status: 'changes_requested' };
+  } else if (reached('reject')) {
     patch = { ...patch, status: 'rejected', decidedAt: now, rejectionReason: input.comment?.trim() ?? null };
   } else if (reached('approve')) {
     const isLast = application.stageIndex >= WORKFLOWS[application.type].stages.length - 1;

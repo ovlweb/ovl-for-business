@@ -65,7 +65,7 @@ export async function login(page: Page, username: string, password = PASSWORD, u
   await page.goto(url);
   await page.getByLabel('Username or email').fill(username);
   await page.getByLabel('Password').fill(password);
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 }
 
 export async function openChat(page: Page, title: string) {
