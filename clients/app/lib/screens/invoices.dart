@@ -31,11 +31,18 @@ String _decimal(BigInt minor, String currency) {
 String _totals(Iterable<Invoice> invoices) {
   final by = <String, BigInt>{};
   for (final i in invoices) {
-    by[i.currency] = (by[i.currency] ?? BigInt.zero) + _minor(i.total, i.currency);
+    by[i.currency] = (by[i.currency] ?? BigInt.zero) + _minor(i.amountDue, i.currency);
   }
   if (by.isEmpty) return '—';
   return by.entries.map((e) => money(_decimal(e.value, e.key), e.key)).join(' · ');
 }
+
+const _every = {
+  'weekly': 'Every week',
+  'monthly': 'Every month',
+  'quarterly': 'Every 3 months',
+  'yearly': 'Every year',
+};
 
 String _day(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
@@ -110,49 +117,54 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                 Expanded(
                   child: Segmented<String>(
                     value: _direction,
-                    options: const [('incoming', 'Received'), ('outgoing', 'Sent')],
+                    options: const [('incoming', 'Received'), ('outgoing', 'Sent'), ('recurring', 'Recurring')],
                     onChanged: (d) => setState(() => _direction = d),
                   ),
                 ),
-                const SizedBox(width: 10),
-                FilterChip(
-                  label: const Text('Open only'),
-                  selected: _onlyOpen,
-                  onSelected: (v) => setState(() => _onlyOpen = v),
-                ),
+                if (_direction != 'recurring') ...[
+                  const SizedBox(width: 10),
+                  FilterChip(
+                    label: const Text('Open only'),
+                    selected: _onlyOpen,
+                    onSelected: (v) => setState(() => _onlyOpen = v),
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 12),
-            Query<List<Invoice>>(
-              client: session.queries,
-              queryKey: 'invoices:$_direction:$_onlyOpen',
-              fetch: () => session.api.invoices(direction: _direction, status: _onlyOpen ? 'open' : null),
-              builder: (context, s) {
-                if (!s.hasData) return const SkeletonList(rows: 3);
-                final list = s.data!;
-                if (list.isEmpty) {
-                  return EmptyState(
-                    icon: LucideIcons.receipt,
-                    title: _onlyOpen ? 'Nothing open' : 'No invoices yet',
-                    text: _direction == 'incoming'
-                        ? 'Invoices people and companies send you appear here.'
-                        : 'Create an invoice to bill a person or a company.',
+            if (_direction == 'recurring')
+              const _Schedules()
+            else
+              Query<List<Invoice>>(
+                client: session.queries,
+                queryKey: 'invoices:$_direction:$_onlyOpen',
+                fetch: () => session.api.invoices(direction: _direction, status: _onlyOpen ? 'open' : null),
+                builder: (context, s) {
+                  if (!s.hasData) return const SkeletonList(rows: 3);
+                  final list = s.data!;
+                  if (list.isEmpty) {
+                    return EmptyState(
+                      icon: LucideIcons.receipt,
+                      title: _onlyOpen ? 'Nothing open' : 'No invoices yet',
+                      text: _direction == 'incoming'
+                          ? 'Invoices people and companies send you appear here.'
+                          : 'Create an invoice to bill a person or a company.',
+                    );
+                  }
+                  return OvlCard(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Column(
+                      children: [
+                        for (final (n, i) in list.indexed)
+                          FadeSlideIn(
+                            delay: stagger(n, 30),
+                            child: _InvoiceTile(invoice: i),
+                          ),
+                      ],
+                    ),
                   );
-                }
-                return OvlCard(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Column(
-                    children: [
-                      for (final (n, i) in list.indexed)
-                        FadeSlideIn(
-                          delay: stagger(n, 30),
-                          child: _InvoiceTile(invoice: i),
-                        ),
-                    ],
-                  ),
-                );
-              },
-            ),
+                },
+              ),
           ],
         ),
       ),
@@ -229,7 +241,10 @@ class _InvoiceTile extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Text(money(i.total, i.currency), style: font(body, 14, FontWeight.w700, color: c.text)),
+          Text(
+            i.partlyPaid ? '${money(i.amountDue, i.currency)} due' : money(i.total, i.currency),
+            style: font(body, 14, FontWeight.w700, color: c.text),
+          ),
           const SizedBox(height: 4),
           StatusPill(i.displayStatus),
         ],
@@ -263,7 +278,15 @@ class _InvoiceSheet extends StatefulWidget {
 class _InvoiceSheetState extends State<_InvoiceSheet> {
   String? _walletId;
   bool _busy = false;
+  bool _partial = false;
+  final _part = TextEditingController();
   Object? _error;
+
+  @override
+  void dispose() {
+    _part.dispose();
+    super.dispose();
+  }
 
   /// Runs an action that returns the message to show when it worked.
   Future<void> _run(Future<String> Function() action) async {
@@ -352,9 +375,51 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
                       Text(money(i.total, i.currency), style: font(display, 20, FontWeight.w800, color: c.text)),
                     ],
                   ),
+                  if (i.partlyPaid) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Expanded(child: Text('Paid so far', style: context.text.bodyMedium)),
+                        Text(money(i.amountPaid, i.currency), style: context.text.bodyMedium),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Expanded(child: Text('Still due', style: context.text.titleSmall)),
+                        Text(money(i.amountDue, i.currency), style: context.text.titleSmall),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
+            if (i.payments.length > 1 || (i.payments.isNotEmpty && i.isOpen)) ...[
+              const SizedBox(height: 12),
+              Text('Payments', style: context.text.labelLarge),
+              for (final p in i.payments)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text('${dateTime(p.at)} · ${p.paidBy}', style: context.text.bodySmall)),
+                      Text(money(p.amount, i.currency), style: context.text.bodyMedium),
+                    ],
+                  ),
+                ),
+            ],
+            if (i.recurringInterval != null) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Icon(LucideIcons.repeat, size: 14, color: c.text3),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Recurring invoice · ${(_every[i.recurringInterval] ?? i.recurringInterval!).toLowerCase()}',
+                    style: context.text.bodySmall,
+                  ),
+                ],
+              ),
+            ],
             if (i.note.isNotEmpty) ...[
               const SizedBox(height: 12),
               Container(
@@ -370,7 +435,7 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
               Text('Cancelled${i.cancelReason != null ? ': ${i.cancelReason}' : ''}.', style: context.text.bodySmall),
             if (_error != null) ...[const SizedBox(height: 12), ErrorBox(_error)],
             if (i.incoming && i.isOpen) ...[const SizedBox(height: 12), _payment(session, i)],
-            if (!i.incoming && i.isOpen) ...[
+            if (!i.incoming && i.isOpen && !i.partlyPaid) ...[
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: _busy ? null : () => _confirmCancel(session, i),
@@ -419,17 +484,45 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
                   ),
               ],
             ),
+            if (_partial) ...[
+              const SizedBox(height: 12),
+              LabeledField(
+                label: 'Amount to pay now (of ${money(i.amountDue, i.currency)})',
+                controller: _part,
+                icon: LucideIcons.banknote,
+                keyboard: const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (_) => setState(() {}),
+              ),
+            ],
             const SizedBox(height: 14),
-            GradientButton(
-              label: 'Pay ${money(i.total, i.currency)}',
-              icon: LucideIcons.check,
-              busy: _busy,
-              onPressed: () => _run(() async {
-                final (paid, approval) = await session.api.payInvoice(i.id, wallet.id);
-                return approval != null
-                    ? 'Above the approval limit: another finance member has to approve this payment'
-                    : 'Paid ${money(paid!.total, paid.currency)} to ${paid.issuer.name}';
-              }),
+            Builder(
+              builder: (context) {
+                final amount = _partial ? _part.text.trim().replaceAll(',', '.') : i.amountDue;
+                final valid = (double.tryParse(amount) ?? 0) > 0;
+                return GradientButton(
+                  label: valid ? 'Pay ${money(amount, i.currency)}' : 'Pay',
+                  icon: LucideIcons.check,
+                  busy: _busy,
+                  onPressed: !valid
+                      ? null
+                      : () => _run(() async {
+                          final (paid, approval) = await session.api.payInvoice(
+                            i.id,
+                            wallet.id,
+                            amount: _partial ? amount : null,
+                          );
+                          if (mounted) setState(() => _partial = false);
+                          _part.clear();
+                          return approval != null
+                              ? 'Above the approval limit: another finance member has to approve this payment'
+                              : 'Paid ${money(amount, paid!.currency)} to ${paid.issuer.name}';
+                        }),
+                );
+              },
+            ),
+            TextButton(
+              onPressed: () => setState(() => _partial = !_partial),
+              child: Text(_partial ? 'Pay everything instead' : 'Pay part of it'),
             ),
           ],
         );
@@ -458,6 +551,87 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
       await session.api.cancelInvoice(i.id, reason: reason.text.trim());
       return 'Invoice cancelled';
     });
+  }
+}
+
+/// Recurring invoices this person or their companies send.
+class _Schedules extends StatelessWidget {
+  const _Schedules();
+
+  @override
+  Widget build(BuildContext context) {
+    final session = context.watch<Session>();
+    final c = context.c;
+    return Query<List<InvoiceSchedule>>(
+      client: session.queries,
+      queryKey: 'invoices:schedules',
+      fetch: session.api.invoiceSchedules,
+      builder: (context, s) {
+        if (!s.hasData) return const SkeletonList(rows: 3);
+        if (s.data!.isEmpty) {
+          return const EmptyState(
+            icon: LucideIcons.repeat,
+            title: 'No recurring invoices',
+            text: 'Set them up on the web: “Repeat” on a new invoice bills someone every week, month or year.',
+          );
+        }
+        return OvlCard(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(
+            children: [
+              for (final (n, r) in s.data!.indexed)
+                FadeSlideIn(
+                  delay: stagger(n, 30),
+                  child: ListTile(
+                    leading: IconTile(LucideIcons.repeat, size: 40, color: c.accent),
+                    title: Text(r.recipient.name, style: context.text.titleSmall, overflow: TextOverflow.ellipsis),
+                    subtitle: Text(
+                      [
+                        _every[r.interval] ?? r.interval,
+                        if (r.nextRunOn != null) 'next ${date(r.nextRunOn!)}',
+                        plural(r.invoiceCount, 'invoice'),
+                      ].join(' · '),
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(money(r.total, r.currency), style: font(body, 14, FontWeight.w700, color: c.text)),
+                            const SizedBox(height: 4),
+                            StatusPill(r.status),
+                          ],
+                        ),
+                        if (r.status != 'ended')
+                          PopupMenuButton<String>(
+                            tooltip: 'Change',
+                            onSelected: (status) async {
+                              try {
+                                await session.api.setInvoiceScheduleStatus(r.id, status);
+                                session.queries.invalidate('invoices');
+                              } catch (e) {
+                                if (context.mounted) toast(context, errorText(e), error: true);
+                              }
+                            },
+                            itemBuilder: (_) => [
+                              PopupMenuItem(
+                                value: r.status == 'active' ? 'paused' : 'active',
+                                child: Text(r.status == 'active' ? 'Pause' : 'Resume'),
+                              ),
+                              const PopupMenuItem(value: 'ended', child: Text('End')),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }
 

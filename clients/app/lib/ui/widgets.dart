@@ -370,8 +370,13 @@ class StatusPill extends StatelessWidget {
     final c = context.c;
     final (fg, bg) = switch (status) {
       'active' || 'approved' || 'completed' || 'paid' || 'confirmed' || 'verified' => (c.success, c.successSoft),
-      'open' => (c.accent, c.accentSoft),
-      'pending' || 'halted' || 'not confirmed' || 'changes_requested' => (c.warning, c.warningSoft),
+      'open' || 'partly_paid' => (c.accent, c.accentSoft),
+      'pending' ||
+      'halted' ||
+      'not confirmed' ||
+      'changes_requested' ||
+      'waiting_for_approval' ||
+      'paused' => (c.warning, c.warningSoft),
       'rejected' || 'revoked' || 'suspended' || 'delisted' || 'declined' || 'overdue' => (c.danger, c.dangerSoft),
       _ => (c.text3, c.surface3),
     };

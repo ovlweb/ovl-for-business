@@ -20,6 +20,7 @@ import type {
   ExchangeResult,
   CreateApplicationInput,
   CreateInvoiceInput,
+  CreateInvoiceScheduleInput,
   CreateStoryInput,
   FileInfo,
   FundLock,
@@ -28,6 +29,7 @@ import type {
   IdentitySubmitInput,
   Investment,
   Invoice,
+  InvoiceSchedule,
   InvoiceStatus,
   LedgerEntry,
   LoginInput,
@@ -36,6 +38,8 @@ import type {
   Organization,
   Passkey,
   PaymentApproval,
+  PayrollInput,
+  PayrollRun,
   OrgMember,
   Preferences,
   OrgRole,
@@ -366,9 +370,19 @@ export class OvlClient {
     get: (id: string) => this.get<Invoice>(`/invoices/${id}`),
     create: (input: CreateInvoiceInput) => this.post<Invoice>('/invoices', input),
     /** Pay in full from one of the recipient's balances in the invoice currency. */
-    pay: (id: string, walletId: string) =>
-      this.post<Invoice | PaymentApproval>(`/invoices/${id}/pay`, { walletId }),
+    /** Everything still due, or `amount` of it. */
+    pay: (id: string, walletId: string, amount?: string) =>
+      this.post<Invoice | PaymentApproval>(
+        `/invoices/${id}/pay`,
+        amount ? { walletId, amount } : { walletId },
+      ),
     cancel: (id: string, reason?: string) => this.post<Invoice>(`/invoices/${id}/cancel`, { reason }),
+    schedules: () => this.get<InvoiceSchedule[]>('/invoice-schedules'),
+    /** A recurring invoice; starting today sends the first one at once. */
+    createSchedule: (input: CreateInvoiceScheduleInput) =>
+      this.post<InvoiceSchedule>('/invoice-schedules', input),
+    setScheduleStatus: (id: string, status: 'active' | 'paused' | 'ended') =>
+      this.patch<InvoiceSchedule>(`/invoice-schedules/${id}`, { status }),
   };
 
   organizations = {
@@ -388,6 +402,10 @@ export class OvlClient {
       this.get<PaymentApproval[]>(`/organizations/${id}/payment-approvals`, { status }),
     approvePayment: (id: string, approvalId: string) =>
       this.post<PaymentApproval>(`/organizations/${id}/payment-approvals/${approvalId}/approve`),
+    payroll: (id: string) => this.get<PayrollRun[]>(`/organizations/${id}/payroll`),
+    /** Pay many people at once; above the approval limit the run comes back "pending". */
+    runPayroll: (id: string, input: PayrollInput) =>
+      this.post<PayrollRun>(`/organizations/${id}/payroll`, input),
     /** Decline a waiting payment, or withdraw your own. */
     rejectPayment: (id: string, approvalId: string, reason: string) =>
       this.post<PaymentApproval>(`/organizations/${id}/payment-approvals/${approvalId}/reject`, { reason }),

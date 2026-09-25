@@ -256,6 +256,8 @@ export const LEDGER_KINDS = [
   'investment_out',
   'exchange_in',
   'exchange_out',
+  'payroll_in',
+  'payroll_out',
   'adjustment',
 ] as const;
 
@@ -542,13 +544,27 @@ export const invoiceSchema = z.object({
     }),
   ),
   total: z.string(),
+  amountPaid: z.string().describe('Paid so far (invoices can be paid in parts)'),
+  amountDue: z.string().describe('Still to pay'),
+  payments: z.array(
+    z.object({
+      id: uuid,
+      amount: z.string(),
+      paidBy: userSummarySchema.pick({ id: true, username: true, displayName: true }),
+      createdAt: isoDate,
+    }),
+  ),
   note: z.string(),
   dueDate: z.iso.date(),
   status: z.enum(INVOICE_STATUSES),
   overdue: z.boolean(),
+  recurring: z
+    .object({ scheduleId: uuid, interval: z.string() })
+    .nullable()
+    .describe('Issued by a recurring schedule'),
   createdBy: userSummarySchema.pick({ id: true, username: true, displayName: true }),
   createdAt: isoDate,
-  paidAt: isoDate.nullable(),
+  paidAt: isoDate.nullable().describe('When it was paid in full'),
   paidBy: userSummarySchema.pick({ id: true, username: true, displayName: true }).nullable(),
   cancelledAt: isoDate.nullable(),
   cancelReason: z.string().nullable(),
@@ -561,7 +577,86 @@ export const invoiceQuerySchema = z.object({
 });
 export const payInvoiceSchema = z.object({
   walletId: uuid.describe("One of the recipient's balances in the invoice currency"),
+  amount: decimalAmountSchema.optional().describe('Pay part of it (by default: everything still due)'),
 });
+
+export const INVOICE_INTERVALS = ['weekly', 'monthly', 'quarterly', 'yearly'] as const;
+export type InvoiceInterval = (typeof INVOICE_INTERVALS)[number];
+export const INVOICE_SCHEDULE_STATUSES = ['active', 'paused', 'ended'] as const;
+
+export const createInvoiceScheduleSchema = createInvoiceSchema.omit({ dueDate: true }).extend({
+  interval: z.enum(INVOICE_INTERVALS),
+  startDate: z.iso.date().describe('The first invoice goes out on this day (today: at once)'),
+  endDate: z.iso.date().optional().describe('No invoices after this day'),
+  dueDays: z.number().int().min(0).max(365).default(14).describe('Each invoice is due this many days later'),
+});
+export type CreateInvoiceScheduleInput = z.input<typeof createInvoiceScheduleSchema>;
+
+export const invoiceScheduleSchema = z.object({
+  id: uuid,
+  issuer: invoicePartySchema,
+  recipient: invoicePartySchema,
+  currency: z.string(),
+  items: invoiceSchema.shape.items,
+  total: z.string(),
+  note: z.string(),
+  interval: z.enum(INVOICE_INTERVALS),
+  dueDays: z.number().int(),
+  startDate: z.iso.date(),
+  endDate: z.iso.date().nullable(),
+  nextRunOn: z.iso.date().nullable().describe('When the next invoice goes out; null once ended'),
+  status: z.enum(INVOICE_SCHEDULE_STATUSES),
+  invoiceCount: z.number().int(),
+  lastInvoiceId: uuid.nullable(),
+  createdBy: userSummarySchema.pick({ id: true, username: true, displayName: true }),
+  createdAt: isoDate,
+});
+export type InvoiceSchedule = z.infer<typeof invoiceScheduleSchema>;
+export const updateInvoiceScheduleSchema = z.object({
+  status: z.enum(INVOICE_SCHEDULE_STATUSES).describe('Pause, resume, or end for good'),
+});
+
+// ---------------------------------------------------------------------------
+// Payroll
+// ---------------------------------------------------------------------------
+
+export const PAYROLL_STATUSES = ['pending', 'paid', 'rejected'] as const;
+export const payrollInputSchema = z.object({
+  walletId: uuid.describe('The company balance that pays'),
+  title: z.string().trim().min(1).max(120).describe('For example "Salaries — March"'),
+  items: z
+    .array(
+      z.object({
+        username: usernameSchema,
+        amount: decimalAmountSchema,
+        note: z.string().trim().max(200).optional(),
+      }),
+    )
+    .min(1)
+    .max(200),
+});
+export type PayrollInput = z.input<typeof payrollInputSchema>;
+export const payrollRunSchema = z.object({
+  id: uuid,
+  organizationId: uuid,
+  walletId: uuid,
+  currency: z.string(),
+  title: z.string(),
+  total: z.string(),
+  status: z.enum(PAYROLL_STATUSES).describe('pending: waiting for a second signature'),
+  items: z.array(
+    z.object({
+      user: userSummarySchema.pick({ id: true, username: true, displayName: true }),
+      amount: z.string(),
+      note: z.string(),
+    }),
+  ),
+  approvalId: uuid.nullable(),
+  createdBy: userSummarySchema.pick({ id: true, username: true, displayName: true }),
+  createdAt: isoDate,
+  paidAt: isoDate.nullable(),
+});
+export type PayrollRun = z.infer<typeof payrollRunSchema>;
 export const cancelInvoiceSchema = z.object({ reason: z.string().trim().max(500).optional() });
 
 // ---------------------------------------------------------------------------
@@ -1046,7 +1141,8 @@ export type RealtimeEvent =
   | { type: 'cash_request.updated'; requestId: string; walletId: string; status: string }
   | { type: 'invoice.updated'; invoiceId: string; status: string }
   | { type: 'identity.updated'; status: string }
-  | { type: 'payment_approval.updated'; organizationId: string; approvalId: string; status: string };
+  | { type: 'payment_approval.updated'; organizationId: string; approvalId: string; status: string }
+  | { type: 'payroll.updated'; organizationId: string; runId: string; status: string };
 
 /** Messages a client may send over the realtime socket. */
 export type RealtimeClientMessage = { type: 'typing'; chatId: string } | { type: 'ping' };

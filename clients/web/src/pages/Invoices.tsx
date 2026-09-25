@@ -5,6 +5,8 @@ import {
   parseAmount,
   type CreateInvoiceInput,
   type Invoice,
+  type InvoiceInterval,
+  type InvoiceSchedule,
   type Wallet,
 } from '@ovl/shared';
 import {
@@ -34,6 +36,14 @@ import { api } from '../api';
 import { isPendingApproval } from '../components/WalletPanel';
 
 type Direction = 'incoming' | 'outgoing';
+type View = Direction | 'recurring';
+
+const EVERY: Record<InvoiceInterval, string> = {
+  weekly: 'Every week',
+  monthly: 'Every month',
+  quarterly: 'Every 3 months',
+  yearly: 'Every year',
+};
 
 const inDays = (days: number) => {
   const d = new Date(Date.now() + days * 86_400_000);
@@ -41,10 +51,11 @@ const inDays = (days: number) => {
 };
 const day = (iso: string) => formatDate(`${iso}T12:00:00`, false);
 
-/** "1,200.00 USD · 80.00 EUR" for open invoices, grouped by currency. */
+/** "1,200.00 USD · 80.00 EUR" still due on open invoices, grouped by currency. */
 function totals(invoices: Invoice[]): string {
   const by = new Map<string, bigint>();
-  for (const i of invoices) by.set(i.currency, (by.get(i.currency) ?? 0n) + parseAmount(i.total, i.currency));
+  for (const i of invoices)
+    by.set(i.currency, (by.get(i.currency) ?? 0n) + parseAmount(i.amountDue, i.currency));
   if (by.size === 0) return '—';
   return [...by]
     .map(([currency, minor]) => formatMoney(formatAmount(minor, currency), currency))
@@ -53,19 +64,23 @@ function totals(invoices: Invoice[]): string {
     .concat(by.size > 2 ? ` +${by.size - 2}` : '');
 }
 
+const partlyPaid = (i: Invoice) => i.status === 'open' && Number(i.amountPaid) > 0;
+
 function statusOf(i: Invoice) {
-  return i.overdue ? 'overdue' : i.status;
+  return i.overdue ? 'overdue' : partlyPaid(i) ? 'partly_paid' : i.status;
 }
 
 export function InvoicesPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [direction, setDirection] = useState<Direction>('incoming');
+  const [view, setView] = useState<View>('incoming');
+  const direction: Direction = view === 'recurring' ? 'outgoing' : view;
   const [onlyOpen, setOnlyOpen] = useState(true);
   const [creating, setCreating] = useState(false);
   const list = useQuery({
     queryKey: ['invoices', direction, onlyOpen],
     queryFn: () => api.invoices.list({ direction, status: onlyOpen ? 'open' : undefined }),
+    enabled: view !== 'recurring',
   });
   const open = useQuery({
     queryKey: ['invoices', 'open'],
@@ -122,15 +137,16 @@ export function InvoicesPage() {
 
       <div className="card pad-0">
         <div className="card-header" style={{ padding: '14px 18px 0', flexWrap: 'wrap', gap: 10 }}>
-          <Segmented<Direction>
-            value={direction}
-            onChange={setDirection}
+          <Segmented<View>
+            value={view}
+            onChange={setView}
             options={[
               { value: 'incoming', label: 'Received' },
               { value: 'outgoing', label: 'Sent' },
+              { value: 'recurring', label: 'Recurring' },
             ]}
           />
-          <div className="row">
+          <div className="row" hidden={view === 'recurring'}>
             <button className={`chip${onlyOpen ? ' active' : ''}`} onClick={() => setOnlyOpen(true)}>
               Open
             </button>
@@ -139,16 +155,17 @@ export function InvoicesPage() {
             </button>
           </div>
         </div>
-        <ErrorAlert error={list.error} />
-        {list.isLoading && <SkeletonList rows={3} />}
-        {list.data?.length === 0 && (
+        {view === 'recurring' && <Schedules />}
+        {view !== 'recurring' && <ErrorAlert error={list.error} />}
+        {view !== 'recurring' && list.isLoading && <SkeletonList rows={3} />}
+        {view !== 'recurring' && list.data?.length === 0 && (
           <Empty icon="receipt" title={onlyOpen ? 'Nothing open' : 'No invoices yet'}>
             {direction === 'incoming'
               ? 'Invoices people and companies send you appear here.'
               : 'Create an invoice to bill a person or a company.'}
           </Empty>
         )}
-        {!!list.data?.length && (
+        {view !== 'recurring' && !!list.data?.length && (
           <div className="table-wrap">
             <table className="table invoices-table">
               <thead>
@@ -168,6 +185,15 @@ export function InvoicesPage() {
                     <tr key={i.id} className="clickable" onClick={() => navigate(`/invoices/${i.id}`)}>
                       <td>
                         <b className="mono">{i.number}</b>
+                        {i.recurring && (
+                          <span
+                            className="badge info"
+                            style={{ marginLeft: 6 }}
+                            title={EVERY[i.recurring.interval as InvoiceInterval]}
+                          >
+                            <Icon name="refresh" size={11} /> Recurring
+                          </span>
+                        )}
                         <div className="small muted">
                           {own.type === 'organization' ? own.name : 'Personal'} ·{' '}
                           {formatDate(i.createdAt, false)}
@@ -180,6 +206,9 @@ export function InvoicesPage() {
                       <td className={`nowrap small${i.overdue ? ' neg' : ''}`}>{day(i.dueDate)}</td>
                       <td className="right bold">
                         <Money amount={i.total} currency={i.currency} />
+                        {partlyPaid(i) && (
+                          <div className="small muted">{formatMoney(i.amountDue, i.currency)} due</div>
+                        )}
                       </td>
                       <td>
                         <StatusBadge status={statusOf(i)} />
@@ -196,10 +225,10 @@ export function InvoicesPage() {
       {creating && (
         <NewInvoiceModal
           onClose={() => setCreating(false)}
-          onCreated={(invoice) => {
+          onCreated={(invoiceId, recurring) => {
             setCreating(false);
-            setDirection('outgoing');
-            navigate(`/invoices/${invoice.id}`);
+            setView(recurring ? 'recurring' : 'outgoing');
+            if (invoiceId) navigate(`/invoices/${invoiceId}`);
           }}
         />
       )}
@@ -268,9 +297,44 @@ function InvoiceDocument({ invoice }: { invoice: Invoice }) {
             </td>
             <td className="right invoice-total nowrap">{formatMoney(invoice.total, invoice.currency)}</td>
           </tr>
+          {Number(invoice.amountPaid) > 0 && invoice.status === 'open' && (
+            <>
+              <tr>
+                <td colSpan={3} className="right small">
+                  Paid so far
+                </td>
+                <td className="right nowrap small">{formatMoney(invoice.amountPaid, invoice.currency)}</td>
+              </tr>
+              <tr>
+                <td colSpan={3} className="right bold">
+                  Still due
+                </td>
+                <td className="right nowrap bold">{formatMoney(invoice.amountDue, invoice.currency)}</td>
+              </tr>
+            </>
+          )}
         </tfoot>
       </table>
       {invoice.note && <p className="small invoice-note">{invoice.note}</p>}
+      {invoice.payments.length > 1 || (invoice.payments.length === 1 && invoice.status === 'open') ? (
+        <div className="stack-sm">
+          <div className="invoice-label">Payments</div>
+          {invoice.payments.map((p) => (
+            <div key={p.id} className="spread small">
+              <span>
+                {formatDate(p.createdAt)} · {p.paidBy.displayName}
+              </span>
+              <b>{formatMoney(p.amount, invoice.currency)}</b>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {invoice.recurring && (
+        <p className="tiny muted">
+          <Icon name="refresh" size={12} /> Recurring invoice ·{' '}
+          {EVERY[invoice.recurring.interval as InvoiceInterval].toLowerCase()}
+        </p>
+      )}
       <footer className="tiny muted">
         {invoice.status === 'paid' && invoice.paidAt
           ? `Paid on ${formatDate(invoice.paidAt)} by ${invoice.paidBy?.displayName ?? ''}.`
@@ -315,13 +379,19 @@ function InvoiceModal({ id, onClose }: { id: string; onClose: () => void }) {
       queryClient.invalidateQueries({ queryKey: [key] });
     toast.success(message);
   };
+  const [partial, setPartial] = useState(false);
+  const [part, setPart] = useState('');
   const pay = useMutation({
-    mutationFn: () => api.invoices.pay(id, wallet!.id),
-    onSuccess: (paid) =>
+    mutationFn: (amount: string) => api.invoices.pay(id, wallet!.id, partial ? amount : undefined),
+    onSuccess: (paid, amount) => {
+      setPartial(false);
+      setPart('');
       isPendingApproval(paid)
         ? done('Above the approval limit: another finance member has to approve this payment')
-        : done(`Paid ${formatMoney(paid.total, paid.currency)} to ${paid.issuer.name}`),
+        : done(`Paid ${formatMoney(amount, paid.currency)} to ${paid.issuer.name}`);
+    },
   });
+  const payAmount = partial ? part : (i?.amountDue ?? '0');
   const cancel = useMutation({
     mutationFn: () => api.invoices.cancel(id, reason || undefined),
     onSuccess: () => {
@@ -364,14 +434,31 @@ function InvoiceModal({ id, onClose }: { id: string; onClose: () => void }) {
                       ))}
                     </select>
                   </Field>
-                  <button
-                    className="btn gradient"
-                    disabled={pay.isPending || !wallet}
-                    onClick={() => pay.mutate()}
-                  >
-                    {pay.isPending ? <span className="spinner light" /> : <Icon name="check" size={16} />}
-                    Pay {formatMoney(i.total, i.currency)}
-                  </button>
+                  {partial && (
+                    <Field label={`Amount to pay now (of ${formatMoney(i.amountDue, i.currency)})`}>
+                      <input
+                        className="input"
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        value={part}
+                        autoFocus
+                        onChange={(e) => setPart(e.target.value.replace(',', '.'))}
+                      />
+                    </Field>
+                  )}
+                  <div className="row-wrap">
+                    <button
+                      className="btn gradient"
+                      disabled={pay.isPending || !wallet || !(Number(payAmount) > 0)}
+                      onClick={() => pay.mutate(payAmount)}
+                    >
+                      {pay.isPending ? <span className="spinner light" /> : <Icon name="check" size={16} />}
+                      Pay {Number(payAmount) > 0 ? formatMoney(payAmount, i.currency) : ''}
+                    </button>
+                    <button type="button" className="btn ghost sm" onClick={() => setPartial(!partial)}>
+                      {partial ? 'Pay everything instead' : 'Pay part of it'}
+                    </button>
+                  </div>
                 </>
               ) : (
                 payerWallets.isSuccess && (
@@ -408,7 +495,7 @@ function InvoiceModal({ id, onClose }: { id: string; onClose: () => void }) {
             <button className="btn" onClick={() => window.print()}>
               <Icon name="printer" size={16} /> Print or save as PDF
             </button>
-            {i.direction === 'outgoing' && i.status === 'open' && (
+            {i.direction === 'outgoing' && i.status === 'open' && !partlyPaid(i) && (
               <button
                 className={`btn ${cancelling ? 'danger' : 'ghost'}`}
                 disabled={cancel.isPending}
@@ -430,7 +517,13 @@ interface Line {
   unitPrice: string;
 }
 
-function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreated: (i: Invoice) => void }) {
+function NewInvoiceModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (invoiceId: string | null, recurring: boolean) => void;
+}) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const orgs = useQuery({ queryKey: ['orgs', 'mine'], queryFn: api.organizations.mine });
@@ -441,6 +534,10 @@ function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const [to, setTo] = useState('');
   const [currency, setCurrency] = useState('USD');
   const [dueDate, setDueDate] = useState(inDays(14));
+  const [repeat, setRepeat] = useState<InvoiceInterval | ''>('');
+  const [startDate, setStartDate] = useState(inDays(0));
+  const [endDate, setEndDate] = useState('');
+  const [dueDays, setDueDays] = useState('14');
   const [note, setNote] = useState('');
   const [lines, setLines] = useState<Line[]>([{ description: '', quantity: '1', unitPrice: '' }]);
 
@@ -458,7 +555,7 @@ function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreate
   }, [lines, currency]);
 
   const create = useMutation({
-    mutationFn: () => {
+    mutationFn: async (): Promise<{ invoiceId: string | null; message: string }> => {
       const input: CreateInvoiceInput = {
         from: from === 'me' ? { type: 'user' } : { type: 'organization', organizationId: from },
         to:
@@ -474,12 +571,33 @@ function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreate
         })),
         note: note || undefined,
       };
-      return api.invoices.create(input);
+      if (repeat) {
+        const { dueDate: _, ...rest } = input;
+        const schedule = await api.invoices.createSchedule({
+          ...rest,
+          interval: repeat,
+          startDate,
+          endDate: endDate || undefined,
+          dueDays: parseInt(dueDays) || 0,
+        });
+        return {
+          invoiceId: schedule.lastInvoiceId,
+          message: schedule.invoiceCount
+            ? `First invoice sent to ${schedule.recipient.name}; the next goes out on ${day(schedule.nextRunOn!)}`
+            : `Recurring invoice set up: the first goes out on ${day(schedule.startDate)}`,
+        };
+      }
+      const invoice = await api.invoices.create(input);
+      return {
+        invoiceId: invoice.id,
+        message: `Invoice ${invoice.number} sent to ${invoice.recipient.name}`,
+      };
     },
-    onSuccess: (invoice) => {
+    onSuccess: ({ invoiceId, message }) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      toast.success(`Invoice ${invoice.number} sent to ${invoice.recipient.name}`);
-      onCreated(invoice);
+      queryClient.invalidateQueries({ queryKey: ['invoiceSchedules'] });
+      toast.success(message);
+      onCreated(invoiceId, !!repeat);
     },
   });
   const setLine = (n: number, patch: Partial<Line>) =>
@@ -496,7 +614,12 @@ function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreate
       >
         <div className="grid-2">
           <Field label="From">
-            <select className="select" value={from} onChange={(e) => setFrom(e.target.value)}>
+            <select
+              className="select"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              aria-label="From"
+            >
               <option value="me">Me (personal)</option>
               {issuers.map((o) => (
                 <option key={o.id} value={o.id}>
@@ -536,16 +659,64 @@ function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreate
               ))}
             </select>
           </Field>
-          <Field label="Due date">
-            <input
-              className="input"
-              type="date"
-              value={dueDate}
-              min={inDays(0)}
-              onChange={(e) => setDueDate(e.target.value)}
-              required
-            />
+          <Field label="Repeat">
+            <select
+              className="select"
+              value={repeat}
+              onChange={(e) => setRepeat(e.target.value as InvoiceInterval | '')}
+            >
+              <option value="">Does not repeat</option>
+              {(Object.keys(EVERY) as InvoiceInterval[]).map((k) => (
+                <option key={k} value={k}>
+                  {EVERY[k]}
+                </option>
+              ))}
+            </select>
           </Field>
+          {!repeat && (
+            <Field label="Due date">
+              <input
+                className="input"
+                type="date"
+                value={dueDate}
+                min={inDays(0)}
+                onChange={(e) => setDueDate(e.target.value)}
+                required
+              />
+            </Field>
+          )}
+          {repeat && (
+            <>
+              <Field label="First invoice on" hint="Today sends the first one at once.">
+                <input
+                  className="input"
+                  type="date"
+                  value={startDate}
+                  min={inDays(0)}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  required
+                />
+              </Field>
+              <Field label="Payment term (days)" hint="Each invoice is due this many days after it is sent.">
+                <input
+                  className="input"
+                  inputMode="numeric"
+                  value={dueDays}
+                  onChange={(e) => setDueDays(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                  required
+                />
+              </Field>
+              <Field label="Last invoice by (optional)">
+                <input
+                  className="input"
+                  type="date"
+                  value={endDate}
+                  min={startDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                />
+              </Field>
+            </>
+          )}
         </div>
 
         <div className="stack-sm">
@@ -620,9 +791,105 @@ function NewInvoiceModal({ onClose, onCreated }: { onClose: () => void; onCreate
         </Field>
         <ErrorAlert error={create.error} />
         <button className="btn primary" disabled={create.isPending}>
-          <Icon name="send" size={16} /> Send invoice
+          <Icon name={repeat ? 'refresh' : 'send'} size={16} />{' '}
+          {repeat ? 'Set up recurring invoice' : 'Send invoice'}
         </button>
       </form>
     </Modal>
+  );
+}
+
+/** Recurring invoices this person (or their companies) send. */
+function Schedules() {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const schedules = useQuery({ queryKey: ['invoiceSchedules'], queryFn: api.invoices.schedules });
+  const change = useMutation({
+    mutationFn: ({ s, status }: { s: InvoiceSchedule; status: 'active' | 'paused' | 'ended' }) =>
+      api.invoices.setScheduleStatus(s.id, status),
+    onSuccess: (s) => {
+      queryClient.invalidateQueries({ queryKey: ['invoiceSchedules'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      toast.success(
+        s.status === 'paused'
+          ? 'Recurring invoice paused'
+          : s.status === 'ended'
+            ? 'Recurring invoice ended'
+            : `Resumed: the next invoice goes out on ${day(s.nextRunOn!)}`,
+      );
+    },
+  });
+  if (schedules.isLoading) return <SkeletonList rows={3} />;
+  return (
+    <>
+      <ErrorAlert error={schedules.error ?? change.error} />
+      {schedules.data?.length === 0 && (
+        <Empty icon="refresh" title="No recurring invoices">
+          Choose “Repeat” on a new invoice to bill someone every week, month, quarter or year.
+        </Empty>
+      )}
+      {!!schedules.data?.length && (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>To</th>
+                <th>Every</th>
+                <th>Next invoice</th>
+                <th className="right">Amount</th>
+                <th>Status</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {schedules.data.map((s) => (
+                <tr key={s.id}>
+                  <td>
+                    <b>{s.recipient.name}</b>
+                    <div className="small muted">
+                      {s.issuer.type === 'organization' ? `From ${s.issuer.name}` : 'Personal'} ·{' '}
+                      {plural(s.invoiceCount, 'invoice')} sent
+                    </div>
+                  </td>
+                  <td className="small">{EVERY[s.interval]}</td>
+                  <td className="small nowrap">
+                    {s.nextRunOn ? day(s.nextRunOn) : '—'}
+                    {s.endDate && <div className="muted">until {day(s.endDate)}</div>}
+                  </td>
+                  <td className="right bold">
+                    <Money amount={s.total} currency={s.currency} />
+                  </td>
+                  <td>
+                    <StatusBadge status={s.status} />
+                  </td>
+                  <td className="right nowrap">
+                    {s.status !== 'ended' && (
+                      <>
+                        <button
+                          className="btn ghost sm"
+                          disabled={change.isPending}
+                          onClick={() =>
+                            change.mutate({ s, status: s.status === 'active' ? 'paused' : 'active' })
+                          }
+                        >
+                          {s.status === 'active' ? 'Pause' : 'Resume'}
+                        </button>
+                        <button
+                          className="btn ghost sm"
+                          disabled={change.isPending}
+                          onClick={() => change.mutate({ s, status: 'ended' })}
+                        >
+                          End
+                        </button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
   );
 }

@@ -28,6 +28,7 @@ import { iso, isoOrNull } from '../lib/mappers';
 import { currentUser } from '../plugins/auth';
 import { executeExchange } from './exchange';
 import { announceInvoice, executeInvoicePayment, type InvoiceRow } from './invoices';
+import { approvePayrollRun, releasePayrollRun } from './payroll';
 import { executeTransfer, walletAudience } from './wallets/routes';
 import { assertWalletAccess, frozenAmounts, lockWallet, orgRoleOf, type WalletRow } from './wallets/service';
 
@@ -206,6 +207,13 @@ export async function announceApproval(app: FastifyInstance, row: ApprovalRow) {
     approvalId: row.id,
     status: row.status,
   });
+  if (row.kind === 'payroll')
+    app.hub.sendToUsers(audience, {
+      type: 'payroll.updated',
+      organizationId: row.organizationId,
+      runId: (row.action as unknown as ApprovalActions['payroll']).payrollRunId,
+      status: row.status === 'approved' ? 'paid' : row.status === 'rejected' ? 'rejected' : 'pending',
+    });
   app.hub.sendToUsers(audience, { type: 'wallet.updated', walletId: wallet.id });
 }
 
@@ -334,8 +342,11 @@ export async function orgPaymentRoutes(fastify: FastifyInstance) {
             touched.push(done.target);
             break;
           }
-          default:
-            throw conflict(`${approval.kind} payments cannot be approved here`);
+          case 'payroll': {
+            const action = approval.action as unknown as ApprovalActions['payroll'];
+            touched.push(...(await approvePayrollRun(tx, action.payrollRunId, actorId)));
+            break;
+          }
         }
         const [updated] = await tx
           .update(paymentApprovals)
@@ -386,6 +397,11 @@ export async function orgPaymentRoutes(fastify: FastifyInstance) {
         if (!role || !ORG_FINANCE_ROLES.includes(role))
           throw forbidden('Only people who handle company money can decline its payments');
         await releaseHold(tx, approval.id);
+        if (approval.kind === 'payroll')
+          await releasePayrollRun(
+            tx,
+            (approval.action as unknown as ApprovalActions['payroll']).payrollRunId,
+          );
         const [updated] = await tx
           .update(paymentApprovals)
           .set({ status: 'rejected', decidedBy: me.id, decidedAt: new Date(), reason: req.body.reason })

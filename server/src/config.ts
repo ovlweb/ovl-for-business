@@ -93,6 +93,9 @@ const envSchema = z.object({
   S3_FORCE_PATH_STYLE: flag(true),
   MAX_UPLOAD_MB: z.coerce.number().min(1).max(100).default(10),
 
+  /** Background jobs (recurring invoices…). Every instance may run them; they share the work. */
+  SCHEDULER_ENABLED: flag(true),
+
   /** Requests per minute for the public registry / stock API. */
   PUBLIC_RATE_LIMIT: z.coerce.number().int().default(60),
   API_KEY_RATE_LIMIT: z.coerce.number().int().default(600),

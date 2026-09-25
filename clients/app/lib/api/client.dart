@@ -302,8 +302,9 @@ class OvlApi {
   );
 
   /// The paid invoice, or (above a company's approval limit) the payment waiting for approval.
-  Future<(Invoice?, PaymentApproval?)> payInvoice(String id, String walletId) async {
-    final r = await _post('/invoices/$id/pay', {'walletId': walletId});
+  /// Without [amount] everything still due is paid.
+  Future<(Invoice?, PaymentApproval?)> payInvoice(String id, String walletId, {String? amount}) async {
+    final r = await _post('/invoices/$id/pay', {'walletId': walletId, 'amount': ?amount});
     return PaymentApproval.matches(r)
         ? (null, PaymentApproval.fromJson(r as Json))
         : (Invoice.fromJson(r as Json), null);
@@ -313,12 +314,19 @@ class OvlApi {
     await _post('/invoices/$id/cancel', {if (reason != null && reason.isNotEmpty) 'reason': reason}) as Json,
   );
 
+  Future<List<InvoiceSchedule>> invoiceSchedules() => _getList('/invoice-schedules', InvoiceSchedule.fromJson);
+
+  /// active, paused or ended.
+  Future<InvoiceSchedule> setInvoiceScheduleStatus(String id, String status) async =>
+      InvoiceSchedule.fromJson(await _patch('/invoice-schedules/$id', {'status': status}) as Json);
+
   // --- organizations ---------------------------------------------------------------------
 
   Future<List<Organization>> myOrganizations() => _getList('/organizations/mine', Organization.fromJson);
   Future<Organization> organization(String slug) async =>
       Organization.fromJson(await _get('/organizations/${Uri.encodeComponent(slug)}'));
   Future<List<Wallet>> organizationWallets(String id) => _getList('/organizations/$id/wallets', Wallet.fromJson);
+  Future<List<PayrollRun>> payrollRuns(String orgId) => _getList('/organizations/$orgId/payroll', PayrollRun.fromJson);
   Future<List<PaymentApproval>> paymentApprovals(String orgId, {String? status}) =>
       _getList('/organizations/$orgId/payment-approvals', PaymentApproval.fromJson, {'status': status});
   Future<PaymentApproval> approvePayment(String orgId, String id) async =>

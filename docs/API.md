@@ -96,6 +96,7 @@ Connect to `wss://…/api/v1/realtime?token=<accessToken>`. The server sends JSO
 | `cash_request.updated`     | `requestId`, `walletId`, `status`        |
 | `invoice.updated`          | `invoiceId`, `status`                    |
 | `payment_approval.updated` | `organizationId`, `approvalId`, `status` |
+| `payroll.updated`          | `organizationId`, `runId`, `status`      |
 
 Clients may send `{"type":"typing","chatId":"…"}` and `{"type":"ping"}`. A close code `4401`
 means the access token expired or the session was signed out: refresh and reconnect (the refresh
@@ -198,6 +199,28 @@ open. `GET /invoices?direction=incoming|outgoing&status=open|paid|cancelled` lis
 invoice says whether it is `incoming` or `outgoing` for the caller and whether it is `overdue`.
 Both sides receive `invoice.updated`.
 
+**Partial payments.** `POST /invoices/:id/pay {walletId, amount}` pays part of an invoice; without
+`amount` it pays everything still due. Invoices carry `amountPaid`, `amountDue` and their
+`payments`, and stay `open` until paid in full. An invoice with a paid part can no longer be
+cancelled.
+
+**Recurring invoices.** `POST /invoice-schedules` takes the same body as an invoice without
+`dueDate`, plus `interval` (`weekly`, `monthly`, `quarterly`, `yearly`), `startDate`, an optional
+`endDate` and `dueDays` (payment term). A schedule starting today sends its first invoice at once;
+the server's scheduler issues the rest on their day (months count from the start day, so the 31st
+becomes the last day of shorter months). `GET /invoice-schedules` lists yours and your companies';
+`PATCH /invoice-schedules/:id {status: 'paused' | 'active' | 'ended'}` pauses, resumes (missed
+periods are skipped) or ends one. Invoices it issued carry `recurring: {scheduleId, interval}`.
+
+## Payroll
+
+Owners, directors and accountants pay up to 200 people at once with
+`POST /organizations/:id/payroll {walletId, title, items: [{username, amount, note?}]}`. The company
+balance shows one `payroll_out` entry; each person receives a `payroll_in` entry on their personal
+balance in that currency (opened if needed). Above the approval limit the run answers **202** with
+`status: 'pending'` and an `approvalId`, and is paid when a second finance member approves it.
+`GET /organizations/:id/payroll` lists the runs; the finance team receives `payroll.updated`.
+
 ## Currency exchange
 
 Staff with `exchange.manage` publish rates with `PUT /admin/exchange {base?, feePercent?, rates?}`:
@@ -229,7 +252,7 @@ team receives `payment_approval.updated` and `wallet.updated`.
 | Auth & me    | `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `GET/PATCH /me`, `POST /me/password`, `GET /me/sessions`, `DELETE /me/sessions/:id`, `POST /me/sessions/sign-out-others`, `GET /me/2fa`, `POST /me/2fa/{setup,enable,disable,recovery-codes}`, `POST /me/email`, `POST /me/email/verification`, `POST /auth/verify-email`, `POST /auth/password/{forgot,reset}` |
 | People       | `GET /users/search`, `GET /users/:username`, `GET/POST /contacts`, `DELETE /contacts/:userId`                                                                                                                                                                                                                                                                                          |
 | Wallets      | `GET/POST /wallets`, `GET /wallets/:id`, `/entries`, `/locks`, `POST /wallets/transfer`, `GET/POST /wallets/:id/cash-requests`, `POST /cash-requests/:id/cancel`, `GET /wallets/:id/statement.csv`, `POST /wallets/:id/statement-link`, `GET /exchange`, `POST /exchange/quote`, `POST /exchange`                                                                                      |
-| Invoices     | `GET/POST /invoices`, `GET /invoices/:id`, `POST /invoices/:id/pay`, `POST /invoices/:id/cancel`                                                                                                                                                                                                                                                                                       |
+| Invoices     | `GET/POST /invoices`, `GET /invoices/:id`, `POST /invoices/:id/pay`, `POST /invoices/:id/cancel`, `GET/POST /invoice-schedules`, `PATCH /invoice-schedules/:id`                                                                                                                                                                                                                        |
 | Companies    | `GET /organizations/mine`, `GET /organizations/:slug`, `PATCH /organizations/:id`, members, wallets, `GET /organizations/:id/payment-approvals`, `POST …/:approvalId/approve`, `POST …/:approvalId/reject`                                                                                                                                                                             |
 | Applications | `POST /applications`, `GET /applications/mine`, `/queue`, `/:id`, `POST /:id/review`, `/:id/withdraw`, `/:id/resubmit`; `POST /files`, `GET/DELETE /files/:id`                                                                                                                                                                                                                         |
 | Registry     | `GET /registry`, `GET /registry/:idOrNumber`                                                                                                                                                                                                                                                                                                                                           |

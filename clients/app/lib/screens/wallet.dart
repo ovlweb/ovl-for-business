@@ -439,6 +439,8 @@ class _StatementState extends State<Statement> {
     'transfer_in' => LucideIcons.arrowDownLeft,
     'transfer_out' => LucideIcons.send,
     'investment_in' || 'investment_out' => LucideIcons.chartLine,
+    'exchange_in' || 'exchange_out' => LucideIcons.arrowLeftRight,
+    'payroll_in' || 'payroll_out' => LucideIcons.users,
     _ => LucideIcons.receipt,
   };
 }

@@ -1,5 +1,11 @@
 import { ORG_ROLES, type OrgRole } from '@ovl/shared';
-import type { Organization, PaymentApproval } from '@ovl/shared';
+import {
+  formatAmount,
+  parseAmount,
+  type Organization,
+  type PaymentApproval,
+  type PayrollRun,
+} from '@ovl/shared';
 import {
   Avatar,
   Empty,
@@ -8,6 +14,7 @@ import {
   formatDate,
   formatMoney,
   humanize,
+  plural,
   Icon,
   Modal,
   Money,
@@ -357,6 +364,238 @@ function PaymentApprovals({ org, myId }: { org: Organization; myId: string }) {
   );
 }
 
+interface PayLine {
+  username: string;
+  amount: string;
+  note: string;
+}
+const emptyLine = (): PayLine => ({ username: '', amount: '', note: '' });
+
+/** Pay the team from a company balance in one go. */
+function Payroll({ org }: { org: Organization }) {
+  const runs = useQuery({ queryKey: ['payroll', org.id], queryFn: () => api.organizations.payroll(org.id) });
+  const [creating, setCreating] = useState(false);
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <div className="card stack-sm">
+      <div className="card-header">
+        <div>
+          <h3>Payroll</h3>
+          <p className="small muted">Pay salaries and fees to many people at once from a business balance.</p>
+        </div>
+        <button className="btn sm" onClick={() => setCreating(true)}>
+          <Icon name="users" size={15} /> New payroll run
+        </button>
+      </div>
+      <ErrorAlert error={runs.error} />
+      {runs.data?.length === 0 && <p className="small muted">No payroll runs yet.</p>}
+      <div className="list">
+        {runs.data?.map((r) => (
+          <div key={r.id} className="stack-sm">
+            <button
+              className="list-item"
+              style={{ width: '100%', textAlign: 'left' }}
+              onClick={() => setOpen(open === r.id ? null : r.id)}
+              aria-expanded={open === r.id}
+            >
+              <span className="cr-icon deposit">
+                <Icon name="users" size={17} />
+              </span>
+              <div className="grow">
+                <b>{r.title}</b>
+                <div className="small muted">
+                  {plural(r.items.length, 'person', 'people')} · {formatDate(r.createdAt)} · by{' '}
+                  {r.createdBy.displayName}
+                </div>
+              </div>
+              <div className="cr-amount">
+                <b>
+                  −<Money amount={r.total} currency={r.currency} />
+                </b>
+                <StatusBadge status={r.status === 'pending' ? 'waiting_for_approval' : r.status} />
+              </div>
+            </button>
+            {open === r.id && (
+              <table className="table" style={{ marginLeft: 12 }}>
+                <tbody>
+                  {r.items.map((i) => (
+                    <tr key={i.user.id}>
+                      <td>
+                        <b>{i.user.displayName}</b> <span className="small muted">@{i.user.username}</span>
+                        {i.note && <div className="small muted">{i.note}</div>}
+                      </td>
+                      <td className="right">
+                        <Money amount={i.amount} currency={r.currency} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ))}
+      </div>
+      {creating && <PayrollModal org={org} last={runs.data?.[0]} onClose={() => setCreating(false)} />}
+    </div>
+  );
+}
+
+function PayrollModal({ org, last, onClose }: { org: Organization; last?: PayrollRun; onClose: () => void }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const wallets = useQuery({
+    queryKey: ['orgWallets', org.id],
+    queryFn: () => api.organizations.wallets(org.id),
+  });
+  const [walletId, setWalletId] = useState<string>();
+  const wallet = wallets.data?.find((w) => w.id === walletId) ?? wallets.data?.[0];
+  const [title, setTitle] = useState(
+    `Salaries — ${new Date().toLocaleString(undefined, { month: 'long', year: 'numeric' })}`,
+  );
+  const [lines, setLines] = useState<PayLine[]>([emptyLine()]);
+  const setLine = (n: number, patch: Partial<PayLine>) =>
+    setLines(lines.map((l, i) => (i === n ? { ...l, ...patch } : l)));
+  const currency = wallet?.currency ?? org.baseCurrency;
+  let total = '—';
+  try {
+    total = formatMoney(
+      formatAmount(
+        lines.reduce((sum, l) => sum + parseAmount(l.amount || '0', currency), 0n),
+        currency,
+      ),
+      currency,
+    );
+  } catch {
+    // an amount that is not a number yet
+  }
+  const run = useMutation({
+    mutationFn: () =>
+      api.organizations.runPayroll(org.id, {
+        walletId: wallet!.id,
+        title,
+        items: lines.map((l) => ({
+          username: l.username.trim().replace(/^@/, '').toLowerCase(),
+          amount: l.amount,
+          note: l.note || undefined,
+        })),
+      }),
+    onSuccess: (r) => {
+      for (const key of ['payroll', 'orgWallets', 'wallet', 'entries', 'paymentApprovals'])
+        queryClient.invalidateQueries({ queryKey: [key] });
+      toast.success(
+        r.status === 'pending'
+          ? 'Above the approval limit: another finance member has to approve this payroll'
+          : `Paid ${formatMoney(r.total, r.currency)} to ${plural(r.items.length, 'person', 'people')}`,
+      );
+      onClose();
+    },
+  });
+  return (
+    <Modal title="New payroll run" onClose={onClose} wide>
+      <form
+        className="stack"
+        onSubmit={(e) => {
+          e.preventDefault();
+          run.mutate();
+        }}
+      >
+        <div className="grid-2">
+          <Field label="Title">
+            <input
+              className="input"
+              value={title}
+              maxLength={120}
+              required
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </Field>
+          <Field label="Pay from">
+            <select className="select" value={wallet?.id} onChange={(e) => setWalletId(e.target.value)}>
+              {wallets.data?.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.currency} · available {formatMoney(w.available, w.currency)}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <div className="stack-sm">
+          {lines.map((l, n) => (
+            <div key={n} className="invoice-line">
+              <input
+                className="input"
+                placeholder="username"
+                aria-label={`Person ${n + 1}`}
+                value={l.username}
+                onChange={(e) => setLine(n, { username: e.target.value })}
+                required
+              />
+              <input
+                className="input"
+                inputMode="decimal"
+                placeholder="0.00"
+                aria-label={`Person ${n + 1} amount`}
+                value={l.amount}
+                onChange={(e) => setLine(n, { amount: e.target.value.replace(',', '.') })}
+                required
+              />
+              <input
+                className="input"
+                placeholder="Note (optional)"
+                aria-label={`Person ${n + 1} note`}
+                value={l.note}
+                maxLength={200}
+                onChange={(e) => setLine(n, { note: e.target.value })}
+              />
+              <button
+                type="button"
+                className="btn ghost icon sm"
+                aria-label={`Remove person ${n + 1}`}
+                disabled={lines.length === 1}
+                onClick={() => setLines(lines.filter((_, i) => i !== n))}
+              >
+                <Icon name="trash" size={15} />
+              </button>
+            </div>
+          ))}
+          <div className="spread">
+            <div className="row" style={{ gap: 6 }}>
+              <button
+                type="button"
+                className="btn sm"
+                disabled={lines.length >= 200}
+                onClick={() => setLines([...lines, emptyLine()])}
+              >
+                <Icon name="plus" size={14} /> Add person
+              </button>
+              {last && (
+                <button
+                  type="button"
+                  className="btn ghost sm"
+                  onClick={() =>
+                    setLines(
+                      last.items.map((i) => ({ username: i.user.username, amount: i.amount, note: i.note })),
+                    )
+                  }
+                >
+                  Same as “{last.title}”
+                </button>
+              )}
+            </div>
+            <span>
+              Total <b className="invoice-total">{total}</b>
+            </span>
+          </div>
+        </div>
+        <ErrorAlert error={run.error} />
+        <button className="btn primary" disabled={run.isPending || !wallet}>
+          <Icon name="send" size={16} /> Pay {plural(lines.length, 'person', 'people')}
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
 function EditCompanyModal({ org, onClose }: { org: Organization; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
@@ -496,6 +735,7 @@ export function CompanyPage() {
       </div>
       {finance && me && <PaymentApprovals org={o} myId={me.id} />}
       {finance && <Balances orgId={o.id} />}
+      {finance && <Payroll org={o} />}
       {o.myRole && <Members orgId={o.id} canManage={canManage} />}
       {editing && <EditCompanyModal org={o} onClose={() => setEditing(false)} />}
     </div>

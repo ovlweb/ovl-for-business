@@ -437,6 +437,61 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(maria.locator('.bank-card')).toContainText('45.00');
   });
 
+  test('billing: pay an invoice in parts, recurring invoices and a payroll run', async () => {
+    await ivan.goto('./#/invoices');
+    await ivan.getByRole('button', { name: 'New invoice' }).click();
+    // Ivan is Northwind's accountant by now; this one is personal.
+    await ivan.getByLabel('From', { exact: true }).selectOption('me');
+    await ivan.getByLabel('Recipient type').selectOption('user');
+    await ivan.getByLabel('Recipient', { exact: true }).fill('maria');
+    await ivan.getByLabel('Line 1 description').fill('Consulting retainer');
+    await ivan.getByLabel('Line 1 unit price').fill('40');
+    await ivan.getByLabel('Repeat').selectOption('monthly');
+    await ivan.getByRole('button', { name: 'Set up recurring invoice' }).click();
+    await expect(ivan.getByText(/^First invoice sent to Maria Petrova; the next goes out on/)).toBeVisible();
+
+    // Maria pays part now and the rest later.
+    await maria.goto('./#/invoices');
+    await maria.locator('tr', { hasText: 'Ivan Sokolov' }).first().click();
+    const dialog = maria.getByRole('dialog');
+    await expect(dialog.getByText('Recurring invoice · every month')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Pay part of it' }).click();
+    await dialog.getByLabel(/^Amount to pay now/).fill('15');
+    await dialog.getByRole('button', { name: 'Pay 15.00 USD' }).click();
+    await expect(maria.getByText('Paid 15.00 USD to Ivan Sokolov')).toBeVisible();
+    await expect(dialog.getByText('Partly paid')).toBeVisible();
+    await expect(dialog.getByText('Still due')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Pay 25.00 USD' }).click();
+    await expect(maria.getByText('Paid 25.00 USD to Ivan Sokolov')).toBeVisible();
+    await expect(dialog.locator('.invoice-doc').getByText('Paid', { exact: true })).toBeVisible();
+    await maria.keyboard.press('Escape');
+
+    // Ivan manages the recurring invoice (behind the first invoice, which opened when it was sent).
+    await ivan.keyboard.press('Escape');
+    await ivan.getByRole('tab', { name: 'Recurring' }).click();
+    const schedule = ivan.locator('tr', { hasText: 'Maria Petrova' });
+    await expect(schedule).toContainText('Every month');
+    await expect(schedule).toContainText('1 invoice sent');
+    await schedule.getByRole('button', { name: 'Pause' }).click();
+    await expect(ivan.getByText('Recurring invoice paused')).toBeVisible();
+    await expect(schedule).toContainText('Paused');
+
+    // Northwind pays Ivan through payroll.
+    await maria.goto('./#/companies/northwind-studio');
+    await maria.getByRole('button', { name: 'New payroll run' }).click();
+    const payroll = maria.getByRole('dialog');
+    await payroll.getByLabel('Title').fill('Freelance fees');
+    await payroll.getByLabel('Person 1', { exact: true }).fill('ivan');
+    await payroll.getByLabel('Person 1 amount').fill('10');
+    await payroll.getByLabel('Person 1 note').fill('Logo revisions');
+    await expect(payroll.getByText('10.00 USD')).toBeVisible();
+    await payroll.getByRole('button', { name: 'Pay 1 person' }).click();
+    await expect(maria.getByText('Paid 10.00 USD to 1 person')).toBeVisible();
+    await expect(maria.locator('.list-item', { hasText: 'Freelance fees' })).toContainText('Paid');
+    await ivan.goto('./#/wallet');
+    await expect(ivan.getByText('Northwind Studio: Freelance fees — Logo revisions')).toBeVisible();
+  });
+
   test('settings: switching the theme applies instantly and is saved', async () => {
     await maria.goto('./#/settings?section=appearance');
     await maria.getByRole('radio', { name: 'Midnight' }).click();

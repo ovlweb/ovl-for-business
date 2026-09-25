@@ -35,6 +35,8 @@ import { cashApprovalRoutes } from './modules/cash-approvals';
 import { invoiceRoutes } from './modules/invoices';
 import { exchangeRoutes } from './modules/exchange';
 import { orgPaymentRoutes } from './modules/org-payments';
+import { invoiceScheduleRoutes } from './modules/invoice-schedules';
+import { payrollRoutes } from './modules/payroll';
 import { sessionRoutes } from './modules/sessions';
 import { twoFactorRoutes } from './modules/two-factor';
 import { chatRoutes } from './modules/chats/routes';
@@ -49,6 +51,7 @@ import { walletRoutes } from './modules/wallets/routes';
 import { registerAuth } from './plugins/auth';
 import { realtimeRoutes } from './realtime/routes';
 import { RealtimeHub } from './realtime/hub';
+import { Scheduler } from './lib/scheduler';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -56,6 +59,7 @@ declare module 'fastify' {
     db: Database;
     hub: RealtimeHub;
     mailer: Mailer;
+    scheduler: Scheduler;
     storage: Storage;
   }
 }
@@ -96,8 +100,11 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
   app.decorate('hub', new RealtimeHub());
   app.decorate('mailer', createMailer(config, app.log));
   app.decorate('storage', createStorage(config));
+  app.decorate('scheduler', new Scheduler(app.log));
 
+  if (config.SCHEDULER_ENABLED) app.addHook('onReady', async () => app.scheduler.start());
   app.addHook('onClose', async () => {
+    await app.scheduler.stop();
     app.hub.closeAll();
     await client.end({ timeout: 5 });
   });
@@ -211,6 +218,8 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
       await api.register(invoiceRoutes);
       await api.register(exchangeRoutes);
       await api.register(orgPaymentRoutes);
+      await api.register(invoiceScheduleRoutes);
+      await api.register(payrollRoutes);
       await api.register(organizationRoutes);
       await api.register(applicationRoutes);
       await api.register(registryRoutes);

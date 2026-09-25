@@ -56,8 +56,10 @@ Android, iOS, macOS and Windows.
   a journal entry. People and companies ask for deposits and payouts from their wallet; a payout
   holds the amount until a manager pays it out or declines it. Transfers between people and
   companies, **invoices** paid from a balance in one step, per-currency balances, **currency
-  conversion** at rates the finance team manages, statements with CSV export. Companies can set an
-  **approval limit**: larger payments wait for a second owner, director or accountant.
+  conversion** at rates the finance team manages, statements with CSV export. Invoices can be paid
+  in parts or sent on a schedule (**recurring invoices**), and companies pay their team with
+  **payroll runs**. Companies can set an **approval limit**: larger payments wait for a second
+  owner, director or accountant.
 - **Tech support** — tickets are support chats. Moderators, admins and the owner answer from the same
   client in a separate _Support desk_ section; replies carry a staff badge and the owner's replies a
   special owner badge. The council cannot answer tickets.
@@ -168,6 +170,7 @@ Server environment variables (see `server/src/config.ts`):
 | `REQUIRE_IDENTITY_FOR_COMPANIES`                                       | `true`                  | Company owners pass an identity check before approval                                                                                       |
 | `ADMIN_IP_ALLOWLIST`                                                   | —                       | Networks allowed to use the admin API, e.g. `10.0.0.0/8, 203.0.113.7`                                                                       |
 | `CASH_FOUR_EYES_AMOUNT`                                                | `10000`                 | Cash operations of at least this amount need a second finance manager (`0`: off)                                                            |
+| `SCHEDULER_ENABLED`                                                    | `true`                  | Background jobs such as recurring invoices; every instance may run them, they share the work                                                |
 | `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` / `OIDC_LABEL` | —                       | Single sign-on for the admin panel (redirect URI: `PUBLIC_ADMIN_URL/`)                                                                      |
 | `REQUIRE_VERIFIED_EMAIL`                                               | `true`                  | Applications need a confirmed email address                                                                                                 |
 | `STOCK_FREEZE_PERCENT`                                                 | `30`                    | Frozen share of each investment                                                                                                             |

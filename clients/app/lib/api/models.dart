@@ -376,6 +376,17 @@ class Invoice {
       currency = j['currency'] as String,
       items = [for (final i in j['items'] as List) InvoiceItem.fromJson(i as Json)],
       total = j['total'] as String,
+      amountPaid = j['amountPaid'] as String? ?? '0',
+      amountDue = j['amountDue'] as String? ?? j['total'] as String,
+      payments = [
+        for (final p in j['payments'] as List? ?? const [])
+          (
+            amount: (p as Json)['amount'] as String,
+            paidBy: (p['paidBy'] as Json)['displayName'] as String,
+            at: _date(p['createdAt']),
+          ),
+      ],
+      recurringInterval = (j['recurring'] as Json?)?['interval'] as String?,
       note = j['note'] as String? ?? '',
       dueDate = DateTime.parse(j['dueDate'] as String),
       status = j['status'] as String,
@@ -393,6 +404,14 @@ class Invoice {
   final String currency;
   final List<InvoiceItem> items;
   final String total;
+
+  /// Invoices can be paid in parts.
+  final String amountPaid;
+  final String amountDue;
+  final List<({String amount, String paidBy, DateTime at})> payments;
+
+  /// weekly, monthly, quarterly or yearly when a recurring schedule issued it.
+  final String? recurringInterval;
   final String note;
   final DateTime dueDate;
   final String status;
@@ -408,8 +427,64 @@ class Invoice {
   /// The other side, seen from the viewer.
   InvoiceParty get counterparty => incoming ? issuer : recipient;
 
+  bool get partlyPaid => isOpen && (double.tryParse(amountPaid) ?? 0) > 0;
+
   /// For badges: open invoices past their due date read "overdue".
-  String get displayStatus => overdue ? 'overdue' : status;
+  String get displayStatus => overdue
+      ? 'overdue'
+      : partlyPaid
+      ? 'partly_paid'
+      : status;
+}
+
+/// A recurring invoice: one is issued every period.
+class InvoiceSchedule {
+  InvoiceSchedule.fromJson(Json j)
+    : id = j['id'] as String,
+      issuer = InvoiceParty.fromJson(j['issuer'] as Json),
+      recipient = InvoiceParty.fromJson(j['recipient'] as Json),
+      currency = j['currency'] as String,
+      total = j['total'] as String,
+      interval = j['interval'] as String,
+      nextRunOn = j['nextRunOn'] == null ? null : DateTime.parse(j['nextRunOn'] as String),
+      endDate = j['endDate'] == null ? null : DateTime.parse(j['endDate'] as String),
+      status = j['status'] as String,
+      invoiceCount = j['invoiceCount'] as int;
+
+  final String id;
+  final InvoiceParty issuer;
+  final InvoiceParty recipient;
+  final String currency;
+  final String total;
+  final String interval;
+  final DateTime? nextRunOn;
+  final DateTime? endDate;
+
+  /// active, paused or ended
+  final String status;
+  final int invoiceCount;
+}
+
+/// A company paying many people at once.
+class PayrollRun {
+  PayrollRun.fromJson(Json j)
+    : id = j['id'] as String,
+      title = j['title'] as String,
+      currency = j['currency'] as String,
+      total = j['total'] as String,
+      status = j['status'] as String,
+      people = (j['items'] as List).length,
+      createdAt = _date(j['createdAt']);
+
+  final String id;
+  final String title;
+  final String currency;
+  final String total;
+
+  /// pending (waiting for a second signature), paid or rejected
+  final String status;
+  final int people;
+  final DateTime createdAt;
 }
 
 class LedgerEntry {

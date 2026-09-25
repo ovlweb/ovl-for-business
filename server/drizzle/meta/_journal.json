@@ -92,6 +92,13 @@
       "when": 1790297886314,
       "tag": "0012_exchange_multisig",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790299379921,
+      "tag": "0013_invoice_schedules_payroll",
+      "breakpoints": true
     }
   ]
 }

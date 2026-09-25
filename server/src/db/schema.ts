@@ -4,11 +4,14 @@ import {
   CASH_METHODS,
   CASH_REQUEST_STATUSES,
   IDENTITY_STATUSES,
+  INVOICE_INTERVALS,
+  INVOICE_SCHEDULE_STATUSES,
   INVOICE_STATUSES,
   CHAT_TYPES,
   LEDGER_KINDS,
   LISTING_STATUSES,
   ORG_ROLES,
+  PAYROLL_STATUSES,
   REGISTRY_KINDS,
   REGISTRY_STATUSES,
   ROLES,
@@ -397,6 +400,11 @@ export const invoices = pgTable(
     paidFromWalletId: uuid('paid_from_wallet_id').references(() => wallets.id),
     cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
     cancelReason: text('cancel_reason'),
+    /** Invoices can be paid in parts; `paidAt` is set once this reaches the total. */
+    amountPaid: money('amount_paid')
+      .notNull()
+      .default(sql`0`),
+    scheduleId: uuid('schedule_id'),
   },
   (t) => [
     uniqueIndex('invoices_issuer_user_number_uq').on(t.issuerUserId, t.number),
@@ -407,6 +415,88 @@ export const invoices = pgTable(
     check('invoices_single_recipient', sql`(${t.recipientUserId} is null) <> (${t.recipientOrgId} is null)`),
     check('invoices_total_positive', sql`${t.total} > 0`),
   ],
+);
+
+export const invoicePayments = pgTable(
+  'invoice_payments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    invoiceId: uuid('invoice_id')
+      .notNull()
+      .references(() => invoices.id),
+    walletId: uuid('wallet_id')
+      .notNull()
+      .references(() => wallets.id),
+    amount: money('amount').notNull(),
+    paidBy: uuid('paid_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index('invoice_payments_invoice_idx').on(t.invoiceId)],
+);
+
+export const invoiceScheduleStatusEnum = pgEnum('invoice_schedule_status', INVOICE_SCHEDULE_STATUSES);
+
+/** Recurring invoices: the scheduler issues one every period from `startDate`. */
+export const invoiceSchedules = pgTable(
+  'invoice_schedules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    issuerType: walletOwnerEnum('issuer_type').notNull(),
+    issuerUserId: uuid('issuer_user_id').references(() => users.id),
+    issuerOrgId: uuid('issuer_org_id').references(() => organizations.id),
+    recipientType: walletOwnerEnum('recipient_type').notNull(),
+    recipientUserId: uuid('recipient_user_id').references(() => users.id),
+    recipientOrgId: uuid('recipient_org_id').references(() => organizations.id),
+    currency: char('currency', { length: 3 }).notNull(),
+    items: jsonb('items').$type<InvoiceItemRow[]>().notNull(),
+    total: money('total').notNull(),
+    note: text('note').notNull().default(''),
+    interval: varchar('interval', { length: 16 }).$type<(typeof INVOICE_INTERVALS)[number]>().notNull(),
+    dueDays: integer('due_days').notNull(),
+    startDate: date('start_date').notNull(),
+    endDate: date('end_date'),
+    /** Periods since the start that are done (issued or skipped); the next run follows from it. */
+    periods: integer('periods').notNull().default(0),
+    nextRunOn: date('next_run_on'),
+    status: invoiceScheduleStatusEnum('status').notNull().default('active'),
+    invoiceCount: integer('invoice_count').notNull().default(0),
+    lastInvoiceId: uuid('last_invoice_id'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index('invoice_schedules_due_idx').on(t.status, t.nextRunOn)],
+);
+
+export const payrollStatusEnum = pgEnum('payroll_status', PAYROLL_STATUSES);
+
+/** A company paying many people at once from one balance. */
+export const payrollRuns = pgTable(
+  'payroll_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    walletId: uuid('wallet_id')
+      .notNull()
+      .references(() => wallets.id),
+    currency: char('currency', { length: 3 }).notNull(),
+    title: varchar('title', { length: 120 }).notNull(),
+    total: money('total').notNull(),
+    status: payrollStatusEnum('status').notNull(),
+    items: jsonb('items').$type<{ userId: string; amount: string; note: string }[]>().notNull(),
+    approvalId: uuid('approval_id'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+    paidAt: timestamp('paid_at', { withTimezone: true }),
+  },
+  (t) => [index('payroll_runs_org_idx').on(t.organizationId, t.createdAt)],
 );
 
 export const cashApprovalStatusEnum = pgEnum('cash_approval_status', ['pending', 'approved', 'rejected']);

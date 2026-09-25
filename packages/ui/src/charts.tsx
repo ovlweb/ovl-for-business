@@ -93,7 +93,9 @@ export function AreaChart({
   const area = `${d} L ${width} ${height} L 0 ${height} Z`;
   const last = pts[pts.length - 1]!;
   const active = hover ?? null;
-  const grid = interactive ? [0.25, 0.5, 0.75].map((f) => rawMin + (rawMax - rawMin) * f) : [];
+  // A flat series has no scale to show (and three identical grid lines).
+  const grid =
+    interactive && rawMax > rawMin ? [0.25, 0.5, 0.75].map((f) => rawMin + (rawMax - rawMin) * f) : [];
 
   return (
     <div
@@ -122,8 +124,8 @@ export function AreaChart({
               <stop offset="100%" stopColor={color} stopOpacity="0" />
             </linearGradient>
           </defs>
-          {grid.map((g) => (
-            <g key={g}>
+          {grid.map((g, i) => (
+            <g key={i}>
               <line x1={0} x2={width} y1={y(g)} y2={y(g)} stroke="var(--border)" strokeDasharray="3 5" />
               <text x={2} y={y(g) - 5} className="chart-axis">
                 {format!(g)}

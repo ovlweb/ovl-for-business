@@ -8,6 +8,7 @@ import {
   parseAmount,
   payInvoiceSchema,
   paymentApprovalSchema,
+  type CreateInvoiceInput,
   type Invoice,
 } from '@ovl/shared';
 import { and, count, desc, eq, inArray, like, or, sql, type SQL } from 'drizzle-orm';
@@ -16,7 +17,15 @@ import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import type { Db } from '../db/client';
-import { invoices, organizationMembers, organizations, users, wallets } from '../db/schema';
+import {
+  invoicePayments,
+  invoices,
+  invoiceSchedules,
+  organizationMembers,
+  organizations,
+  users,
+  wallets,
+} from '../db/schema';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors';
 import { iso, isoOrNull } from '../lib/mappers';
 import { currentUser } from '../plugins/auth';
@@ -38,24 +47,26 @@ import {
 } from './wallets/service';
 
 export type InvoiceRow = typeof invoices.$inferSelect;
-type Party = { type: 'user' | 'organization'; id: string };
+export type Party = { type: 'user' | 'organization'; id: string };
 
 /** Largest invoice total (fits the bigint money column with room to spare). */
 const MAX_TOTAL = 10n ** 17n;
 
-const issuerOf = (r: InvoiceRow): Party =>
+export const issuerOf = (r: Pick<InvoiceRow, 'issuerType' | 'issuerUserId' | 'issuerOrgId'>): Party =>
   r.issuerType === 'user'
     ? { type: 'user', id: r.issuerUserId! }
     : { type: 'organization', id: r.issuerOrgId! };
-const recipientOf = (r: InvoiceRow): Party =>
+export const recipientOf = (
+  r: Pick<InvoiceRow, 'recipientType' | 'recipientUserId' | 'recipientOrgId'>,
+): Party =>
   r.recipientType === 'user'
     ? { type: 'user', id: r.recipientUserId! }
     : { type: 'organization', id: r.recipientOrgId! };
 
-const today = () => new Date().toISOString().slice(0, 10);
+export const today = () => new Date().toISOString().slice(0, 10);
 
 /** Companies where the user may move money: owners, directors and accountants. */
-async function financeOrgIds(db: Db, userId: string): Promise<string[]> {
+export async function financeOrgIds(db: Db, userId: string): Promise<string[]> {
   const rows = await db
     .select({ id: organizationMembers.organizationId })
     .from(organizationMembers)
@@ -65,11 +76,11 @@ async function financeOrgIds(db: Db, userId: string): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
-const actsFor = (party: Party, userId: string, orgIds: string[]) =>
+export const actsFor = (party: Party, userId: string, orgIds: string[]) =>
   party.type === 'user' ? party.id === userId : orgIds.includes(party.id);
 
 /** Everyone who hears about an invoice on one side: the person, or the company's finance team. */
-async function partyAudience(db: Db, party: Party): Promise<string[]> {
+export async function partyAudience(db: Db, party: Party): Promise<string[]> {
   if (party.type === 'user') return [party.id];
   const rows = await db
     .select({ userId: organizationMembers.userId })
@@ -83,7 +94,7 @@ async function partyAudience(db: Db, party: Party): Promise<string[]> {
   return rows.map((r) => r.userId);
 }
 
-async function invoiceDtos(
+export async function invoiceDtos(
   db: Db,
   rows: InvoiceRow[],
   viewerId: string,
@@ -97,6 +108,27 @@ async function invoiceDtos(
     userIds.add(r.createdBy);
     if (r.paidBy) userIds.add(r.paidBy);
   }
+  const scheduleIds = [...new Set(rows.flatMap((r) => (r.scheduleId ? [r.scheduleId] : [])))];
+  const [payments, schedules] = await Promise.all([
+    db
+      .select()
+      .from(invoicePayments)
+      .where(
+        inArray(
+          invoicePayments.invoiceId,
+          rows.map((r) => r.id),
+        ),
+      )
+      .orderBy(invoicePayments.createdAt),
+    scheduleIds.length
+      ? db
+          .select({ id: invoiceSchedules.id, interval: invoiceSchedules.interval })
+          .from(invoiceSchedules)
+          .where(inArray(invoiceSchedules.id, scheduleIds))
+      : Promise.resolve([]),
+  ]);
+  for (const p of payments) userIds.add(p.paidBy);
+  const intervalOf = new Map(schedules.map((s) => [s.id, s.interval]));
   const [people, companies] = await Promise.all([
     db
       .select({ id: users.id, username: users.username, displayName: users.displayName })
@@ -134,10 +166,24 @@ async function invoiceDtos(
       amount: formatAmount(BigInt(i.unitPrice) * BigInt(i.quantity), r.currency),
     })),
     total: formatAmount(r.total, r.currency),
+    amountPaid: formatAmount(r.amountPaid, r.currency),
+    amountDue: formatAmount(r.status === 'open' ? r.total - r.amountPaid : 0n, r.currency),
+    payments: payments
+      .filter((p) => p.invoiceId === r.id)
+      .map((p) => ({
+        id: p.id,
+        amount: formatAmount(p.amount, r.currency),
+        paidBy: ref(p.paidBy),
+        createdAt: iso(p.createdAt),
+      })),
     note: r.note,
     dueDate: r.dueDate,
     status: r.status,
     overdue: r.status === 'open' && r.dueDate < now,
+    recurring:
+      r.scheduleId && intervalOf.has(r.scheduleId)
+        ? { scheduleId: r.scheduleId, interval: intervalOf.get(r.scheduleId)! }
+        : null,
     createdBy: ref(r.createdBy),
     createdAt: iso(r.createdAt),
     paidAt: isoOrNull(r.paidAt),
@@ -145,6 +191,32 @@ async function invoiceDtos(
     cancelledAt: isoOrNull(r.cancelledAt),
     cancelReason: r.cancelReason,
   }));
+}
+
+/** Names and handles for people and companies on invoices. */
+export async function describeParties(db: Db, parties: Party[]) {
+  const userIds = [...new Set(parties.filter((p) => p.type === 'user').map((p) => p.id))];
+  const orgIds = [...new Set(parties.filter((p) => p.type === 'organization').map((p) => p.id))];
+  const [people, companies] = await Promise.all([
+    userIds.length
+      ? db
+          .select({ id: users.id, username: users.username, displayName: users.displayName })
+          .from(users)
+          .where(inArray(users.id, userIds))
+      : Promise.resolve([]),
+    orgIds.length
+      ? db
+          .select({ id: organizations.id, name: organizations.name, slug: organizations.slug })
+          .from(organizations)
+          .where(inArray(organizations.id, orgIds))
+      : Promise.resolve([]),
+  ]);
+  const person = new Map(people.map((p) => [p.id, p]));
+  const company = new Map(companies.map((c) => [c.id, c]));
+  return (p: Party) =>
+    p.type === 'user'
+      ? { ...p, name: person.get(p.id)?.displayName ?? '', handle: `@${person.get(p.id)?.username ?? ''}` }
+      : { ...p, name: company.get(p.id)?.name ?? '', handle: company.get(p.id)?.slug ?? '' };
 }
 
 /** Invoices a person can see: their own and those of companies where they handle money. */
@@ -194,29 +266,152 @@ export async function executeInvoicePayment(
   input: { invoiceId: string; wallet: WalletRow; amount: bigint; actorId: string },
 ) {
   const invoice = await checkPayable(tx, input.invoiceId, input.wallet);
-  if (input.amount !== invoice.total) throw conflict('The invoice total changed; pay it again');
+  const due = invoice.total - invoice.amountPaid;
+  if (input.amount <= 0n) throw badRequest('Amount must be positive');
+  if (input.amount > due)
+    throw conflict(`Only ${formatAmount(due, invoice.currency)} ${invoice.currency} is still due`);
+  const full = input.amount === due;
   const [view] = await invoiceDtos(tx, [invoice], input.actorId, []);
   const target = await getOrCreateWallet(tx, issuerOf(invoice), invoice.currency);
+  const part = full && invoice.amountPaid === 0n ? '' : full ? ' (final part)' : ' (part)';
   await transfer(
     tx,
     input.wallet.id,
     target.id,
-    invoice.total,
+    input.amount,
     { out: 'transfer_out', in: 'transfer_in' },
     {
-      description: `Invoice ${invoice.number} from ${view!.issuer.name}`,
+      description: `Invoice ${invoice.number} from ${view!.issuer.name}${part}`,
       actorId: input.actorId,
       referenceType: 'invoice',
       referenceId: invoice.id,
     },
-    `Invoice ${invoice.number} paid by ${view!.recipient.name}`,
+    `Invoice ${invoice.number} paid by ${view!.recipient.name}${part}`,
   );
+  await tx.insert(invoicePayments).values({
+    invoiceId: invoice.id,
+    walletId: input.wallet.id,
+    amount: input.amount,
+    paidBy: input.actorId,
+  });
   const [paid] = await tx
     .update(invoices)
-    .set({ status: 'paid', paidAt: new Date(), paidBy: input.actorId, paidFromWalletId: input.wallet.id })
+    .set({
+      amountPaid: invoice.amountPaid + input.amount,
+      ...(full
+        ? {
+            status: 'paid' as const,
+            paidAt: new Date(),
+            paidBy: input.actorId,
+            paidFromWalletId: input.wallet.id,
+          }
+        : {}),
+    })
     .where(eq(invoices.id, invoice.id))
     .returning();
   return { invoice: paid!, target };
+}
+
+/** Who sends and who receives an invoice (or a recurring one), checked for `userId`. */
+export async function resolveParties(
+  db: Db,
+  userId: string,
+  input: Pick<CreateInvoiceInput, 'from' | 'to'>,
+): Promise<{ issuer: Party; recipient: Party }> {
+  let issuer: Party = { type: 'user', id: userId };
+  if (input.from.type === 'organization') {
+    const orgIds = await financeOrgIds(db, userId);
+    if (!orgIds.includes(input.from.organizationId))
+      throw forbidden('Only owners, directors and accountants can invoice for this company');
+    const [org] = await db
+      .select({ status: organizations.status })
+      .from(organizations)
+      .where(eq(organizations.id, input.from.organizationId));
+    if (org?.status !== 'active') throw badRequest('This company is not active');
+    issuer = { type: 'organization', id: input.from.organizationId };
+  }
+  let recipient: Party;
+  if (input.to.type === 'user') {
+    const [user] = await db
+      .select({ id: users.id, status: users.status })
+      .from(users)
+      .where(eq(users.username, input.to.username));
+    if (!user || user.status !== 'active') throw notFound('Recipient');
+    recipient = { type: 'user', id: user.id };
+  } else {
+    const [org] = await db
+      .select({ id: organizations.id, status: organizations.status })
+      .from(organizations)
+      .where(eq(organizations.slug, input.to.slug));
+    if (!org || org.status !== 'active') throw notFound('Recipient company');
+    recipient = { type: 'organization', id: org.id };
+  }
+  if (issuer.type === recipient.type && issuer.id === recipient.id)
+    throw badRequest('An invoice needs a different recipient');
+  return { issuer, recipient };
+}
+
+/** Invoice lines in minor units, and their total. */
+export function invoiceLines(lines: CreateInvoiceInput['items'], currency: string) {
+  const items = lines.map((i) => ({
+    description: i.description,
+    quantity: i.quantity,
+    unitPrice: parseAmount(i.unitPrice, currency).toString(),
+  }));
+  const total = items.reduce((sum, i) => sum + BigInt(i.unitPrice) * BigInt(i.quantity), 0n);
+  if (total <= 0n) throw badRequest('The total must be more than zero');
+  if (total > MAX_TOTAL) throw badRequest('The total is too large');
+  return { items, total };
+}
+
+/** Number and store a new invoice; call inside a transaction, then `announceInvoice`. */
+export async function issueInvoice(
+  tx: Db,
+  input: {
+    issuer: Party;
+    recipient: Party;
+    currency: string;
+    items: InvoiceRow['items'];
+    total: bigint;
+    note: string;
+    dueDate: string;
+    createdBy: string;
+    scheduleId?: string;
+  },
+): Promise<InvoiceRow> {
+  const { issuer, recipient } = input;
+  // Numbers are sequential per issuer and year; serialise numbering for this issuer.
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${issuer.id}, 0))`);
+  const prefix = `INV-${new Date().getUTCFullYear()}-`;
+  const [issued] = await tx
+    .select({ n: count() })
+    .from(invoices)
+    .where(
+      and(
+        issuer.type === 'user' ? eq(invoices.issuerUserId, issuer.id) : eq(invoices.issuerOrgId, issuer.id),
+        like(invoices.number, `${prefix}%`),
+      ),
+    );
+  const [created] = await tx
+    .insert(invoices)
+    .values({
+      number: `${prefix}${String((issued?.n ?? 0) + 1).padStart(4, '0')}`,
+      issuerType: issuer.type,
+      issuerUserId: issuer.type === 'user' ? issuer.id : null,
+      issuerOrgId: issuer.type === 'organization' ? issuer.id : null,
+      recipientType: recipient.type,
+      recipientUserId: recipient.type === 'user' ? recipient.id : null,
+      recipientOrgId: recipient.type === 'organization' ? recipient.id : null,
+      currency: input.currency,
+      items: input.items,
+      total: input.total,
+      note: input.note,
+      dueDate: input.dueDate,
+      createdBy: input.createdBy,
+      scheduleId: input.scheduleId ?? null,
+    })
+    .returning();
+  return created!;
 }
 
 export async function invoiceRoutes(fastify: FastifyInstance) {
@@ -289,84 +484,21 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
     async (req, reply) => {
       const me = currentUser(req);
       const input = req.body;
-      const orgIds = await financeOrgIds(app.db, me.id);
-
-      let issuer: Party = { type: 'user', id: me.id };
-      if (input.from.type === 'organization') {
-        if (!orgIds.includes(input.from.organizationId))
-          throw forbidden('Only owners, directors and accountants can invoice for this company');
-        const [org] = await app.db
-          .select({ status: organizations.status })
-          .from(organizations)
-          .where(eq(organizations.id, input.from.organizationId));
-        if (org?.status !== 'active') throw badRequest('This company is not active');
-        issuer = { type: 'organization', id: input.from.organizationId };
-      }
-
-      let recipient: Party;
-      if (input.to.type === 'user') {
-        const [user] = await app.db
-          .select({ id: users.id, status: users.status })
-          .from(users)
-          .where(eq(users.username, input.to.username));
-        if (!user || user.status !== 'active') throw notFound('Recipient');
-        recipient = { type: 'user', id: user.id };
-      } else {
-        const [org] = await app.db
-          .select({ id: organizations.id, status: organizations.status })
-          .from(organizations)
-          .where(eq(organizations.slug, input.to.slug));
-        if (!org || org.status !== 'active') throw notFound('Recipient company');
-        recipient = { type: 'organization', id: org.id };
-      }
-      if (issuer.type === recipient.type && issuer.id === recipient.id)
-        throw badRequest('An invoice needs a different recipient');
+      const { issuer, recipient } = await resolveParties(app.db, me.id, input);
       if (input.dueDate < today()) throw badRequest('The due date is in the past');
-
-      const items = input.items.map((i) => ({
-        description: i.description,
-        quantity: i.quantity,
-        unitPrice: parseAmount(i.unitPrice, input.currency).toString(),
-      }));
-      const total = items.reduce((sum, i) => sum + BigInt(i.unitPrice) * BigInt(i.quantity), 0n);
-      if (total <= 0n) throw badRequest('The total must be more than zero');
-      if (total > MAX_TOTAL) throw badRequest('The total is too large');
-
-      const row = await app.db.transaction(async (tx) => {
-        // Numbers are sequential per issuer and year; serialise numbering for this issuer.
-        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${issuer.id}, 0))`);
-        const prefix = `INV-${new Date().getUTCFullYear()}-`;
-        const [issued] = await tx
-          .select({ n: count() })
-          .from(invoices)
-          .where(
-            and(
-              issuer.type === 'user'
-                ? eq(invoices.issuerUserId, issuer.id)
-                : eq(invoices.issuerOrgId, issuer.id),
-              like(invoices.number, `${prefix}%`),
-            ),
-          );
-        const [created] = await tx
-          .insert(invoices)
-          .values({
-            number: `${prefix}${String((issued?.n ?? 0) + 1).padStart(4, '0')}`,
-            issuerType: issuer.type,
-            issuerUserId: issuer.type === 'user' ? issuer.id : null,
-            issuerOrgId: issuer.type === 'organization' ? issuer.id : null,
-            recipientType: recipient.type,
-            recipientUserId: recipient.type === 'user' ? recipient.id : null,
-            recipientOrgId: recipient.type === 'organization' ? recipient.id : null,
-            currency: input.currency,
-            items,
-            total,
-            note: input.note ?? '',
-            dueDate: input.dueDate,
-            createdBy: me.id,
-          })
-          .returning();
-        return created!;
-      });
+      const { items, total } = invoiceLines(input.items, input.currency);
+      const row = await app.db.transaction((tx) =>
+        issueInvoice(tx, {
+          issuer,
+          recipient,
+          currency: input.currency,
+          items,
+          total,
+          note: input.note ?? '',
+          dueDate: input.dueDate,
+          createdBy: me.id,
+        }),
+      );
       await announce(row);
       return reply.status(201).send(await dto(row.id, me.id));
     },
@@ -378,8 +510,8 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
       schema: {
         tags,
         description:
-          "Pay the invoice in full from one of the recipient's balances in its currency. Company payments " +
-          'of at least the approval limit wait for a second finance member (202).',
+          "Pay the invoice from one of the recipient's balances in its currency: everything still due, or " +
+          'a part of it. Company payments of at least the approval limit wait for a second finance member (202).',
         params: z.object({ id: z.uuid() }),
         body: payInvoiceSchema,
         response: { 200: invoiceSchema, 202: paymentApprovalSchema },
@@ -392,7 +524,10 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
       if (!wallet) throw notFound('Wallet');
       await assertWalletAccess(app.db, wallet, me, true);
       const outcome = await app.db.transaction(async (tx) => {
-        const amount = row.total;
+        const due = row.total - row.amountPaid;
+        const amount = req.body.amount ? parseAmount(req.body.amount, row.currency) : due;
+        if (amount > due)
+          throw conflict(`Only ${formatAmount(due, row.currency)} ${row.currency} is still due`);
         if (await needsSecondSignature(tx, wallet, amount)) {
           const invoice = await checkPayable(tx, row.id, wallet);
           if (await pendingApprovalFor(tx, 'invoice', 'invoiceId', invoice.id))
@@ -403,7 +538,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
             kind: 'invoice',
             action: { invoiceId: invoice.id },
             amount,
-            description: `Invoice ${invoice.number} from ${view!.issuer.name}`,
+            description: `Invoice ${invoice.number} from ${view!.issuer.name}${amount < due ? ` (part: ${formatAmount(amount, invoice.currency)} of ${formatAmount(due, invoice.currency)} ${invoice.currency} due)` : ''}`,
             requestedBy: me.id,
             ip: req.ip,
           });
@@ -442,10 +577,12 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
       const { row, orgIds } = await load(req.params.id, me.id);
       if (!actsFor(issuerOf(row), me.id, orgIds)) throw forbidden('Only the issuer can cancel an invoice');
       const { cancelled, dropped } = await app.db.transaction(async (tx) => {
+        if (row.amountPaid > 0n)
+          throw conflict('Part of this invoice is already paid, so it cannot be cancelled any more');
         const [cancelled] = await tx
           .update(invoices)
           .set({ status: 'cancelled', cancelledAt: new Date(), cancelReason: req.body.reason || null })
-          .where(and(eq(invoices.id, row.id), eq(invoices.status, 'open')))
+          .where(and(eq(invoices.id, row.id), eq(invoices.status, 'open'), eq(invoices.amountPaid, 0n)))
           .returning();
         if (!cancelled) throw conflict('This invoice is no longer open');
         const dropped = await dropPendingApprovals(

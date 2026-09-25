@@ -209,6 +209,7 @@ class CompanyScreen extends StatelessWidget {
               ),
               if (o.canSeeMoney) ...[
                 _PaymentApprovals(org: o),
+                _Payroll(org: o),
                 const SizedBox(height: 18),
                 Text('Company balances', style: context.text.titleLarge),
                 const SizedBox(height: 10),
@@ -429,6 +430,58 @@ class _PaymentApprovals extends StatelessWidget {
     } catch (e) {
       if (context.mounted) toast(context, errorText(e), error: true);
     }
+  }
+}
+
+/// Payroll runs (read-only here; new runs are made on the web).
+class _Payroll extends StatelessWidget {
+  const _Payroll({required this.org});
+
+  final Organization org;
+
+  @override
+  Widget build(BuildContext context) {
+    final session = context.watch<Session>();
+    final c = context.c;
+    return Query<List<PayrollRun>>(
+      client: session.queries,
+      queryKey: 'payroll:${org.id}',
+      fetch: () => session.api.payrollRuns(org.id),
+      builder: (context, s) {
+        final runs = s.data ?? const <PayrollRun>[];
+        if (runs.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 18),
+          child: OvlCard(
+            padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+                  child: Text('Payroll', style: context.text.titleLarge),
+                ),
+                for (final r in runs.take(5))
+                  ListTile(
+                    leading: IconTile(LucideIcons.users, size: 38, color: c.accent),
+                    title: Text(r.title, style: context.text.titleSmall, overflow: TextOverflow.ellipsis),
+                    subtitle: Text('${plural(r.people, 'person', 'people')} · ${date(r.createdAt)}'),
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text('−${money(r.total, r.currency)}', style: font(body, 14, FontWeight.w700, color: c.text)),
+                        const SizedBox(height: 4),
+                        StatusPill(r.status == 'pending' ? 'waiting_for_approval' : r.status),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 }
 

@@ -279,6 +279,34 @@ async function main() {
       });
   }
 
+  // --- Payroll and a recurring invoice ---------------------------------------------------
+  if (aurora) {
+    const eur = (await maria.organizations.wallets(aurora.id)).find((w) => w.currency === 'EUR');
+    const runs = await maria.organizations.payroll(aurora.id);
+    if (eur && !runs.length && Number(eur.available) > 2500)
+      await maria.organizations.runPayroll(aurora.id, {
+        walletId: eur.id,
+        title: 'Freelance fees — September',
+        items: [
+          { username: 'elena', amount: '1200', note: 'Editorial board' },
+          { username: 'chen', amount: '900', note: 'Game trailer' },
+        ],
+      });
+  }
+  const amara = u('amara').client;
+  const helios = (await amara.organizations.mine()).find((o) => o.name === 'Helios Works');
+  if (helios && !(await amara.invoices.schedules()).length)
+    await amara.invoices.createSchedule({
+      from: { type: 'organization', organizationId: helios.id },
+      to: { type: 'organization', slug: 'aurora-media-group' },
+      currency: 'EUR',
+      interval: 'monthly',
+      startDate: new Date().toISOString().slice(0, 10),
+      dueDays: 14,
+      items: [{ description: 'Studio lease, Helios district 4', quantity: 1, unitPrice: '750' }],
+      note: 'Monthly lease as agreed.',
+    });
+
   // --- Licenses -------------------------------------------------------------------------
   const licenses = [
     {
