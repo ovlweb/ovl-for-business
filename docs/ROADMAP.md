@@ -48,8 +48,9 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
 
 - ✅ Secondary market: a limit-order book so investors trade shares with each other after the lock
   period; the listing price follows the last trade (0.2).
-- Dividends, shareholder registry, shareholder voting.
-- Company reports (quarterly results) published on the listing page.
+- ✅ Dividends, shareholder registry, shareholder voting weighted by shares at the start (0.2).
+- ✅ Company reports (quarterly results with revenue, profit and documents) on the listing page
+  (0.2).
 - Per-investor limits and risk disclosures.
 
 ### Licenses & registry

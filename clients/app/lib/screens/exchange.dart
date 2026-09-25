@@ -270,10 +270,121 @@ class ListingScreen extends StatelessWidget {
               ],
               const SizedBox(height: 16),
               _Market(listing: l),
+              const SizedBox(height: 16),
+              _ForShareholders(ticker: l.ticker),
             ],
           );
         },
       ),
+    );
+  }
+}
+
+/// Results the company published and shareholder votes (with voting).
+class _ForShareholders extends StatelessWidget {
+  const _ForShareholders({required this.ticker});
+
+  final String ticker;
+
+  @override
+  Widget build(BuildContext context) {
+    final session = context.watch<Session>();
+    final c = context.c;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Query<List<Proposal>>(
+          client: session.queries,
+          queryKey: 'listings:$ticker:proposals',
+          fetch: () => session.api.proposals(ticker),
+          builder: (context, s) {
+            final list = s.data ?? const <Proposal>[];
+            if (list.isEmpty) return const SizedBox.shrink();
+            return OvlCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Shareholder votes', style: context.text.titleLarge),
+                  for (final p in list) ...[
+                    const Divider(height: 24),
+                    Row(
+                      children: [
+                        Expanded(child: Text(p.title, style: context.text.titleSmall)),
+                        StatusPill(p.status),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(p.description, style: context.text.bodyMedium),
+                    const SizedBox(height: 6),
+                    Text(
+                      [
+                        for (final o in p.options) '${o.label} ${o.shares}${p.winner == o.key ? ' ✓' : ''}',
+                        'turnout ${p.turnoutPercent}%',
+                        if (p.myVote != null) 'you voted ${p.options.firstWhere((o) => o.key == p.myVote).label}',
+                      ].join(' · '),
+                      style: context.text.bodySmall,
+                    ),
+                    if (p.canVote)
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          for (final o in p.options)
+                            OutlinedButton(
+                              onPressed: () async {
+                                try {
+                                  await session.api.vote(p.id, o.key);
+                                  session.queries.invalidate('listings');
+                                  if (context.mounted) toast(context, 'Voted “${o.label}” with ${p.myShares} shares');
+                                } catch (e) {
+                                  if (context.mounted) toast(context, errorText(e), error: true);
+                                }
+                              },
+                              child: Text(o.label),
+                            ),
+                        ],
+                      ),
+                  ],
+                ],
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 16),
+        Query<List<CompanyReport>>(
+          client: session.queries,
+          queryKey: 'listings:$ticker:reports',
+          fetch: () => session.api.companyReports(ticker),
+          builder: (context, s) {
+            final list = s.data ?? const <CompanyReport>[];
+            if (list.isEmpty) return const SizedBox.shrink();
+            return OvlCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Company results', style: context.text.titleLarge),
+                  for (final r in list) ...[
+                    const Divider(height: 24),
+                    Text('${r.period} · ${r.title}', style: context.text.titleSmall),
+                    if (r.revenue != null || r.profit != null)
+                      Text(
+                        [
+                          if (r.revenue != null) 'Revenue ${money(r.revenue!, r.currency)}',
+                          if (r.profit != null)
+                            r.profit!.startsWith('-')
+                                ? 'Loss ${money(r.profit!.substring(1), r.currency)}'
+                                : 'Profit ${money(r.profit!, r.currency)}',
+                        ].join(' · '),
+                        style: font(body, 13, FontWeight.w700, color: c.text2),
+                      ),
+                    const SizedBox(height: 4),
+                    Text(r.body, style: context.text.bodyMedium),
+                  ],
+                ],
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }

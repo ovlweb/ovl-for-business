@@ -1,4 +1,11 @@
-import { formatAmount, parseAmount, type OrderSide, type StockListingDetail } from '@ovl/shared';
+import {
+  formatAmount,
+  parseAmount,
+  type CompanyReport,
+  type OrderSide,
+  type Proposal,
+  type StockListingDetail,
+} from '@ovl/shared';
 import {
   Empty,
   ErrorAlert,
@@ -9,7 +16,9 @@ import {
   Money,
   PageHeader,
   AreaChart,
+  AttachmentList,
   Segmented,
+  ShareBar,
   Spinner,
   StatusBadge,
   useToast,
@@ -232,7 +241,191 @@ export function ListingPage() {
         </form>
       </div>
       <Market listing={l} />
+      <ShareholderInfo listing={l} />
     </div>
+  );
+}
+
+type InfoTab = 'reports' | 'votes' | 'dividends';
+
+/** What the company tells and pays its shareholders: reports, votes and dividends. */
+function ShareholderInfo({ listing: l }: { listing: StockListingDetail }) {
+  const [tab, setTab] = useState<InfoTab>('reports');
+  const reports = useQuery({
+    queryKey: ['stock', 'reports', l.ticker],
+    queryFn: () => api.stock.reports(l.ticker),
+  });
+  const votes = useQuery({
+    queryKey: ['stock', 'proposals', l.ticker],
+    queryFn: () => api.stock.proposals(l.ticker),
+  });
+  const dividends = useQuery({
+    queryKey: ['stock', 'dividends', l.ticker],
+    queryFn: () => api.stock.dividends(l.ticker),
+  });
+  const openVotes = votes.data?.filter((v) => v.status === 'open').length ?? 0;
+  return (
+    <div className="card stack">
+      <div className="spread" style={{ flexWrap: 'wrap', gap: 10 }}>
+        <h3>For shareholders</h3>
+        <Segmented<InfoTab>
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: 'reports', label: `Reports${reports.data?.length ? ` · ${reports.data.length}` : ''}` },
+            { value: 'votes', label: `Votes${openVotes ? ` · ${openVotes} open` : ''}` },
+            { value: 'dividends', label: 'Dividends' },
+          ]}
+        />
+      </div>
+      {tab === 'reports' &&
+        (reports.data?.length ? (
+          reports.data.map((r) => <ReportCard key={r.id} report={r} />)
+        ) : (
+          <p className="small muted">The company has not published results yet.</p>
+        ))}
+      {tab === 'votes' &&
+        (votes.data?.length ? (
+          votes.data.map((p) => <ProposalCard key={p.id} proposal={p} />)
+        ) : (
+          <p className="small muted">No shareholder votes yet.</p>
+        ))}
+      {tab === 'dividends' &&
+        (dividends.data?.length ? (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Declared</th>
+                <th className="right">Per share</th>
+                <th className="right">Total</th>
+                <th className="right">Shareholders</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dividends.data.map((d) => (
+                <tr key={d.id}>
+                  <td className="small">
+                    {formatDate(d.createdAt, false)}
+                    {d.note && <div className="muted">{d.note}</div>}
+                  </td>
+                  <td className="right">
+                    <Money amount={d.perShare} currency={d.currency} />
+                  </td>
+                  <td className="right">
+                    <Money amount={d.total} currency={d.currency} />
+                  </td>
+                  <td className="right num">{d.holders}</td>
+                  <td>
+                    <StatusBadge status={d.status === 'pending' ? 'waiting_for_approval' : d.status} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="small muted">No dividends so far.</p>
+        ))}
+    </div>
+  );
+}
+
+function ReportCard({ report: r }: { report: CompanyReport }) {
+  return (
+    <article className="card flat stack-sm">
+      <div className="spread">
+        <div>
+          <span className="badge info">{r.period}</span> <b>{r.title}</b>
+        </div>
+        <span className="small muted">{formatDate(r.publishedAt, false)}</span>
+      </div>
+      {(r.revenue || r.profit) && (
+        <div className="row-wrap small">
+          {r.revenue && (
+            <span>
+              Revenue <b>{formatMoney(r.revenue, r.currency)}</b>
+            </span>
+          )}
+          {r.profit && (
+            <span>
+              {r.profit.startsWith('-') ? 'Loss' : 'Profit'}{' '}
+              <b className={r.profit.startsWith('-') ? 'neg' : 'pos'}>
+                {formatMoney(r.profit.replace(/^-/, ''), r.currency)}
+              </b>
+            </span>
+          )}
+        </div>
+      )}
+      <p className="small" style={{ whiteSpace: 'pre-wrap', margin: 0 }}>
+        {r.body}
+      </p>
+      {r.files.length > 0 && <AttachmentList files={r.files} href={api.files.url} />}
+    </article>
+  );
+}
+
+function ProposalCard({ proposal: p }: { proposal: Proposal }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const vote = useMutation({
+    mutationFn: (option: string) => api.stock.vote(p.id, option),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ['stock', 'proposals'] });
+      toast.success(
+        `Voted “${updated.options.find((o) => o.key === updated.myVote)?.label}” with ${updated.myShares} shares`,
+      );
+    },
+  });
+  const voted = Number(p.votedShares);
+  const canVote = p.status === 'open' && Number(p.myShares) > 0 && !p.myVote;
+  return (
+    <article className="card flat stack-sm">
+      <div className="spread">
+        <b>{p.title}</b>
+        <StatusBadge status={p.status} />
+      </div>
+      <p className="small" style={{ whiteSpace: 'pre-wrap', margin: 0 }}>
+        {p.description}
+      </p>
+      <ShareBar
+        parts={p.options.map((o, i) => ({
+          label: o.label,
+          value: Number(o.shares),
+          color: ['var(--success)', 'var(--danger)', 'var(--text-3)', 'var(--accent)'][i % 4]!,
+        }))}
+      />
+      <div className="row-wrap small">
+        {p.options.map((o) => (
+          <span key={o.key}>
+            {o.label}: <b>{voted ? Math.round((Number(o.shares) / voted) * 100) : 0}%</b>{' '}
+            <span className="muted">({o.shares} shares)</span>
+            {p.winner === o.key && ' ✓'}
+          </span>
+        ))}
+      </div>
+      <div className="small muted">
+        Turnout {p.turnoutPercent}% of {p.totalShares} shares ·{' '}
+        {p.status === 'open' ? `closes ${formatDate(p.closesAt)}` : `closed ${formatDate(p.closesAt)}`}
+        {p.myVote &&
+          ` · you voted “${p.options.find((o) => o.key === p.myVote)?.label}” with ${p.myShares} shares`}
+        {p.status === 'open' && Number(p.myShares) === 0 && ' · only shareholders at the start can vote'}
+      </div>
+      <ErrorAlert error={vote.error} />
+      {canVote && (
+        <div className="row-wrap">
+          {p.options.map((o) => (
+            <button
+              key={o.key}
+              className="btn sm"
+              disabled={vote.isPending}
+              onClick={() => vote.mutate(o.key)}
+            >
+              Vote {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </article>
   );
 }
 

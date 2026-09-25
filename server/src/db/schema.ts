@@ -592,7 +592,9 @@ export const paymentApprovals = pgTable(
     walletId: uuid('wallet_id')
       .notNull()
       .references(() => wallets.id),
-    kind: varchar('kind', { length: 16 }).$type<'transfer' | 'invoice' | 'exchange' | 'payroll'>().notNull(),
+    kind: varchar('kind', { length: 16 })
+      .$type<'transfer' | 'invoice' | 'exchange' | 'payroll' | 'dividend'>()
+      .notNull(),
     action: jsonb('action').$type<Record<string, unknown>>().notNull(),
     amount: money('amount').notNull(),
     currency: char('currency', { length: 3 }).notNull(),
@@ -973,6 +975,95 @@ export const stockTrades = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('stock_trades_listing_idx').on(t.listingId, t.createdAt)],
+);
+
+/** A dividend: the company pays every shareholder the same amount per share. */
+export const dividends = pgTable(
+  'dividends',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    listingId: uuid('listing_id')
+      .notNull()
+      .references(() => stockListings.id),
+    walletId: uuid('wallet_id')
+      .notNull()
+      .references(() => wallets.id),
+    perShare: money('per_share').notNull(),
+    shares: bigint('shares', { mode: 'bigint' }).notNull(),
+    holders: integer('holders').notNull(),
+    total: money('total').notNull(),
+    note: varchar('note', { length: 200 }).notNull().default(''),
+    status: payrollStatusEnum('status').notNull(),
+    /** Holders and their shares when it was declared: who gets paid. */
+    recipients: jsonb('recipients').$type<{ userId: string; shares: string }[]>().notNull(),
+    approvalId: uuid('approval_id'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+    paidAt: timestamp('paid_at', { withTimezone: true }),
+  },
+  (t) => [index('dividends_listing_idx').on(t.listingId, t.createdAt)],
+);
+
+/** A shareholder vote; weights are the shares each holder had when it opened. */
+export const proposals = pgTable(
+  'proposals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    listingId: uuid('listing_id')
+      .notNull()
+      .references(() => stockListings.id),
+    title: varchar('title', { length: 200 }).notNull(),
+    description: text('description').notNull(),
+    options: jsonb('options').$type<{ key: string; label: string }[]>().notNull(),
+    closesAt: timestamp('closes_at', { withTimezone: true }).notNull(),
+    closedEarlyAt: timestamp('closed_early_at', { withTimezone: true }),
+    totalShares: bigint('total_shares', { mode: 'bigint' }).notNull(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index('proposals_listing_idx').on(t.listingId, t.createdAt)],
+);
+
+export const proposalVoters = pgTable(
+  'proposal_voters',
+  {
+    proposalId: uuid('proposal_id')
+      .notNull()
+      .references(() => proposals.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    shares: bigint('shares', { mode: 'bigint' }).notNull(),
+    option: varchar('option', { length: 16 }),
+    votedAt: timestamp('voted_at', { withTimezone: true }),
+  },
+  (t) => [primaryKey({ columns: [t.proposalId, t.userId] })],
+);
+
+/** Quarterly (or other) results published on the listing page. */
+export const companyReports = pgTable(
+  'company_reports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    period: varchar('period', { length: 16 }).notNull(),
+    title: varchar('title', { length: 200 }).notNull(),
+    body: text('body').notNull(),
+    currency: char('currency', { length: 3 }).notNull(),
+    revenue: money('revenue'),
+    profit: money('profit'),
+    authorId: uuid('author_id')
+      .notNull()
+      .references(() => users.id),
+    publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('company_reports_org_idx').on(t.organizationId, t.publishedAt)],
 );
 
 // ---------------------------------------------------------------------------

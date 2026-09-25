@@ -837,6 +837,59 @@ class Holding {
   final String currentValue;
 }
 
+class CompanyReport {
+  CompanyReport.fromJson(Json j)
+    : id = j['id'] as String,
+      period = j['period'] as String,
+      title = j['title'] as String,
+      body = j['body'] as String,
+      currency = j['currency'] as String,
+      revenue = j['revenue'] as String?,
+      profit = j['profit'] as String?,
+      publishedAt = _date(j['publishedAt']);
+
+  final String id;
+  final String period;
+  final String title;
+  final String body;
+  final String currency;
+  final String? revenue;
+  final String? profit;
+  final DateTime publishedAt;
+}
+
+class Proposal {
+  Proposal.fromJson(Json j)
+    : id = j['id'] as String,
+      title = j['title'] as String,
+      description = j['description'] as String,
+      status = j['status'] as String,
+      closesAt = _date(j['closesAt']),
+      turnoutPercent = (j['turnoutPercent'] as num).toDouble(),
+      myShares = j['myShares'] as String,
+      myVote = j['myVote'] as String?,
+      winner = j['winner'] as String?,
+      options = [
+        for (final o in j['options'] as List)
+          (key: (o as Json)['key'] as String, label: o['label'] as String, shares: o['shares'] as String),
+      ];
+
+  final String id;
+  final String title;
+  final String description;
+
+  /// open or closed
+  final String status;
+  final DateTime closesAt;
+  final double turnoutPercent;
+  final String myShares;
+  final String? myVote;
+  final String? winner;
+  final List<({String key, String label, String shares})> options;
+
+  bool get canVote => status == 'open' && (int.tryParse(myShares) ?? 0) > 0 && myVote == null;
+}
+
 /// One price level of the order book.
 class BookLevel {
   BookLevel.fromJson(Json j)

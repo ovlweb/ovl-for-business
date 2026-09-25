@@ -22,6 +22,11 @@ import type {
   CreateInvoiceInput,
   CreateInvoiceScheduleInput,
   CreateVirtualCurrencyInput,
+  CreateProposalInput,
+  CreateReportInput,
+  CompanyReport,
+  Dividend,
+  DividendInput,
   CreateWebhookInput,
   CreatedWebhook,
   CurrencyInfo,
@@ -43,6 +48,8 @@ import type {
   Organization,
   Passkey,
   PaymentApproval,
+  Proposal,
+  Shareholder,
   PayrollInput,
   PayrollRun,
   OrgMember,
@@ -424,6 +431,16 @@ export class OvlClient {
     approvePayment: (id: string, approvalId: string) =>
       this.post<PaymentApproval>(`/organizations/${id}/payment-approvals/${approvalId}/approve`),
     payroll: (id: string) => this.get<PayrollRun[]>(`/organizations/${id}/payroll`),
+    shareholders: (id: string) => this.get<Shareholder[]>(`/organizations/${id}/shareholders`),
+    /** Above the approval limit the dividend comes back "pending". */
+    payDividend: (id: string, input: DividendInput) =>
+      this.post<Dividend>(`/organizations/${id}/dividends`, input),
+    createProposal: (id: string, input: CreateProposalInput) =>
+      this.post<Proposal>(`/organizations/${id}/proposals`, input),
+    closeProposal: (id: string, proposalId: string) =>
+      this.post<Proposal>(`/organizations/${id}/proposals/${proposalId}/close`),
+    publishReport: (id: string, input: CreateReportInput) =>
+      this.post<CompanyReport>(`/organizations/${id}/reports`, input),
     /** Pay many people at once; above the approval limit the run comes back "pending". */
     runPayroll: (id: string, input: PayrollInput) =>
       this.post<PayrollRun>(`/organizations/${id}/payroll`, input),
@@ -527,6 +544,15 @@ export class OvlClient {
       ),
     orders: (status?: 'open' | 'filled' | 'cancelled') => this.get<StockOrder[]>('/stock/orders', { status }),
     cancelOrder: (id: string) => this.del<StockOrder>(`/stock/orders/${id}`),
+    dividends: (ticker: string) =>
+      this.get<Dividend[]>(`/stock/listings/${encodeURIComponent(ticker)}/dividends`),
+    proposals: (ticker: string) =>
+      this.get<Proposal[]>(`/stock/listings/${encodeURIComponent(ticker)}/proposals`),
+    /** Vote once with the shares you held when the vote opened (option keys: o1, o2…). */
+    vote: (proposalId: string, option: string) =>
+      this.post<Proposal>(`/stock/proposals/${proposalId}/vote`, { option }),
+    reports: (ticker: string) =>
+      this.get<CompanyReport[]>(`/stock/listings/${encodeURIComponent(ticker)}/reports`),
   };
 
   chats = {

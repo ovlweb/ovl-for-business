@@ -134,6 +134,13 @@
       "when": 1790334105276,
       "tag": "0018_secondary_market",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790334951559,
+      "tag": "0019_shareholders",
+      "breakpoints": true
     }
   ]
 }

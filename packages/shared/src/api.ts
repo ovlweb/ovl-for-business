@@ -264,6 +264,8 @@ export const LEDGER_KINDS = [
   'redemption',
   'trade_in',
   'trade_out',
+  'dividend_in',
+  'dividend_out',
   'adjustment',
 ] as const;
 
@@ -494,7 +496,7 @@ export const setExchangeSchema = z.object({
 // Multi-signature company payments
 // ---------------------------------------------------------------------------
 
-export const PAYMENT_APPROVAL_KINDS = ['transfer', 'invoice', 'exchange', 'payroll'] as const;
+export const PAYMENT_APPROVAL_KINDS = ['transfer', 'invoice', 'exchange', 'payroll', 'dividend'] as const;
 export const paymentApprovalSchema = z.object({
   id: uuid,
   organizationId: uuid,
@@ -759,6 +761,41 @@ export const fileSchema = z.object({
   createdAt: isoDate,
 });
 export type FileInfo = z.infer<typeof fileSchema>;
+
+export const createReportSchema = z.object({
+  period: z
+    .string()
+    .trim()
+    .regex(/^\d{4}(-(Q[1-4]|H[12]|\d{2}))?$/, 'For example "2026-Q3", "2026-H1" or "2026"'),
+  title: z.string().trim().min(3).max(200),
+  body: z.string().trim().min(10).max(20_000),
+  revenue: z
+    .string()
+    .trim()
+    .regex(/^-?\d{1,24}(\.\d+)?$/)
+    .optional(),
+  profit: z
+    .string()
+    .trim()
+    .regex(/^-?\d{1,24}(\.\d+)?$/)
+    .optional(),
+  attachments: z.array(z.uuid()).max(10).optional(),
+});
+export type CreateReportInput = z.input<typeof createReportSchema>;
+export const companyReportSchema = z.object({
+  id: z.uuid(),
+  organizationId: z.uuid(),
+  period: z.string(),
+  title: z.string(),
+  body: z.string(),
+  currency: z.string(),
+  revenue: z.string().nullable(),
+  profit: z.string().nullable(),
+  files: z.array(fileSchema),
+  author: userSummarySchema.pick({ id: true, username: true, displayName: true }),
+  publishedAt: z.string(),
+});
+export type CompanyReport = z.infer<typeof companyReportSchema>;
 
 // Identity verification (KYC)
 
@@ -1121,6 +1158,77 @@ export const placeOrderResultSchema = z.object({
   order: stockOrderSchema,
   trades: z.array(stockTradeSchema),
 });
+
+// ---------------------------------------------------------------------------
+// Shareholders: registry, dividends, votes, company reports
+// ---------------------------------------------------------------------------
+
+const personRef = userSummarySchema.pick({ id: true, username: true, displayName: true });
+
+export const shareholderSchema = z.object({
+  user: personRef,
+  shares: z.string(),
+  percent: z.number().describe('Of all shares held by investors'),
+});
+export type Shareholder = z.infer<typeof shareholderSchema>;
+
+export const dividendInputSchema = z.object({
+  walletId: uuid.describe('The company balance that pays, in the listing currency'),
+  perShare: decimalAmountSchema,
+  note: z.string().trim().max(200).optional(),
+});
+export type DividendInput = z.input<typeof dividendInputSchema>;
+export const dividendSchema = z.object({
+  id: uuid,
+  ticker: z.string(),
+  currency: z.string(),
+  perShare: z.string(),
+  shares: z.string().describe('Shares that were paid'),
+  holders: z.number().int(),
+  total: z.string(),
+  note: z.string(),
+  status: z.enum(['pending', 'paid', 'rejected']).describe('pending: waiting for a second signature'),
+  approvalId: uuid.nullable(),
+  createdBy: personRef,
+  createdAt: isoDate,
+  paidAt: isoDate.nullable(),
+});
+export type Dividend = z.infer<typeof dividendSchema>;
+
+export const createProposalSchema = z.object({
+  title: z.string().trim().min(3).max(200),
+  description: z.string().trim().min(10).max(10_000),
+  closesAt: z.iso.datetime({ offset: true }).describe('Voting ends then; at least an hour from now'),
+  options: z
+    .array(z.string().trim().min(1).max(80))
+    .min(2)
+    .max(8)
+    .optional()
+    .describe('Default: For, Against, Abstain'),
+});
+export type CreateProposalInput = z.input<typeof createProposalSchema>;
+export const proposalSchema = z.object({
+  id: uuid,
+  ticker: z.string(),
+  organizationName: z.string(),
+  title: z.string(),
+  description: z.string(),
+  options: z.array(
+    z.object({ key: z.string(), label: z.string(), shares: z.string(), voters: z.number().int() }),
+  ),
+  status: z.enum(['open', 'closed']),
+  closesAt: isoDate,
+  totalShares: z.string().describe('Shares that may vote (held when the vote opened)'),
+  votedShares: z.string(),
+  turnoutPercent: z.number(),
+  winner: z.string().nullable().describe('The option with the most shares once closed (null on a tie)'),
+  myShares: z.string().describe('Your voting weight (0: not a shareholder when it opened)'),
+  myVote: z.string().nullable(),
+  createdBy: personRef,
+  createdAt: isoDate,
+});
+export type Proposal = z.infer<typeof proposalSchema>;
+export const castVoteSchema = z.object({ option: z.string().min(1).max(16) });
 
 export const updateListingSchema = z.object({
   sharePrice: decimalAmountSchema.optional(),

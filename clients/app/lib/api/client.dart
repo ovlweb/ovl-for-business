@@ -413,6 +413,13 @@ class OvlApi {
   Future<List<StockOrder>> myOrders({String? status}) =>
       _getList('/stock/orders', StockOrder.fromJson, {'status': status});
   Future<void> cancelOrder(String id) => _delete('/stock/orders/$id');
+  Future<List<CompanyReport>> companyReports(String ticker) =>
+      _getList('/stock/listings/$ticker/reports', CompanyReport.fromJson);
+  Future<List<Proposal>> proposals(String ticker) => _getList('/stock/listings/$ticker/proposals', Proposal.fromJson);
+
+  /// Vote once with the shares you held when the vote opened.
+  Future<Proposal> vote(String proposalId, String option) async =>
+      Proposal.fromJson(await _post('/stock/proposals/$proposalId/vote', {'option': option}) as Json);
 
   // --- chats -----------------------------------------------------------------------------
 

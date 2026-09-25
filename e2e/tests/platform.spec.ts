@@ -622,6 +622,47 @@ test.describe.serial('OVL For Business end to end', () => {
     }
   });
 
+  test('shareholders: results, a vote and a dividend', async () => {
+    await maria.goto('./#/companies/northwind-studio');
+    const card = maria.locator('.card', { has: maria.getByRole('heading', { name: 'Shareholders' }) });
+    await expect(card.locator('tr', { hasText: 'Ivan Sokolov' })).toContainText('100%');
+
+    await card.getByRole('button', { name: 'Publish results' }).click();
+    const report = maria.getByRole('dialog');
+    await report.getByLabel('Title').fill('First results');
+    await report.getByLabel('Revenue (optional)').fill('1250');
+    await report.getByLabel('What happened').fill('Our first strategy game shipped to 4,000 players.');
+    await report.getByRole('button', { name: 'Publish' }).click();
+    await expect(maria.getByText('Results published on the listing page')).toBeVisible();
+
+    await card.getByRole('button', { name: 'Ask shareholders' }).click();
+    const vote = maria.getByRole('dialog');
+    await vote.getByLabel('Question').fill('Make a sequel?');
+    await vote.getByLabel('Details').fill('A sequel next year, funded from profits.');
+    await vote.getByRole('button', { name: 'Open the vote' }).click();
+    await expect(maria.getByText('Shareholders can vote now')).toBeVisible();
+
+    await card.getByRole('button', { name: 'Pay a dividend' }).click();
+    const dividend = maria.getByRole('dialog');
+    await dividend.getByLabel('Per share (USD)').fill('0.10');
+    await expect(dividend.getByText('2.00 USD')).toBeVisible();
+    await dividend.getByRole('button', { name: 'Pay dividend' }).click();
+    await expect(maria.getByText('Paid 2.00 USD to 1 shareholders')).toBeVisible();
+
+    // Ivan reads the results, votes and sees the dividend.
+    await ivan.goto('./#/exchange/NWS');
+    await expect(ivan.getByText('First results')).toBeVisible();
+    await expect(ivan.getByText('1,250.00 USD')).toBeVisible();
+    await ivan.getByRole('tab', { name: /Votes/ }).click();
+    await ivan.getByRole('button', { name: 'Vote For' }).click();
+    await expect(ivan.getByText('Voted “For” with 20 shares')).toBeVisible();
+    await expect(ivan.getByText('Turnout 100% of 20 shares')).toBeVisible();
+    await ivan.getByRole('tab', { name: 'Dividends' }).click();
+    await expect(ivan.locator('tr', { hasText: '0.10 USD' })).toContainText('Paid');
+    await ivan.goto('./#/wallet');
+    await expect(ivan.getByText(/Dividend from Northwind Studio: 20 × 0\.10 USD a share/)).toBeVisible();
+  });
+
   test('settings: switching the theme applies instantly and is saved', async () => {
     await maria.goto('./#/settings?section=appearance');
     await maria.getByRole('radio', { name: 'Midnight' }).click();

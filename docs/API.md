@@ -71,6 +71,23 @@ shares, and becomes the listing's price. `GET /stock/listings/:ticker/book` (pub
 levels and the latest trades; `GET /stock/orders?status=open` lists yours. Everyone connected
 receives `stock.updated` with the ticker.
 
+## Shareholders
+
+Company members see who holds the shares at `GET /organizations/:id/shareholders`. The owner or a
+director can:
+
+- pay a **dividend** with `POST /organizations/:id/dividends {walletId, perShare, note?}`: everyone
+  holding shares at that moment gets `perShare × shares` on their personal balance (`dividend_in`);
+  at or above the approval limit it waits for a second signature (202, `status: 'pending'`). The
+  history is public at `GET /stock/listings/:ticker/dividends`;
+- open a **shareholder vote** with `POST /organizations/:id/proposals {title, description, closesAt,
+options?}` (For / Against / Abstain by default). Holders vote once with
+  `POST /stock/proposals/:id/vote {option}`, weighted by the shares they held when it opened, so
+  buying more later adds nothing. `GET /stock/listings/:ticker/proposals` shows the tallies, turnout
+  and the winner once closed (`POST …/proposals/:pid/close` ends it early);
+- publish **results** with `POST /organizations/:id/reports {period, title, body, revenue?, profit?,
+attachments?}` (documents uploaded with `POST /files`), public at `GET /stock/listings/:ticker/reports`.
+
 ## Webhooks
 
 Register an endpoint with `POST /webhooks {url, events, description?}` (Settings → Developer on

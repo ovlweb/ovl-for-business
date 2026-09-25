@@ -2,11 +2,13 @@ import { ORG_ROLES, type OrgRole } from '@ovl/shared';
 import {
   formatAmount,
   parseAmount,
+  type FileInfo,
   type Organization,
   type PaymentApproval,
   type PayrollRun,
 } from '@ovl/shared';
 import {
+  AttachmentPicker,
   Avatar,
   Empty,
   ErrorAlert,
@@ -226,7 +228,13 @@ function Balances({ orgId }: { orgId: string }) {
   );
 }
 
-const KIND_ICON = { transfer: 'send', invoice: 'receipt', exchange: 'refresh', payroll: 'users' } as const;
+const KIND_ICON = {
+  transfer: 'send',
+  invoice: 'receipt',
+  exchange: 'refresh',
+  payroll: 'users',
+  dividend: 'pie',
+} as const;
 
 /** Company payments above the approval limit: a second finance member signs or declines them. */
 function PaymentApprovals({ org, myId }: { org: Organization; myId: string }) {
@@ -596,6 +604,338 @@ function PayrollModal({ org, last, onClose }: { org: Organization; last?: Payrol
   );
 }
 
+/** Shareholders of a listed company: the registry, dividends, votes and reports. */
+function Shareholders({ org }: { org: Organization }) {
+  const holders = useQuery({
+    queryKey: ['shareholders', org.id],
+    queryFn: () => api.organizations.shareholders(org.id),
+  });
+  const [modal, setModal] = useState<'dividend' | 'vote' | 'report' | null>(null);
+  const canManage = org.myRole === 'owner' || org.myRole === 'director';
+  const total = (holders.data ?? []).reduce((n, h) => n + Number(h.shares), 0);
+  return (
+    <div className="card stack-sm">
+      <div className="card-header">
+        <div>
+          <h3>Shareholders</h3>
+          <p className="small muted">
+            {holders.data?.length ?? 0}{' '}
+            {holders.data?.length === 1 ? 'shareholder holds' : 'shareholders hold'} {total.toLocaleString()}{' '}
+            {org.ticker} shares. <Link to={`/exchange/${org.ticker}`}>Listing page</Link>
+          </p>
+        </div>
+        {canManage && (
+          <div className="row-wrap">
+            <button className="btn sm" onClick={() => setModal('report')}>
+              <Icon name="file" size={15} /> Publish results
+            </button>
+            <button className="btn sm" onClick={() => setModal('vote')}>
+              <Icon name="check" size={15} /> Ask shareholders
+            </button>
+            <button className="btn sm primary" onClick={() => setModal('dividend')}>
+              <Icon name="pie" size={15} /> Pay a dividend
+            </button>
+          </div>
+        )}
+      </div>
+      <ErrorAlert error={holders.error} />
+      {!!holders.data?.length && (
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Shareholder</th>
+              <th className="right">Shares</th>
+              <th className="right">Share of all</th>
+            </tr>
+          </thead>
+          <tbody>
+            {holders.data.slice(0, 20).map((h) => (
+              <tr key={h.user.id}>
+                <td>
+                  <Link to={`/u/${h.user.username}`}>{h.user.displayName}</Link>{' '}
+                  <span className="small muted">@{h.user.username}</span>
+                </td>
+                <td className="right num">{Number(h.shares).toLocaleString()}</td>
+                <td className="right">{h.percent}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {modal === 'dividend' && <DividendModal org={org} shares={total} onClose={() => setModal(null)} />}
+      {modal === 'vote' && <ProposalModal org={org} onClose={() => setModal(null)} />}
+      {modal === 'report' && <ReportModal org={org} onClose={() => setModal(null)} />}
+    </div>
+  );
+}
+
+function DividendModal({ org, shares, onClose }: { org: Organization; shares: number; onClose: () => void }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const wallets = useQuery({
+    queryKey: ['orgWallets', org.id],
+    queryFn: () => api.organizations.wallets(org.id),
+  });
+  const listing = useQuery({
+    queryKey: ['listings', org.ticker],
+    queryFn: () => api.stock.listing(org.ticker!),
+  });
+  const currency = listing.data?.currency ?? org.baseCurrency;
+  const wallet = wallets.data?.find((w) => w.currency === currency);
+  const [perShare, setPerShare] = useState('');
+  const [note, setNote] = useState('');
+  const pay = useMutation({
+    mutationFn: () =>
+      api.organizations.payDividend(org.id, { walletId: wallet!.id, perShare, note: note || undefined }),
+    onSuccess: (d) => {
+      for (const key of ['orgWallets', 'wallet', 'entries', 'stock', 'paymentApprovals'])
+        queryClient.invalidateQueries({ queryKey: [key] });
+      toast.success(
+        d.status === 'pending'
+          ? 'Above the approval limit: another finance member has to approve this dividend'
+          : `Paid ${formatMoney(d.total, d.currency)} to ${d.holders} shareholders`,
+      );
+      onClose();
+    },
+  });
+  let total = '—';
+  try {
+    if (perShare)
+      total = formatMoney(formatAmount(parseAmount(perShare, currency) * BigInt(shares), currency), currency);
+  } catch {
+    total = '—';
+  }
+  return (
+    <Modal title={`Pay a dividend to ${org.ticker} shareholders`} onClose={onClose}>
+      <form
+        className="stack"
+        onSubmit={(e) => {
+          e.preventDefault();
+          pay.mutate();
+        }}
+      >
+        <p className="small muted" style={{ margin: 0 }}>
+          Everyone holding shares right now gets the same amount per share on their personal {currency}{' '}
+          balance.
+        </p>
+        {wallet && (
+          <div className="alert info small">Available: {formatMoney(wallet.available, currency)}</div>
+        )}
+        <Field label={`Per share (${currency})`}>
+          <input
+            className="input"
+            inputMode="decimal"
+            value={perShare}
+            required
+            onChange={(e) => setPerShare(e.target.value.replace(',', '.'))}
+          />
+        </Field>
+        <Field label="Note (optional)">
+          <input className="input" value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} />
+        </Field>
+        <div className="spread">
+          <span className="muted">
+            {shares.toLocaleString()} shares × {perShare || '0'}
+          </span>
+          <b className="invoice-total">{total}</b>
+        </div>
+        <ErrorAlert error={pay.error} />
+        <button className="btn primary" disabled={pay.isPending || !wallet || !perShare}>
+          Pay dividend
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
+function ProposalModal({ org, onClose }: { org: Organization; onClose: () => void }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({ title: '', description: '', days: '7', options: '' });
+  const create = useMutation({
+    mutationFn: () =>
+      api.organizations.createProposal(org.id, {
+        title: form.title,
+        description: form.description,
+        closesAt: new Date(Date.now() + Number(form.days) * 86_400_000).toISOString(),
+        options: form.options.trim()
+          ? form.options
+              .split(',')
+              .map((o) => o.trim())
+              .filter(Boolean)
+          : undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
+      toast.success('Shareholders can vote now');
+      onClose();
+    },
+  });
+  return (
+    <Modal title="Ask the shareholders" onClose={onClose}>
+      <form
+        className="stack"
+        onSubmit={(e) => {
+          e.preventDefault();
+          create.mutate();
+        }}
+      >
+        <p className="small muted" style={{ margin: 0 }}>
+          Each shareholder votes once, weighted by the shares they hold now.
+        </p>
+        <Field label="Question">
+          <input
+            className="input"
+            value={form.title}
+            minLength={3}
+            maxLength={200}
+            required
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
+          />
+        </Field>
+        <Field label="Details">
+          <textarea
+            className="textarea"
+            value={form.description}
+            minLength={10}
+            required
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+          />
+        </Field>
+        <div className="grid-2">
+          <Field label="Voting runs for">
+            <select
+              className="select"
+              value={form.days}
+              onChange={(e) => setForm({ ...form, days: e.target.value })}
+            >
+              {[1, 3, 7, 14, 30].map((d) => (
+                <option key={d} value={d}>
+                  {d} {d === 1 ? 'day' : 'days'}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Options (optional)" hint="Comma-separated; For, Against, Abstain by default">
+            <input
+              className="input"
+              value={form.options}
+              onChange={(e) => setForm({ ...form, options: e.target.value })}
+            />
+          </Field>
+        </div>
+        <ErrorAlert error={create.error} />
+        <button className="btn primary" disabled={create.isPending}>
+          Open the vote
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
+function ReportModal({ org, onClose }: { org: Organization; onClose: () => void }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const now = new Date();
+  const [form, setForm] = useState({
+    period: `${now.getFullYear()}-Q${Math.floor(now.getMonth() / 3) + 1}`,
+    title: '',
+    body: '',
+    revenue: '',
+    profit: '',
+  });
+  const [files, setFiles] = useState<FileInfo[]>([]);
+  const publish = useMutation({
+    mutationFn: () =>
+      api.organizations.publishReport(org.id, {
+        period: form.period,
+        title: form.title,
+        body: form.body,
+        revenue: form.revenue || undefined,
+        profit: form.profit || undefined,
+        attachments: files.map((f) => f.id),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
+      toast.success('Results published on the listing page');
+      onClose();
+    },
+  });
+  return (
+    <Modal title="Publish results" onClose={onClose} wide>
+      <form
+        className="stack"
+        onSubmit={(e) => {
+          e.preventDefault();
+          publish.mutate();
+        }}
+      >
+        <div className="grid-2">
+          <Field label="Period" hint="2026-Q3, 2026-H1 or 2026">
+            <input
+              className="input"
+              value={form.period}
+              required
+              onChange={(e) => setForm({ ...form, period: e.target.value })}
+            />
+          </Field>
+          <Field label="Title">
+            <input
+              className="input"
+              value={form.title}
+              minLength={3}
+              maxLength={200}
+              required
+              placeholder="Third quarter results"
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+            />
+          </Field>
+          <Field label="Revenue (optional)">
+            <input
+              className="input"
+              inputMode="decimal"
+              value={form.revenue}
+              onChange={(e) => setForm({ ...form, revenue: e.target.value.replace(',', '.') })}
+            />
+          </Field>
+          <Field label="Profit (optional)" hint="Negative for a loss">
+            <input
+              className="input"
+              inputMode="decimal"
+              value={form.profit}
+              onChange={(e) => setForm({ ...form, profit: e.target.value.replace(',', '.') })}
+            />
+          </Field>
+        </div>
+        <Field label="What happened">
+          <textarea
+            className="textarea"
+            style={{ minHeight: 140 }}
+            value={form.body}
+            minLength={10}
+            required
+            onChange={(e) => setForm({ ...form, body: e.target.value })}
+          />
+        </Field>
+        <Field label="Documents (optional)">
+          <AttachmentPicker
+            value={files}
+            onChange={setFiles}
+            upload={(file) => api.files.upload(file, file.name)}
+            remove={(file) => api.files.remove(file.id)}
+            href={api.files.url}
+            max={10}
+          />
+        </Field>
+        <ErrorAlert error={publish.error} />
+        <button className="btn primary" disabled={publish.isPending}>
+          Publish
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
 function EditCompanyModal({ org, onClose }: { org: Organization; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
@@ -744,6 +1084,7 @@ export function CompanyPage() {
       {finance && me && <PaymentApprovals org={o} myId={me.id} />}
       {finance && <Balances orgId={o.id} />}
       {finance && <Payroll org={o} />}
+      {o.ticker && o.myRole && <Shareholders org={o} />}
       {o.myRole && <Members orgId={o.id} canManage={canManage} />}
       {editing && <EditCompanyModal org={o} onClose={() => setEditing(false)} />}
     </div>

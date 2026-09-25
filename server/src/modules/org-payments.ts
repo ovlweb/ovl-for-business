@@ -29,6 +29,7 @@ import { currentUser } from '../plugins/auth';
 import { executeExchange } from './exchange';
 import { announceInvoice, executeInvoicePayment, type InvoiceRow } from './invoices';
 import { approvePayrollRun, releasePayrollRun } from './payroll';
+import { approveDividend, releaseDividend } from './stock/shareholders';
 import { executeTransfer, walletAudience } from './wallets/routes';
 import { assertWalletAccess, frozenAmounts, lockWallet, orgRoleOf, type WalletRow } from './wallets/service';
 
@@ -45,6 +46,7 @@ export interface ApprovalActions {
   invoice: { invoiceId: string };
   exchange: { toCurrency: string };
   payroll: { payrollRunId: string };
+  dividend: { dividendId: string };
 }
 
 /**
@@ -347,6 +349,11 @@ export async function orgPaymentRoutes(fastify: FastifyInstance) {
             touched.push(...(await approvePayrollRun(tx, action.payrollRunId, actorId)));
             break;
           }
+          case 'dividend': {
+            const action = approval.action as unknown as ApprovalActions['dividend'];
+            touched.push(...(await approveDividend(tx, action.dividendId, actorId)));
+            break;
+          }
         }
         const [updated] = await tx
           .update(paymentApprovals)
@@ -402,6 +409,8 @@ export async function orgPaymentRoutes(fastify: FastifyInstance) {
             tx,
             (approval.action as unknown as ApprovalActions['payroll']).payrollRunId,
           );
+        if (approval.kind === 'dividend')
+          await releaseDividend(tx, (approval.action as unknown as ApprovalActions['dividend']).dividendId);
         const [updated] = await tx
           .update(paymentApprovals)
           .set({ status: 'rejected', decidedBy: me.id, decidedAt: new Date(), reason: req.body.reason })
