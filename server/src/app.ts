@@ -31,6 +31,7 @@ import { ssoRoutes } from './modules/sso';
 import { fileRoutes } from './modules/files';
 import { identityRoutes } from './modules/identity';
 import { cashRoutes } from './modules/cash';
+import { statementRoutes } from './modules/statements';
 import { cashApprovalRoutes } from './modules/cash-approvals';
 import { invoiceRoutes } from './modules/invoices';
 import { exchangeRoutes } from './modules/exchange';
@@ -214,6 +215,7 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
       await api.register(userRoutes);
       await api.register(walletRoutes);
       await api.register(cashRoutes);
+      await api.register(statementRoutes);
       await api.register(cashApprovalRoutes);
       await api.register(invoiceRoutes);
       await api.register(exchangeRoutes);

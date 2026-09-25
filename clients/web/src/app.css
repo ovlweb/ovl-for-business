@@ -1828,3 +1828,20 @@ kbd {
   padding: 10px 0;
   border-top: 1px solid var(--border);
 }
+
+/* Registry verification (certificate QR codes) */
+.verify-result {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-radius: var(--radius-md, 14px);
+}
+.verify-result.ok {
+  background: var(--success-soft, rgba(16, 185, 129, 0.12));
+  color: var(--success, #047857);
+}
+.verify-result.bad {
+  background: var(--danger-soft, rgba(239, 68, 68, 0.12));
+  color: var(--danger, #b91c1c);
+}

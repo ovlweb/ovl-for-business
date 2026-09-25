@@ -299,6 +299,37 @@ function NotificationsSection() {
           Notifications are blocked for this site. Allow them in your browser settings.
         </div>
       )}
+      <StatementEmailsRow />
+    </div>
+  );
+}
+
+function StatementEmailsRow() {
+  const me = useMe();
+  const { updatePreferences } = useAuth();
+  const toast = useToast();
+  const on = !!me.preferences.statementEmails;
+  return (
+    <div className="setting-row">
+      <span className="kpi-icon">
+        <Icon name="file" size={17} />
+      </span>
+      <div className="grow">
+        <b>Monthly statements by email</b>
+        <div className="small muted">
+          At the start of each month, get a PDF statement of every balance you can see that moved.
+          {!me.emailVerified && ' Confirm your email address first.'}
+        </div>
+      </div>
+      <Switch
+        label="Monthly statements by email"
+        checked={on}
+        onChange={(value) =>
+          updatePreferences({ statementEmails: value })
+            .then(() => toast.success(value ? 'Monthly statements on' : 'Monthly statements off'))
+            .catch(toast.error)
+        }
+      />
     </div>
   );
 }

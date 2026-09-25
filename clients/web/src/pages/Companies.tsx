@@ -699,6 +699,14 @@ export function CompanyPage() {
             <div className="muted small">
               Registry number <code>{o.registryNumber ?? '—'}</code> · registered{' '}
               {formatDate(o.createdAt, false)}
+              {o.registryNumber && (
+                <>
+                  {' · '}
+                  <a href={api.registry.certificateUrl(o.registryNumber)} target="_blank" rel="noreferrer">
+                    Registration certificate
+                  </a>
+                </>
+              )}
             </div>
           </div>
           {canManage && (

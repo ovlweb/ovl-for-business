@@ -360,6 +360,24 @@ class _EmailState extends State<_Email> {
               ),
             ],
           ),
+          const Divider(height: 28),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            value: me.preferences.statementEmails,
+            title: const Text('Monthly statements by email'),
+            subtitle: Text(
+              'A PDF statement of every balance that moved, at the start of each month.'
+              '${me.emailVerified ? '' : ' Confirm your email first.'}',
+            ),
+            onChanged: (on) => session
+                .updatePreferences({'statementEmails': on})
+                .then((_) {
+                  if (context.mounted) toast(context, on ? 'Monthly statements on' : 'Monthly statements off');
+                })
+                .catchError((Object e) {
+                  if (context.mounted) toast(context, errorText(e), error: true);
+                }),
+          ),
         ],
       ),
     );

@@ -96,17 +96,26 @@ class UserProfile extends UserSummary {
 }
 
 class Preferences {
-  const Preferences({this.theme, this.onboardingCompleted = false, this.goals = const []});
+  const Preferences({
+    this.theme,
+    this.onboardingCompleted = false,
+    this.goals = const [],
+    this.statementEmails = false,
+  });
 
   factory Preferences.fromJson(Json? j) => Preferences(
     theme: j?['theme'] as String?,
     onboardingCompleted: j?['onboardingCompleted'] as bool? ?? false,
     goals: List<String>.from(j?['goals'] as List? ?? const []),
+    statementEmails: j?['statementEmails'] as bool? ?? false,
   );
 
   final String? theme;
   final bool onboardingCompleted;
   final List<String> goals;
+
+  /// Email a PDF statement of every balance at the start of each month.
+  final bool statementEmails;
 }
 
 class Me extends UserSummary {
@@ -435,6 +444,27 @@ class Invoice {
       : partlyPaid
       ? 'partly_paid'
       : status;
+}
+
+/// One calendar month of a balance.
+class MonthlyStatement {
+  MonthlyStatement.fromJson(Json j)
+    : month = j['month'] as String,
+      from = j['from'] as String,
+      to = j['to'] as String,
+      moneyIn = j['moneyIn'] as String,
+      moneyOut = j['moneyOut'] as String,
+      closing = j['closing'] as String,
+      operations = j['operations'] as int;
+
+  /// YYYY-MM
+  final String month;
+  final String from;
+  final String to;
+  final String moneyIn;
+  final String moneyOut;
+  final String closing;
+  final int operations;
 }
 
 /// A recurring invoice: one is issued every period.

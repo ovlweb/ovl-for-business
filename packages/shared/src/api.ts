@@ -80,6 +80,8 @@ export const preferencesSchema = z.object({
   onboardingCompleted: z.boolean().optional(),
   goals: z.array(z.enum(GOALS)).max(GOALS.length).optional(),
   compactSidebar: z.boolean().optional(),
+  /** Email a PDF statement of every balance at the start of each month. */
+  statementEmails: z.boolean().optional(),
 });
 export type Preferences = z.infer<typeof preferencesSchema>;
 
@@ -400,6 +402,23 @@ export const statementRangeSchema = z.object({
   to: z.iso.date().optional().describe('Last day to include (YYYY-MM-DD)'),
 });
 export type StatementRange = z.infer<typeof statementRangeSchema>;
+export const statementLinkInputSchema = statementRangeSchema.extend({
+  format: z.enum(['csv', 'pdf']).default('csv'),
+});
+export type StatementLinkInput = z.input<typeof statementLinkInputSchema>;
+
+/** One calendar month (UTC) of a balance, for the monthly statements list. */
+export const monthlyStatementSchema = z.object({
+  month: z.string().describe('YYYY-MM'),
+  from: z.iso.date(),
+  to: z.iso.date(),
+  opening: z.string(),
+  moneyIn: z.string(),
+  moneyOut: z.string(),
+  closing: z.string(),
+  operations: z.number().int(),
+});
+export type MonthlyStatement = z.infer<typeof monthlyStatementSchema>;
 export const statementLinkSchema = z.object({
   path: z.string().describe('Append to the server address; works without an Authorization header'),
   expiresAt: isoDate,

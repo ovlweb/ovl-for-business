@@ -1,4 +1,5 @@
 import {
+  LICENSE_TYPE_LABELS,
   pageOf,
   registryEntrySchema,
   registrySearchQuery,
@@ -13,6 +14,7 @@ import type { Db } from '../db/client';
 import { organizations, registryCounters, registryEntries, users } from '../db/schema';
 import { notFound } from '../lib/errors';
 import { iso } from '../lib/mappers';
+import { certificatePdf } from '../lib/pdf';
 import { apiKeyGuard, publicRouteConfig } from '../lib/public-api';
 
 type RegistryKind = (typeof registryEntries.$inferInsert)['kind'];
@@ -202,6 +204,55 @@ export async function registryRoutes(fastify: FastifyInstance) {
       const entry = await getRegistryEntry(app.db, req.params.idOrNumber);
       if (!entry) throw notFound('Registry entry');
       return entry;
+    },
+  );
+
+  app.get(
+    '/registry/:idOrNumber/certificate.pdf',
+    {
+      config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+      schema: {
+        tags,
+        security: [{}],
+        description:
+          'A printable certificate for a registry entry, with a QR code to its public verification page. ' +
+          'Revoked or suspended entries are marked "not valid".',
+        params: z.object({ idOrNumber: z.string().min(1).max(64) }),
+        querystring: z.object({ download: z.literal('1').optional() }),
+      },
+    },
+    async (req, reply) => {
+      const entry = await getRegistryEntry(app.db, req.params.idOrNumber);
+      if (!entry) throw notFound('Registry entry');
+      const kind =
+        entry.kind === 'organization'
+          ? 'Company registration'
+          : entry.kind === 'virtual_country'
+            ? 'Virtual country'
+            : `${entry.licenseType ? LICENSE_TYPE_LABELS[entry.licenseType] : 'Virtual'} licence`;
+      const pdf = await certificatePdf({
+        number: entry.number,
+        title: entry.title,
+        company: entry.kind === 'organization',
+        kind,
+        description: entry.description,
+        holder: {
+          ...entry.holder,
+          handle: entry.holder.type === 'user' ? `@${entry.holder.handle}` : entry.holder.handle,
+        },
+        website: entry.website,
+        status: entry.status,
+        issuedAt: new Date(entry.issuedAt),
+        verifyUrl: `${app.config.PUBLIC_WEB_URL.replace(/\/+$/, '')}/#/verify/${entry.number}`,
+      });
+      return reply
+        .header('content-type', 'application/pdf')
+        .header(
+          'content-disposition',
+          `${req.query.download ? 'attachment' : 'inline'}; filename="${entry.number.toLowerCase()}-certificate.pdf"`,
+        )
+        .header('cache-control', 'public, max-age=300')
+        .send(pdf);
     },
   );
 }

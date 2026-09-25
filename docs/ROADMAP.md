@@ -41,7 +41,8 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
   the admin panel (0.2).
 - ✅ Multi-signature company payments: above a company's approval limit, transfers, exchanges and
   invoice payments wait for a second owner, director or accountant, with the money set aside (0.2).
-- ✅ Statement export as CSV on web and in the apps (0.2). Next: PDF and monthly statements.
+- ✅ Statement export as CSV and PDF on web and in the apps, monthly statements with an optional
+  email at the start of each month (0.2).
 
 ### Stock exchange
 
@@ -53,8 +54,9 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
 
 ### Licenses & registry
 
-- Expiry dates and renewals; license certificates (PDF with a QR code that verifies against the
-  public registry).
+- ✅ Certificates for every registry entry (PDF with a QR code that opens a public verification
+  page; revoked entries print as not valid) (0.2).
+- Expiry dates and renewals.
 - ✅ "Request changes" step in every workflow, and documents attached to applications, stored on
   disk or in S3 / MinIO (0.2).
 - Virtual-country currencies issued under a virtual-country license.

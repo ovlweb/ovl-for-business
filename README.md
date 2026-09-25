@@ -59,7 +59,8 @@ Android, iOS, macOS and Windows.
   conversion** at rates the finance team manages, statements with CSV export. Invoices can be paid
   in parts or sent on a schedule (**recurring invoices**), and companies pay their team with
   **payroll runs**. Companies can set an **approval limit**: larger payments wait for a second
-  owner, director or accountant.
+  owner, director or accountant. Statements download as CSV or PDF, with monthly statements (and an
+  optional monthly email).
 - **Tech support** — tickets are support chats. Moderators, admins and the owner answer from the same
   client in a separate _Support desk_ section; replies carry a staff badge and the owner's replies a
   special owner badge. The council cannot answer tickets.
@@ -70,7 +71,8 @@ Android, iOS, macOS and Windows.
   more (virtual only). Approval: **moderation → council vote (quorum) → owner confirmation**, then the
   license is rolled out into the public registry with a registry number.
 - **Public registry** — licenses, organizations and virtual countries; searchable in the app and via
-  the public API (`X-API-Key` developer keys for other services).
+  the public API (`X-API-Key` developer keys for other services). Every entry has a PDF certificate
+  whose QR code opens a public verification page.
 - **Service stories** — short-lived announcements that council members, admins and the owner publish
   from any client; every client shows them in a stories bar.
 - **Stock exchange** — a company application is reviewed by a moderator who must confirm a checklist

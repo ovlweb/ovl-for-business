@@ -180,10 +180,25 @@ in the admin panel's cash desk:
 3. Everyone who can see the wallet receives `cash_request.updated` and `wallet.updated`.
 
 `GET /wallets/:id/statement.csv?from=YYYY-MM-DD&to=YYYY-MM-DD` returns the ledger as CSV (UTF-8 with
-BOM, CRLF, for spreadsheets). The SDK's `wallets.statementCsv()` returns a `Blob`. Apps that hand
-the file to the system browser call `POST /wallets/:id/statement-link` instead: it returns a path
-that works for five minutes without an `Authorization` header, for that wallet and range only, and
-stops working when the session is signed out.
+BOM, CRLF, for spreadsheets), and `GET /wallets/:id/statement.pdf` (same range) a printable PDF with
+the opening and closing balance, money in and out, and every operation (dates in UTC). The SDK's
+`wallets.statementCsv()` and `wallets.statementPdf()` return a `Blob`. Apps that hand the file to
+the system browser call `POST /wallets/:id/statement-link {from?, to?, format: 'csv' | 'pdf'}`
+instead: it returns a path that works for five minutes without an `Authorization` header, for that
+wallet and range only, and stops working when the session is signed out.
+
+`GET /wallets/:id/statements` lists calendar months with activity (opening and closing balance,
+money in and out, number of operations) for one-click monthly PDFs. People who turn on
+`preferences.statementEmails` (and have a confirmed email) get an email early each month with a
+7-day PDF link for every balance they can see that moved the month before.
+
+## Registry certificates
+
+`GET /registry/:idOrNumber/certificate.pdf` (public, no token) renders a certificate for a company
+registration, licence or virtual country. Its QR code opens `PUBLIC_WEB_URL/#/verify/<number>`, a
+page anyone can open, signed in or not, that shows whether the entry is still active. A revoked or
+suspended entry still renders, stamped "not valid". The SDK's `registry.certificateUrl(number)`
+builds the link.
 
 ## Invoices
 
@@ -251,11 +266,11 @@ team receives `payment_approval.updated` and `wallet.updated`.
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Auth & me    | `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `GET/PATCH /me`, `POST /me/password`, `GET /me/sessions`, `DELETE /me/sessions/:id`, `POST /me/sessions/sign-out-others`, `GET /me/2fa`, `POST /me/2fa/{setup,enable,disable,recovery-codes}`, `POST /me/email`, `POST /me/email/verification`, `POST /auth/verify-email`, `POST /auth/password/{forgot,reset}` |
 | People       | `GET /users/search`, `GET /users/:username`, `GET/POST /contacts`, `DELETE /contacts/:userId`                                                                                                                                                                                                                                                                                          |
-| Wallets      | `GET/POST /wallets`, `GET /wallets/:id`, `/entries`, `/locks`, `POST /wallets/transfer`, `GET/POST /wallets/:id/cash-requests`, `POST /cash-requests/:id/cancel`, `GET /wallets/:id/statement.csv`, `POST /wallets/:id/statement-link`, `GET /exchange`, `POST /exchange/quote`, `POST /exchange`                                                                                      |
+| Wallets      | `GET/POST /wallets`, `GET /wallets/:id`, `/entries`, `/locks`, `POST /wallets/transfer`, `GET/POST /wallets/:id/cash-requests`, `POST /cash-requests/:id/cancel`, `GET /wallets/:id/statement.csv`, `POST /wallets/:id/statement-link`, `GET /wallets/:id/statement.pdf`, `GET /wallets/:id/statements`, `GET /exchange`, `POST /exchange/quote`, `POST /exchange`                     |
 | Invoices     | `GET/POST /invoices`, `GET /invoices/:id`, `POST /invoices/:id/pay`, `POST /invoices/:id/cancel`, `GET/POST /invoice-schedules`, `PATCH /invoice-schedules/:id`                                                                                                                                                                                                                        |
 | Companies    | `GET /organizations/mine`, `GET /organizations/:slug`, `PATCH /organizations/:id`, members, wallets, `GET /organizations/:id/payment-approvals`, `POST …/:approvalId/approve`, `POST …/:approvalId/reject`                                                                                                                                                                             |
 | Applications | `POST /applications`, `GET /applications/mine`, `/queue`, `/:id`, `POST /:id/review`, `/:id/withdraw`, `/:id/resubmit`; `POST /files`, `GET/DELETE /files/:id`                                                                                                                                                                                                                         |
-| Registry     | `GET /registry`, `GET /registry/:idOrNumber`                                                                                                                                                                                                                                                                                                                                           |
+| Registry     | `GET /registry`, `GET /registry/:idOrNumber`, `GET /registry/:idOrNumber/certificate.pdf`                                                                                                                                                                                                                                                                                              |
 | Stock        | `GET /stock/listings`, `/stock/listings/:ticker`, `POST …/invest`, `GET /stock/portfolio`                                                                                                                                                                                                                                                                                              |
 | Chats        | `GET /chats`, `POST /chats/direct`, `/chats/groups`, `/chats/channels`, `GET /channels`, messages, members, read, pin                                                                                                                                                                                                                                                                  |
 | Support      | `POST/GET /support/tickets`, `GET /support/desk`, `POST /support/tickets/:id/status`                                                                                                                                                                                                                                                                                                   |

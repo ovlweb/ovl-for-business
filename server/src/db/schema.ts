@@ -417,6 +417,19 @@ export const invoices = pgTable(
   ],
 );
 
+/** Monthly statement emails already sent (one per person and month, across all instances). */
+export const statementNotices = pgTable(
+  'statement_notices',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    month: char('month', { length: 7 }).notNull(),
+    sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.month] })],
+);
+
 export const invoicePayments = pgTable(
   'invoice_payments',
   {

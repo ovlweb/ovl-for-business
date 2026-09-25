@@ -4,33 +4,20 @@ import {
   CASH_REQUEST_STATUSES,
   completeCashRequestSchema,
   declineCashRequestSchema,
-  statementLinkSchema,
-  statementRangeSchema,
-  type StatementRange,
   formatAmount,
   parseAmount,
   type CashRequest,
 } from '@ovl/shared';
-import { and, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import type { Db } from '../db/client';
-import {
-  cashOperations,
-  cashRequests,
-  fundLocks,
-  ledgerEntries,
-  organizations,
-  sessions,
-  users,
-  wallets,
-} from '../db/schema';
+import { cashOperations, cashRequests, fundLocks, organizations, users, wallets } from '../db/schema';
 import { audit } from '../lib/audit';
-import { badRequest, conflict, forbidden, insufficientFunds, notFound, unauthorized } from '../lib/errors';
+import { badRequest, conflict, forbidden, insufficientFunds, notFound } from '../lib/errors';
 import { iso, isoOrNull } from '../lib/mappers';
-import { openLink, signLink } from '../lib/signed-links';
 import { currentUser } from '../plugins/auth';
 import { createApproval, dropPendingApprovals, needsFourEyes } from './cash-approvals';
 import { walletAudience } from './wallets/routes';
@@ -160,25 +147,6 @@ export async function lockPending(tx: Db, id: string) {
   if (!request) throw notFound('Request');
   if (request.status !== 'pending') throw conflict(`This request is already ${request.status}`);
   return request;
-}
-
-const LINK_TTL_MS = 5 * 60_000;
-
-interface StatementLinkPayload extends Record<string, unknown> {
-  u: string;
-  s: string | null;
-  w: string;
-  from?: string;
-  to?: string;
-}
-
-function csvCell(value: string): string {
-  return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
-}
-
-/** Free text: spreadsheets must not run it as a formula. */
-function csvText(value: string): string {
-  return csvCell(/^[=+\-@\t\r]/.test(value) ? `'${value}` : value);
 }
 
 type CashRequestRow = typeof cashRequests.$inferSelect;
@@ -321,111 +289,6 @@ export async function cashRoutes(fastify: FastifyInstance) {
       await announce(walletId, req.params.id, 'cancelled');
       const [dto] = await cashRequestDtos(app.db, eq(cashRequests.id, req.params.id), 1);
       return dto!;
-    },
-  );
-
-  /** The person a download link was made for, if the account and its session are still live. */
-  const linkUser = async (payload: StatementLinkPayload) => {
-    const [user] = await app.db
-      .select({ id: users.id, role: users.role, status: users.status, session: sessions.id })
-      .from(users)
-      .leftJoin(
-        sessions,
-        payload.s
-          ? and(eq(sessions.id, payload.s), eq(sessions.userId, users.id), isNull(sessions.revokedAt))
-          : sql`false`,
-      )
-      .where(eq(users.id, payload.u));
-    if (!user || user.status !== 'active' || (payload.s && !user.session))
-      throw unauthorized('This download link is no longer valid');
-    return user;
-  };
-
-  app.post(
-    '/wallets/:id/statement-link',
-    {
-      preHandler: app.authenticate,
-      schema: {
-        tags,
-        description:
-          'A download link for the CSV statement that works for 5 minutes without an Authorization header ' +
-          '(for apps that open the file in the system browser).',
-        params: z.object({ id: z.uuid() }),
-        body: statementRangeSchema,
-        response: { 200: statementLinkSchema },
-      },
-    },
-    async (req) => {
-      const me = currentUser(req);
-      const wallet = await loadWallet(req.params.id);
-      await assertWalletAccess(app.db, wallet, me);
-      const payload: StatementLinkPayload = { u: me.id, s: me.sessionId, w: wallet.id, ...req.body };
-      const link = signLink(payload, app.config.JWT_SECRET, LINK_TTL_MS);
-      return {
-        path: `/api/v1/wallets/${wallet.id}/statement.csv?link=${link}`,
-        expiresAt: new Date(Date.now() + LINK_TTL_MS).toISOString(),
-      };
-    },
-  );
-
-  app.get(
-    '/wallets/:id/statement.csv',
-    {
-      // Either a normal access token or a link from POST /wallets/:id/statement-link.
-      preHandler: async (req, reply) => {
-        if (!(req.query as { link?: string }).link) await app.authenticate(req, reply);
-      },
-      schema: {
-        tags,
-        description: 'Download the statement as CSV (spreadsheets, accounting). Optional ISO date range.',
-        params: z.object({ id: z.uuid() }),
-        querystring: statementRangeSchema.extend({ link: z.string().max(2048).optional() }),
-      },
-    },
-    async (req, reply) => {
-      const wallet = await loadWallet(req.params.id);
-      let range: StatementRange = { from: req.query.from, to: req.query.to };
-      if (req.query.link) {
-        const payload = openLink<StatementLinkPayload>(req.query.link, app.config.JWT_SECRET);
-        if (!payload || payload.w !== wallet.id) throw unauthorized('This download link is no longer valid');
-        await assertWalletAccess(app.db, wallet, await linkUser(payload));
-        range = { from: payload.from, to: payload.to };
-      } else {
-        await assertWalletAccess(app.db, wallet, currentUser(req));
-      }
-      const { from, to } = range;
-      const rows = await app.db
-        .select()
-        .from(ledgerEntries)
-        .where(
-          and(
-            eq(ledgerEntries.walletId, wallet.id),
-            from ? sql`${ledgerEntries.createdAt} >= ${from}::date` : undefined,
-            to ? sql`${ledgerEntries.createdAt} < ${to}::date + 1` : undefined,
-          ),
-        )
-        .orderBy(ledgerEntries.id)
-        .limit(50_000);
-      const lines = [
-        ['Date', 'Operation', 'Description', 'Amount', 'Balance after', 'Currency', 'Entry'].join(','),
-        ...rows.map((e) =>
-          [
-            csvCell(iso(e.createdAt)),
-            csvCell(e.kind),
-            csvText(e.description),
-            csvCell(formatAmount(e.amount, wallet.currency)),
-            csvCell(formatAmount(e.balanceAfter, wallet.currency)),
-            csvCell(wallet.currency),
-            String(e.id),
-          ].join(','),
-        ),
-      ];
-      const name = `ovl-statement-${wallet.currency.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`;
-      return reply
-        .header('content-type', 'text/csv; charset=utf-8')
-        .header('content-disposition', `attachment; filename="${name}"`)
-        .header('cache-control', 'private, no-store')
-        .send(`\uFEFF${lines.join('\r\n')}\r\n`);
     },
   );
 

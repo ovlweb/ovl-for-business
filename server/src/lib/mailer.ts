@@ -59,12 +59,15 @@ export function actionEmail(opts: {
   greeting: string;
   lines: string[];
   action?: { label: string; url: string };
+  /** Extra links listed under the text (e.g. one download per document). */
+  links?: { label: string; url: string }[];
   footer?: string;
 }): MailMessage {
   const text = [
     opts.greeting,
     '',
     ...opts.lines,
+    ...(opts.links?.length ? ['', ...opts.links.map((l) => `${l.label}: ${l.url}`)] : []),
     ...(opts.action ? ['', `${opts.action.label}: ${opts.action.url}`] : []),
     ...(opts.footer ? ['', opts.footer] : []),
     '',
@@ -79,6 +82,13 @@ export function actionEmail(opts: {
     <div style="font-weight:800;font-size:18px;margin-bottom:18px">OVL For Business</div>
     <p>${escape(opts.greeting)}</p>
     ${opts.lines.map((l) => `<p style="line-height:1.5">${escape(l)}</p>`).join('')}
+    ${
+      opts.links?.length
+        ? `<ul style="padding-left:18px;line-height:1.8">${opts.links
+            .map((l) => `<li><a href="${escape(l.url)}" style="color:#2563eb">${escape(l.label)}</a></li>`)
+            .join('')}</ul>`
+        : ''
+    }
     ${button}
     ${opts.footer ? `<p style="color:#64748b;font-size:13px">${escape(opts.footer)}</p>` : ''}
   </div></body></html>`;

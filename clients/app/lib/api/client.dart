@@ -269,11 +269,20 @@ class OvlApi {
   );
   Future<void> cancelCashRequest(String id) => _post('/cash-requests/$id/cancel');
 
-  /// A 5-minute link to the CSV statement that needs no token, for the system browser.
-  Future<Uri> statementLink(String walletId, {String? from, String? to}) async {
-    final r = await _post('/wallets/$walletId/statement-link', {'from': ?from, 'to': ?to}) as Json;
+  /// A 5-minute link to the statement (`csv` or `pdf`) that needs no token, for the system browser.
+  Future<Uri> statementLink(String walletId, {String? from, String? to, String format = 'csv'}) async {
+    final r = await _post('/wallets/$walletId/statement-link', {'from': ?from, 'to': ?to, 'format': format}) as Json;
     return Uri.parse('${baseUrl.replaceAll(RegExp(r'/+$'), '')}${r['path']}');
   }
+
+  /// Calendar months with activity, newest first.
+  Future<List<MonthlyStatement>> monthlyStatements(String walletId) =>
+      _getList('/wallets/$walletId/statements', MonthlyStatement.fromJson);
+
+  /// The public certificate PDF of a registry entry.
+  Uri certificateUrl(String number) => Uri.parse(
+    '${baseUrl.replaceAll(RegExp(r'/+$'), '')}/api/v1/registry/${Uri.encodeComponent(number)}/certificate.pdf',
+  );
 
   // --- invoices ------------------------------------------------------------------------
 

@@ -4,6 +4,7 @@ import {
   ErrorAlert,
   formatDate,
   humanize,
+  Icon,
   Modal,
   PageHeader,
   Spinner,
@@ -64,6 +65,19 @@ function EntryModal({ entry, onClose }: { entry: RegistryEntry; onClose: () => v
           <dt>Updated</dt>
           <dd>{formatDate(entry.updatedAt)}</dd>
         </dl>
+        <div className="row-wrap">
+          <a
+            className="btn"
+            href={api.registry.certificateUrl(entry.number)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <Icon name="award" size={16} /> Certificate (PDF)
+          </a>
+          <Link className="btn ghost" to={`/verify/${entry.number}`} onClick={onClose}>
+            <Icon name="shield" size={16} /> Verification page
+          </Link>
+        </div>
       </div>
     </Modal>
   );

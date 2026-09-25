@@ -154,7 +154,7 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(ivan.getByText('20.00 frozen')).toBeHidden();
     await expect(ivan.locator('.bank-card').getByText('Available: 100.00 USD')).toBeVisible();
 
-    await ivan.getByRole('button', { name: 'Export CSV' }).click();
+    await ivan.getByRole('button', { name: 'Export', exact: true }).click();
     await ivan.getByRole('tab', { name: 'All time' }).click();
     const [download] = await Promise.all([
       ivan.waitForEvent('download'),
@@ -490,6 +490,45 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(maria.locator('.list-item', { hasText: 'Freelance fees' })).toContainText('Paid');
     await ivan.goto('./#/wallet');
     await expect(ivan.getByText('Northwind Studio: Freelance fees — Logo revisions')).toBeVisible();
+  });
+
+  test('documents: PDF statements and a registry certificate that verifies publicly', async ({ browser }) => {
+    await maria.goto('./#/wallet');
+    await maria.getByRole('button', { name: 'Export', exact: true }).click();
+    const dialog = maria.getByRole('dialog');
+    await dialog.getByRole('tab', { name: 'PDF' }).click();
+    await dialog.getByRole('tab', { name: 'All time' }).click();
+    const [download] = await Promise.all([
+      maria.waitForEvent('download'),
+      dialog.getByRole('button', { name: 'Download PDF' }).click(),
+    ]);
+    expect(download.suggestedFilename()).toMatch(/^ovl-statement-[a-z]{3}-\d{4}-\d{2}-\d{2}\.pdf$/);
+    const pdf = Buffer.concat(await (await download.createReadStream()).toArray());
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+    await expect(maria.getByRole('heading', { name: 'Monthly statements' })).toBeVisible();
+
+    // The registry links each entry to its certificate and verification page.
+    await maria.goto('./#/registry');
+    await maria.getByText('Northwind Studio').first().click();
+    const entry = maria.getByRole('dialog');
+    const certificate = entry.getByRole('link', { name: 'Certificate (PDF)' });
+    const href = await certificate.getAttribute('href');
+    expect(href).toMatch(/\/api\/v1\/registry\/OVL-(ORG|LIC)-\d{6}\/certificate\.pdf$/);
+    const res = await maria.request.get(new URL(href!, maria.url()).toString());
+    expect(res.headers()['content-type']).toBe('application/pdf');
+    const number = href!.match(/OVL-(ORG|LIC)-\d{6}/)![0];
+
+    // Anyone can check it, signed in or not.
+    const strangerErrors: string[] = [];
+    const stranger = await newPage(browser, strangerErrors, 'stranger');
+    await stranger.goto(`./#/verify/${number}`);
+    await expect(stranger.getByText('Valid', { exact: true })).toBeVisible();
+    await expect(stranger.getByText(number)).toBeVisible();
+    await stranger.goto('./#/verify/OVL-LIC-999999');
+    await expect(stranger.getByRole('heading', { name: 'Not in the registry' })).toBeVisible();
+    // The unknown number's 404 is the only thing the browser may complain about.
+    expect(strangerErrors.filter((e) => !e.includes('status of 404'))).toEqual([]);
+    await stranger.context().close();
   });
 
   test('settings: switching the theme applies instantly and is saved', async () => {

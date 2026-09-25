@@ -383,7 +383,7 @@ class _StatementState extends State<Statement> {
                     if (page != null) Text(plural(page.total, 'operation'), style: context.text.bodySmall),
                     if (page != null && page.total > 0)
                       IconButton(
-                        tooltip: 'Export CSV',
+                        tooltip: 'Export',
                         onPressed: () => showExportSheet(context, w),
                         icon: const Icon(LucideIcons.download, size: 19),
                       ),
@@ -425,6 +425,7 @@ class _StatementState extends State<Statement> {
                   ),
                 if (page.total > page.items.length)
                   TextButton(onPressed: () => setState(() => _limit += 20), child: const Text('Load more')),
+                _MonthlyStatements(wallet: w),
               ],
             ],
           );
@@ -1014,10 +1015,79 @@ void showCashRequestSheet(BuildContext context, Wallet wallet, String type) {
 
 String _day(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-/// Export the statement as CSV: the server makes a 5-minute link that the system browser downloads.
+/// One PDF statement per calendar month.
+class _MonthlyStatements extends StatelessWidget {
+  const _MonthlyStatements({required this.wallet});
+
+  final Wallet wallet;
+
+  @override
+  Widget build(BuildContext context) {
+    final session = context.watch<Session>();
+    return Query<List<MonthlyStatement>>(
+      client: session.queries,
+      queryKey: 'entries:${wallet.id}:months',
+      fetch: () => session.api.monthlyStatements(wallet.id),
+      builder: (context, s) {
+        final months = s.data ?? const <MonthlyStatement>[];
+        if (months.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Divider(height: 24),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
+              child: Text('Monthly statements', style: context.text.titleMedium),
+            ),
+            for (final m in months)
+              ListTile(
+                dense: true,
+                leading: const Icon(LucideIcons.fileText, size: 20),
+                title: Text(_monthName(m.month), style: context.text.titleSmall),
+                subtitle: Text(
+                  '${plural(m.operations, 'operation')} · in ${money(m.moneyIn, wallet.currency)} · out ${money(m.moneyOut, wallet.currency)}',
+                ),
+                trailing: Text(money(m.closing, wallet.currency), style: context.text.bodyMedium),
+                onTap: () async {
+                  try {
+                    final url = await session.api.statementLink(wallet.id, from: m.from, to: m.to, format: 'pdf');
+                    await launchUrl(url, mode: LaunchMode.externalApplication);
+                  } catch (e) {
+                    if (context.mounted) toast(context, errorText(e), error: true);
+                  }
+                },
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+const _months = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+String _monthName(String month) {
+  final [y, m] = month.split('-');
+  return '${_months[int.parse(m) - 1]} $y';
+}
+
+/// Export the statement as CSV or PDF: the server makes a 5-minute link that the system browser opens.
 void showExportSheet(BuildContext context, Wallet wallet) {
   final session = context.read<Session>();
   var period = 'month';
+  var format = 'pdf';
   var busy = false;
   Object? error;
   showModalBottomSheet<void>(
@@ -1033,11 +1103,19 @@ void showExportSheet(BuildContext context, Wallet wallet) {
             Text('Export ${wallet.currency} statement', style: sheet.text.headlineSmall),
             const SizedBox(height: 4),
             Text(
-              'A CSV file for spreadsheets and accounting software. It opens in your browser, which saves it.',
+              format == 'pdf'
+                  ? 'A printable PDF with opening and closing balances. It opens in your browser.'
+                  : 'A CSV file for spreadsheets and accounting software. It opens in your browser, which saves it.',
               style: sheet.text.bodyMedium,
             ),
             const SizedBox(height: 16),
             if (error != null) ...[ErrorBox(error), const SizedBox(height: 12)],
+            Segmented<String>(
+              value: format,
+              options: const [('pdf', 'PDF'), ('csv', 'CSV')],
+              onChanged: (f) => set(() => format = f),
+            ),
+            const SizedBox(height: 10),
             Segmented<String>(
               value: period,
               options: const [
@@ -1050,7 +1128,7 @@ void showExportSheet(BuildContext context, Wallet wallet) {
             ),
             const SizedBox(height: 18),
             GradientButton(
-              label: 'Download CSV',
+              label: 'Download ${format.toUpperCase()}',
               icon: LucideIcons.download,
               busy: busy,
               onPressed: () async {
@@ -1066,7 +1144,7 @@ void showExportSheet(BuildContext context, Wallet wallet) {
                   error = null;
                 });
                 try {
-                  final url = await session.api.statementLink(wallet.id, from: from, to: to);
+                  final url = await session.api.statementLink(wallet.id, from: from, to: to, format: format);
                   await launchUrl(url, mode: LaunchMode.externalApplication);
                   if (sheet.mounted) Navigator.pop(sheet);
                 } catch (e) {

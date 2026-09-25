@@ -47,7 +47,9 @@ import type {
   RegistryEntry,
   RegistrySearchQuery,
   Session,
+  MonthlyStatement,
   StatementLink,
+  StatementLinkInput,
   StatementRange,
   TwoFactorSetup,
   TwoFactorStatus,
@@ -359,9 +361,14 @@ export class OvlClient {
     /** The statement as a CSV file, optionally limited to ISO dates. */
     statementCsv: (id: string, range?: { from?: string; to?: string }) =>
       this.download(`/wallets/${id}/statement.csv`, range),
-    /** A 5-minute link to the CSV that works without a token (to open in a browser). */
-    statementLink: (id: string, range: StatementRange = {}) =>
-      this.post<StatementLink>(`/wallets/${id}/statement-link`, range),
+    /** The statement as a printable PDF, optionally limited to ISO dates. */
+    statementPdf: (id: string, range?: { from?: string; to?: string }) =>
+      this.download(`/wallets/${id}/statement.pdf`, range),
+    /** A 5-minute link to the CSV (or `format: 'pdf'`) that works without a token (to open in a browser). */
+    statementLink: (id: string, input: StatementLinkInput = {}) =>
+      this.post<StatementLink>(`/wallets/${id}/statement-link`, input),
+    /** Calendar months with activity: opening and closing balance, money in and out. */
+    statements: (id: string) => this.get<MonthlyStatement[]>(`/wallets/${id}/statements`),
   };
 
   invoices = {
@@ -449,6 +456,9 @@ export class OvlClient {
   registry = {
     search: (query: RegistrySearchQuery = {}) => this.get<Page<RegistryEntry>>('/registry', query as Query),
     get: (idOrNumber: string) => this.get<RegistryEntry>(`/registry/${encodeURIComponent(idOrNumber)}`),
+    /** The public certificate PDF (no token needed): open it in a browser tab or download it. */
+    certificateUrl: (idOrNumber: string, download = false) =>
+      `${this.baseUrl}/api/v1/registry/${encodeURIComponent(idOrNumber)}/certificate.pdf${download ? '?download=1' : ''}`,
   };
 
   stock = {

@@ -18,6 +18,7 @@ import { ReviewPage } from './pages/Review';
 import { SettingsPage } from './pages/Settings';
 import { SupportPage } from './pages/Support';
 import { UserPage } from './pages/User';
+import { VerifyPage } from './pages/Verify';
 import { WalletPage } from './pages/Wallet';
 
 function Splash() {
@@ -44,6 +45,13 @@ export function App() {
     content = (
       <AccountLinkPage key={pathname} kind={pathname.slice(1) as 'verify-email' | 'reset-password'} />
     );
+  // Certificate QR codes: anyone can check an entry, signed in or not.
+  else if (pathname.startsWith('/verify/'))
+    content = (
+      <Routes key="verify">
+        <Route path="/verify/:number" element={<VerifyPage />} />
+      </Routes>
+    );
   else if (loading && !me) content = <Splash key="splash" />;
   else if (!me || addingAccount) content = <LoginPage key="login" />;
   else if (!me.preferences.onboardingCompleted)
@@ -58,6 +66,7 @@ export function App() {
         <Routes>
           {/* Shown by AccountLinkPage; listed so the catch-all below does not redirect them away. */}
           <Route path="/verify-email" element={null} />
+          <Route path="/verify/:number" element={null} />
           <Route path="/reset-password" element={null} />
           <Route element={<Layout />}>
             <Route path="/" element={<Navigate to="/home" replace />} />

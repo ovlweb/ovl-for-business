@@ -180,14 +180,27 @@ class _RegistryScreenState extends State<RegistryScreen> {
             ),
             if (e.holder.verified) ...[const SizedBox(height: 6), const VerifiedBadge()],
             Text('Issued ${date(e.issuedAt)}', style: sheet.text.bodyMedium),
-            if (e.website != null) ...[
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: () => launchUrl(Uri.parse(e.website!)),
-                icon: const Icon(LucideIcons.externalLink, size: 16),
-                label: Text(e.website!),
-              ),
-            ],
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.tonalIcon(
+                  onPressed: () => launchUrl(
+                    context.read<Session>().api.certificateUrl(e.number),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                  icon: const Icon(LucideIcons.award, size: 16),
+                  label: const Text('Certificate (PDF)'),
+                ),
+                if (e.website != null)
+                  OutlinedButton.icon(
+                    onPressed: () => launchUrl(Uri.parse(e.website!)),
+                    icon: const Icon(LucideIcons.externalLink, size: 16),
+                    label: Text(e.website!),
+                  ),
+              ],
+            ),
           ],
         ),
       ),

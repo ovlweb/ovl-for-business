@@ -192,7 +192,7 @@ export function Statement({ wallet }: { wallet: Wallet }) {
           <div className="row" style={{ gap: 10 }}>
             <span className="small muted">{plural(entries.data?.total ?? 0, 'operation')}</span>
             <button className="btn sm" onClick={() => setExporting(true)} disabled={!entries.data?.total}>
-              <Icon name="download" size={15} /> Export CSV
+              <Icon name="download" size={15} /> Export
             </button>
           </div>
         </div>
@@ -249,6 +249,7 @@ export function Statement({ wallet }: { wallet: Wallet }) {
           </div>
         )}
       </div>
+      <MonthlyStatements wallet={wallet} />
       {exporting && <ExportModal wallet={wallet} onClose={() => setExporting(false)} />}
     </div>
   );
@@ -288,10 +289,14 @@ function saveFile(blob: Blob, filename: string) {
 function ExportModal({ wallet, onClose }: { wallet: Wallet; onClose: () => void }) {
   const toast = useToast();
   const [period, setPeriod] = useState<Period>('month');
+  const [format, setFormat] = useState<'csv' | 'pdf'>('csv');
   const download = useMutation({
-    mutationFn: () => api.wallets.statementCsv(wallet.id, periodRange(period)),
+    mutationFn: () =>
+      format === 'pdf'
+        ? api.wallets.statementPdf(wallet.id, periodRange(period))
+        : api.wallets.statementCsv(wallet.id, periodRange(period)),
     onSuccess: ({ blob, filename }) => {
-      saveFile(blob, filename ?? `ovl-statement-${wallet.currency.toLowerCase()}.csv`);
+      saveFile(blob, filename ?? `ovl-statement-${wallet.currency.toLowerCase()}.${format}`);
       toast.success('Statement downloaded');
       onClose();
     },
@@ -299,9 +304,18 @@ function ExportModal({ wallet, onClose }: { wallet: Wallet; onClose: () => void 
   return (
     <Modal title={`Export ${wallet.currency} statement`} onClose={onClose}>
       <div className="stack">
+        <Segmented<'csv' | 'pdf'>
+          value={format}
+          onChange={setFormat}
+          options={[
+            { value: 'csv', label: 'CSV' },
+            { value: 'pdf', label: 'PDF' },
+          ]}
+        />
         <p className="small muted" style={{ margin: 0 }}>
-          A CSV file for spreadsheets and accounting software: date, operation, description, amount and the
-          balance after each operation.
+          {format === 'csv'
+            ? 'A CSV file for spreadsheets and accounting software: date, operation, description, amount and the balance after each operation.'
+            : 'A printable statement: opening and closing balance, money in and out, and every operation with the balance after it.'}
         </p>
         <Segmented<Period>
           value={period}
@@ -316,10 +330,78 @@ function ExportModal({ wallet, onClose }: { wallet: Wallet; onClose: () => void 
         <ErrorAlert error={download.error} />
         <button className="btn primary" onClick={() => download.mutate()} disabled={download.isPending}>
           {download.isPending ? <span className="spinner light" /> : <Icon name="download" size={16} />}
-          Download CSV
+          Download {format.toUpperCase()}
         </button>
       </div>
     </Modal>
+  );
+}
+
+const monthLabel = (month: string) =>
+  new Date(`${month}-15T12:00:00Z`).toLocaleString(undefined, { month: 'long', year: 'numeric' });
+
+/** One statement per calendar month, each a PDF download. */
+export function MonthlyStatements({ wallet }: { wallet: Wallet }) {
+  const toast = useToast();
+  const months = useQuery({
+    queryKey: ['entries', wallet.id, 'months'],
+    queryFn: () => api.wallets.statements(wallet.id),
+  });
+  const download = useMutation({
+    mutationFn: (m: { from: string; to: string }) => api.wallets.statementPdf(wallet.id, m),
+    onSuccess: ({ blob, filename }) => saveFile(blob, filename ?? 'ovl-statement.pdf'),
+    onError: (e) => toast.error(e),
+  });
+  if (!months.data?.length) return null;
+  return (
+    <div className="card pad-0">
+      <div className="card-header" style={{ padding: '16px 18px 0' }}>
+        <h3>Monthly statements</h3>
+        <span className="small muted">PDF, one per month</span>
+      </div>
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Month</th>
+              <th className="right">Money in</th>
+              <th className="right">Money out</th>
+              <th className="right">Closing balance</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {months.data.map((m) => (
+              <tr key={m.month}>
+                <td>
+                  <b>{monthLabel(m.month)}</b>
+                  <div className="small muted">{plural(m.operations, 'operation')}</div>
+                </td>
+                <td className="right pos">
+                  <Money amount={m.moneyIn} currency={wallet.currency} />
+                </td>
+                <td className="right neg">
+                  <Money amount={m.moneyOut} currency={wallet.currency} />
+                </td>
+                <td className="right bold">
+                  <Money amount={m.closing} currency={wallet.currency} />
+                </td>
+                <td className="right">
+                  <button
+                    className="btn ghost sm"
+                    aria-label={`Download the ${monthLabel(m.month)} statement`}
+                    disabled={download.isPending}
+                    onClick={() => download.mutate(m)}
+                  >
+                    <Icon name="download" size={14} /> PDF
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 

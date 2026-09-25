@@ -75,7 +75,14 @@ export function RegistryPage() {
             {entries.data?.items.map((e) => (
               <tr key={e.id}>
                 <td>
-                  <code>{e.number}</code>
+                  <a
+                    href={api.registry.certificateUrl(e.number)}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Certificate (PDF)"
+                  >
+                    <code>{e.number}</code>
+                  </a>
                 </td>
                 <td>{e.title}</td>
                 <td className="small">{humanize(e.licenseType ?? e.kind)}</td>
