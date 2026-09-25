@@ -20,6 +20,7 @@ import { audit } from '../lib/audit';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors';
 import { iso } from '../lib/mappers';
 import { currentUser, type AuthUser } from '../plugins/auth';
+import { emitRegistryEvent } from './registry';
 import { walletAudience } from './wallets/routes';
 import { assertWalletAccess, credit, debit, getOrCreateWallet, type WalletRow } from './wallets/service';
 
@@ -211,6 +212,7 @@ export async function virtualCurrencyRoutes(fastify: FastifyInstance) {
           .insert(virtualCurrencies)
           .values({ code, name, decimals, registryEntryId: entry.id, createdBy: me.id })
           .returning();
+        await emitRegistryEvent(tx, 'registry.updated', entry.id);
         await audit(tx, {
           actorId: me.id,
           action: 'currency.create',

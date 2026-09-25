@@ -51,13 +51,14 @@ import { iso, isoOrNull, toUserSummary } from '../lib/mappers';
 import { currentUser } from '../plugins/auth';
 import { toApiKeyDto } from './api-keys';
 import { organizationDtos } from './organizations';
-import { getRegistryEntry } from './registry';
+import { emitRegistryEvent, getRegistryEntry } from './registry';
 import { recordCashOperation } from './cash';
 import { approvalDtos, createApproval, needsFourEyes, pendingApprovalCount } from './cash-approvals';
 import { pendingIdentityChecks } from './identity';
 import { changeRole } from './roles';
 import { revokeSessions } from './sessions';
 import { listingDtos } from './stock/service';
+import { emitEvent } from '../lib/webhooks';
 import { walletAudience } from './wallets/routes';
 import { getOrCreateWallet, listOwnerWallets } from './wallets/service';
 
@@ -572,6 +573,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         .where(eq(registryEntries.id, req.params.id))
         .returning();
       if (!entry) throw notFound('Registry entry');
+      await emitRegistryEvent(app.db, 'registry.updated', entry.id);
       await audit(app.db, {
         actorId: me.id,
         action: 'registry.status',
@@ -628,6 +630,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         if (price !== undefined && price !== listing.sharePrice) {
           await tx.insert(stockPriceHistory).values({ listingId: listing.id, price });
         }
+        await emitEvent(tx, 'listing.updated', (await listingDtos(tx, [row!]))[0]! as unknown as Record<string, unknown>);
         await audit(tx, {
           actorId: me.id,
           action: 'stock.listing_update',

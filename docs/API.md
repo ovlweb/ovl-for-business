@@ -58,6 +58,26 @@ curl https://business.example.com/api/v1/stock/listings/AURA -H "X-API-Key: $KEY
 Registry query parameters: `q`, `kind` (`organization` | `license` | `virtual_country`),
 `licenseType`, `status` (default `active`), `limit` (≤ 100), `offset`.
 
+## Webhooks
+
+Register an endpoint with `POST /webhooks {url, events, description?}` (Settings → Developer on
+the web). Events: `registry.created`, `registry.updated` (status, renewal, expiry, a new currency),
+`listing.created`, `listing.updated` (price, status). The response carries the signing secret, only
+once (`POST /webhooks/:id/rotate-secret` makes a new one). Each delivery is a JSON `POST`:
+
+```json
+{ "id": "<event id>", "type": "registry.updated", "createdAt": "…", "data": { …registry entry… } }
+```
+
+with `X-OVL-Event`, `X-OVL-Delivery` and `X-OVL-Signature: t=<unix seconds>,v1=<hex>`, where the hex
+is HMAC-SHA256 of `"<t>.<raw body>"` with the secret. Verify it (and that `t` is recent) before
+trusting the body; the SDK's `verifyWebhookSignature(secret, header, rawBody)` does both. Answer with
+any 2xx within 10 seconds. Failed deliveries are retried after 1 min, 5 min, 30 min, 2 h and 12 h;
+after 20 failures in a row the endpoint is switched off (`PATCH /webhooks/:id {active: true}` turns it
+back on). `GET /webhooks/:id/deliveries` shows the log, `POST …/deliveries/:id/redeliver` sends one
+again and `POST /webhooks/:id/test` sends a `ping`. Events are recorded in the same transaction as the
+change, so none are lost; in production, URLs must be https and may not point at private networks.
+
 ## TypeScript SDK
 
 ```ts
@@ -299,5 +319,5 @@ team receives `payment_approval.updated` and `wallet.updated`.
 | Chats        | `GET /chats`, `POST /chats/direct`, `/chats/groups`, `/chats/channels`, `GET /channels`, messages, members, read, pin                                                                                                                                                                                                                                                                  |
 | Support      | `POST/GET /support/tickets`, `GET /support/desk`, `POST /support/tickets/:id/status`                                                                                                                                                                                                                                                                                                   |
 | Stories      | `GET/POST /stories`, `POST /stories/:id/view`, `DELETE /stories/:id`                                                                                                                                                                                                                                                                                                                   |
-| Developer    | `GET/POST /api-keys`, `DELETE /api-keys/:id`                                                                                                                                                                                                                                                                                                                                           |
+| Developer    | `GET/POST /api-keys`, `DELETE /api-keys/:id`, `GET/POST /webhooks`, `PATCH/DELETE /webhooks/:id`, `POST /webhooks/:id/{test,rotate-secret}`, `GET /webhooks/:id/deliveries`                                                                                                                                                                                                            |
 | Admin        | `/admin/stats`, `/admin/users`, `/admin/organizations`, `/admin/owners`, `/admin/wallets`, `/admin/cash-operations`, `/admin/cash-requests` (+ `/:id/complete`, `/:id/decline`), `/admin/registry/:id`, `/admin/stock/listings/:id`, `/admin/audit-logs`, `/admin/api-keys`                                                                                                            |

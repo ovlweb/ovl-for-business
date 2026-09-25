@@ -22,6 +22,8 @@ import type {
   CreateInvoiceInput,
   CreateInvoiceScheduleInput,
   CreateVirtualCurrencyInput,
+  CreateWebhookInput,
+  CreatedWebhook,
   CurrencyInfo,
   CreateStoryInput,
   FileInfo,
@@ -66,6 +68,8 @@ import type {
   UserProfile,
   UserSummary,
   VirtualCurrency,
+  WebhookDelivery,
+  WebhookEndpoint,
   Wallet,
 } from '@ovl/shared';
 import { RealtimeConnection } from './realtime';
@@ -422,6 +426,24 @@ export class OvlClient {
     /** Decline a waiting payment, or withdraw your own. */
     rejectPayment: (id: string, approvalId: string, reason: string) =>
       this.post<PaymentApproval>(`/organizations/${id}/payment-approvals/${approvalId}/reject`, { reason }),
+  };
+
+  /** Registry and stock listing changes pushed to your service (see verifyWebhookSignature). */
+  webhooks = {
+    list: () => this.get<WebhookEndpoint[]>('/webhooks'),
+    /** The response carries the signing secret, only this once. */
+    create: (input: CreateWebhookInput) => this.post<CreatedWebhook>('/webhooks', input),
+    update: (
+      id: string,
+      input: { url?: string; events?: WebhookEndpoint['events']; description?: string; active?: boolean },
+    ) => this.patch<WebhookEndpoint>(`/webhooks/${id}`, input),
+    remove: (id: string) => this.del(`/webhooks/${id}`),
+    rotateSecret: (id: string) => this.post<CreatedWebhook>(`/webhooks/${id}/rotate-secret`),
+    /** Send a "ping" now and report how it went. */
+    test: (id: string) => this.post<WebhookDelivery>(`/webhooks/${id}/test`),
+    deliveries: (id: string) => this.get<WebhookDelivery[]>(`/webhooks/${id}/deliveries`),
+    redeliver: (id: string, deliveryId: string) =>
+      this.post<WebhookDelivery>(`/webhooks/${id}/deliveries/${deliveryId}/redeliver`),
   };
 
   /** Every currency balances can hold (ISO 4217 and virtual-country currencies). No token needed. */

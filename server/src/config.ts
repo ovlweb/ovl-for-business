@@ -96,6 +96,9 @@ const envSchema = z.object({
   /** Licences and virtual countries run this many months, then need a renewal. 0: they never expire. */
   LICENSE_TERM_MONTHS: z.coerce.number().int().min(0).max(120).default(12),
 
+  /** Webhooks may call private and loopback addresses (development and tests only by default). */
+  WEBHOOK_ALLOW_PRIVATE_NETWORKS: flag(false),
+
   /** Background jobs (recurring invoices…). Every instance may run them; they share the work. */
   SCHEDULER_ENABLED: flag(true),
 
@@ -122,6 +125,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if ((env.NODE_ENV ?? 'development') === 'development') {
     env = { ...env };
     for (const key of RELAXED_IN_DEVELOPMENT) env[key] ??= 'false';
+  }
+  if ((env.NODE_ENV ?? 'development') !== 'production') {
+    env = { ...env, WEBHOOK_ALLOW_PRIVATE_NETWORKS: env.WEBHOOK_ALLOW_PRIVATE_NETWORKS ?? 'true' };
   }
   const parsed = envSchema.safeParse(env);
   if (!parsed.success) {

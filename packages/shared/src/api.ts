@@ -879,6 +879,59 @@ export const registryEntrySchema = z.object({
 export type RegistryEntry = z.infer<typeof registryEntrySchema>;
 
 // ---------------------------------------------------------------------------
+// Webhooks for API consumers
+// ---------------------------------------------------------------------------
+
+/** What an endpoint can subscribe to; "ping" is sent by the test button only. */
+export const WEBHOOK_EVENTS = ['registry.created', 'registry.updated', 'listing.created', 'listing.updated'] as const;
+export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number] | 'ping';
+
+export const webhookEndpointSchema = z.object({
+  id: uuid,
+  url: z.string(),
+  description: z.string(),
+  events: z.array(z.enum(WEBHOOK_EVENTS)),
+  active: z.boolean(),
+  failures: z.number().int().describe('Failed deliveries in a row; 20 turn the endpoint off'),
+  disabledReason: z.string().nullable(),
+  lastDeliveryAt: isoDate.nullable(),
+  createdAt: isoDate,
+});
+export type WebhookEndpoint = z.infer<typeof webhookEndpointSchema>;
+export const createdWebhookSchema = webhookEndpointSchema.extend({
+  secret: z.string().describe('Signs every delivery (X-OVL-Signature); shown only now'),
+});
+export type CreatedWebhook = z.infer<typeof createdWebhookSchema>;
+
+const webhookUrl = z.url({ protocol: /^https?$/ }).max(2000);
+export const createWebhookSchema = z.object({
+  url: webhookUrl,
+  events: z.array(z.enum(WEBHOOK_EVENTS)).min(1),
+  description: z.string().trim().max(200).optional(),
+});
+export type CreateWebhookInput = z.input<typeof createWebhookSchema>;
+export const updateWebhookSchema = z.object({
+  url: webhookUrl.optional(),
+  events: z.array(z.enum(WEBHOOK_EVENTS)).min(1).optional(),
+  description: z.string().trim().max(200).optional(),
+  active: z.boolean().optional(),
+});
+
+export const webhookDeliverySchema = z.object({
+  id: uuid,
+  eventId: uuid,
+  event: z.string(),
+  status: z.enum(['pending', 'delivered', 'failed']),
+  attempts: z.number().int(),
+  responseStatus: z.number().int().nullable(),
+  error: z.string().nullable(),
+  nextAttemptAt: isoDate.nullable(),
+  deliveredAt: isoDate.nullable(),
+  createdAt: isoDate,
+});
+export type WebhookDelivery = z.infer<typeof webhookDeliverySchema>;
+
+// ---------------------------------------------------------------------------
 // Virtual-country currencies
 // ---------------------------------------------------------------------------
 

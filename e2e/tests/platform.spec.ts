@@ -1,4 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { ADMIN_URL, API_URL, OWNER_PASSWORD } from '../constants';
 import {
   bubble,
@@ -535,6 +537,68 @@ test.describe.serial('OVL For Business end to end', () => {
     // The unknown number's 404 is the only thing the browser may complain about.
     expect(strangerErrors.filter((e) => !e.includes('status of 404'))).toEqual([]);
     await stranger.context().close();
+  });
+
+  test('developers get signed webhooks for registry changes', async () => {
+    const received: { event: string; signature: string; body: string }[] = [];
+    const receiver = createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        received.push({
+          event: String(req.headers['x-ovl-event']),
+          signature: String(req.headers['x-ovl-signature']),
+          body,
+        });
+        res.end('ok');
+      });
+    });
+    await new Promise<void>((done) => receiver.listen(0, '127.0.0.1', done));
+    const url = `http://127.0.0.1:${(receiver.address() as AddressInfo).port}/ovl`;
+    try {
+      await ivan.goto('./#/settings?section=developer');
+      await ivan.getByLabel('Webhook URL').fill(url);
+      await ivan.getByLabel('Webhook description').fill('Registry mirror');
+      await ivan.getByRole('button', { name: 'Add webhook' }).click();
+      await expect(ivan.getByText('Copy the signing secret now')).toBeVisible();
+      await expect(ivan.locator('code', { hasText: /^whsec_/ })).toBeVisible();
+
+      const row = ivan.locator('.list-item', { hasText: 'Registry mirror' });
+      await row.getByRole('button', { name: 'Test' }).click();
+      await expect(ivan.getByText('Ping delivered (HTTP 200)')).toBeVisible();
+      expect(received.at(-1)).toMatchObject({
+        event: 'ping',
+        signature: expect.stringMatching(/^t=\d+,v1=[0-9a-f]{64}$/),
+      });
+
+      // A registry change in the admin panel reaches the endpoint (the scheduler sends it).
+      await admin.goto(`${ADMIN_URL}#/registry`);
+      await admin
+        .locator('tr', { hasText: 'Northwind Studio — business license' })
+        .getByRole('combobox')
+        .selectOption('suspended');
+      await expect
+        .poll(() => received.some((r) => r.event === 'registry.updated'), { timeout: 20_000 })
+        .toBe(true);
+      const update = JSON.parse(received.find((r) => r.event === 'registry.updated')!.body);
+      expect(update.data).toMatchObject({
+        title: 'Northwind Studio — business license',
+        status: 'suspended',
+      });
+      // Put it back (it now shows under "Suspended").
+      await admin.getByLabel('Status filter').selectOption('suspended');
+      await admin
+        .locator('tr', { hasText: 'Northwind Studio — business license' })
+        .getByRole('combobox')
+        .selectOption('active');
+
+      await row.getByRole('button', { name: 'Log' }).click();
+      await expect(
+        ivan.locator('tr', { hasText: 'registry.updated' }).filter({ hasText: 'Delivered' }).first(),
+      ).toBeVisible();
+    } finally {
+      await new Promise((done) => receiver.close(done));
+    }
   });
 
   test('settings: switching the theme applies instantly and is saved', async () => {

@@ -38,6 +38,7 @@ import { exchangeRoutes } from './modules/exchange';
 import { orgPaymentRoutes } from './modules/org-payments';
 import { invoiceScheduleRoutes } from './modules/invoice-schedules';
 import { payrollRoutes } from './modules/payroll';
+import { webhookRoutes } from './modules/webhooks';
 import {
   loadVirtualCurrencies,
   refreshVirtualCurrencies,
@@ -239,6 +240,7 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
       await api.register(supportRoutes);
       await api.register(storyRoutes);
       await api.register(apiKeyRoutes);
+      await api.register(webhookRoutes);
       await api.register(adminRoutes);
       await api.register(realtimeRoutes);
     },

@@ -63,7 +63,8 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
 - ✅ Virtual-country currencies: the holder of a virtual country issues one currency (a three-letter
   code outside ISO 4217) and controls its supply; balances anywhere can hold, send and invoice in it
   (0.2).
-- Webhooks for API consumers (new / changed registry entries, listing changes).
+- ✅ Webhooks for API consumers: new and changed registry entries and stock listings, signed with
+  HMAC-SHA256, retried with backoff, with a delivery log and a test button (0.2).
 
 ### Messaging
 

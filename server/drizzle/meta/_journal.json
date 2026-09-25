@@ -120,6 +120,13 @@
       "when": 1790332063196,
       "tag": "0016_virtual_currencies",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790332911262,
+      "tag": "0017_webhooks",
+      "breakpoints": true
     }
   ]
 }

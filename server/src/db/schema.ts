@@ -736,6 +736,57 @@ export const registryEntries = pgTable(
   ],
 );
 
+export const webhookEndpoints = pgTable('webhook_endpoints', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  url: text('url').notNull(),
+  description: varchar('description', { length: 200 }).notNull().default(''),
+  events: text('events').array().notNull(),
+  /** Sealed with the server secret (it signs deliveries, so it cannot be a hash). */
+  secret: text('secret').notNull(),
+  active: boolean('active').notNull().default(true),
+  failures: integer('failures').notNull().default(0),
+  disabledReason: text('disabled_reason'),
+  lastDeliveryAt: timestamp('last_delivery_at', { withTimezone: true }),
+  createdAt: createdAt(),
+});
+
+/** Something happened (a registry entry changed…): one row, delivered to every subscribed endpoint. */
+export const webhookEvents = pgTable('webhook_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  type: varchar('type', { length: 40 }).notNull(),
+  data: jsonb('data').$type<Record<string, unknown>>().notNull(),
+  createdAt: createdAt(),
+});
+
+export const webhookDeliveries = pgTable(
+  'webhook_deliveries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => webhookEvents.id, { onDelete: 'cascade' }),
+    endpointId: uuid('endpoint_id')
+      .notNull()
+      .references(() => webhookEndpoints.id, { onDelete: 'cascade' }),
+    status: varchar('status', { length: 16 }).$type<'pending' | 'delivered' | 'failed'>().notNull().default('pending'),
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    /** A worker holds the delivery while it sends it (so two never send it at once). */
+    lockedUntil: timestamp('locked_until', { withTimezone: true }),
+    responseStatus: integer('response_status'),
+    error: text('error'),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('webhook_deliveries_due_idx').on(t.status, t.nextAttemptAt),
+    index('webhook_deliveries_endpoint_idx').on(t.endpointId, t.createdAt),
+  ],
+);
+
 /** A currency issued by a virtual country (one per country); its holder issues and redeems it. */
 export const virtualCurrencies = pgTable('virtual_currencies', {
   code: char('code', { length: 3 }).primaryKey(),

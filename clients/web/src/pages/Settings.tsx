@@ -1,4 +1,12 @@
-import { getTheme, IDENTITY_DOCUMENTS, ROLE_LABELS, type FileInfo, type Session } from '@ovl/shared';
+import {
+  getTheme,
+  IDENTITY_DOCUMENTS,
+  ROLE_LABELS,
+  WEBHOOK_EVENTS,
+  type FileInfo,
+  type Session,
+  type WebhookEndpoint,
+} from '@ovl/shared';
 import {
   applyTheme,
   Avatar,
@@ -50,7 +58,7 @@ const SECTIONS: { id: Section; label: string; icon: IconName; hint: string }[] =
   { id: 'accounts', label: 'Accounts', icon: 'users', hint: 'Switch or add accounts' },
   { id: 'security', label: 'Security', icon: 'lock', hint: 'Password and sessions' },
   { id: 'identity', label: 'Identity', icon: 'shield', hint: 'Verification for company owners' },
-  { id: 'developer', label: 'Developer', icon: 'key', hint: 'API keys' },
+  { id: 'developer', label: 'Developer', icon: 'key', hint: 'API keys, webhooks' },
 ];
 
 /** The account's email: confirmed or not, send the link again, or change the address. */
@@ -1070,6 +1078,250 @@ function DeveloperSection() {
   );
 }
 
+const EVENT_LABELS: Record<(typeof WEBHOOK_EVENTS)[number], string> = {
+  'registry.created': 'New registry entries',
+  'registry.updated': 'Registry changes (status, renewal, expiry)',
+  'listing.created': 'New stock listings',
+  'listing.updated': 'Listing changes (price, status)',
+};
+
+/** Push registry and stock changes to your own service. */
+function WebhooksCard() {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const hooks = useQuery({ queryKey: ['webhooks'], queryFn: api.webhooks.list });
+  const [form, setForm] = useState({
+    url: '',
+    description: '',
+    events: ['registry.created', 'registry.updated'] as string[],
+  });
+  const [secret, setSecret] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['webhooks'] });
+  const create = useMutation({
+    mutationFn: () =>
+      api.webhooks.create({
+        url: form.url,
+        description: form.description || undefined,
+        events: form.events as WebhookEndpoint['events'],
+      }),
+    onSuccess: (w) => {
+      setSecret(w.secret);
+      setForm({ ...form, url: '', description: '' });
+      refresh();
+    },
+  });
+  const act = useMutation({
+    mutationFn: async ({
+      w,
+      action,
+    }: {
+      w: WebhookEndpoint;
+      action: 'test' | 'toggle' | 'rotate' | 'delete';
+    }) => {
+      if (action === 'test') {
+        const d = await api.webhooks.test(w.id);
+        if (d.status === 'delivered') toast.success(`Ping delivered (HTTP ${d.responseStatus})`);
+        else toast.error(new Error(`Ping failed: ${d.error ?? 'no answer'}`));
+      } else if (action === 'toggle') await api.webhooks.update(w.id, { active: !w.active });
+      else if (action === 'rotate') setSecret((await api.webhooks.rotateSecret(w.id)).secret);
+      else await api.webhooks.remove(w.id);
+    },
+    onSuccess: () => {
+      refresh();
+      queryClient.invalidateQueries({ queryKey: ['webhookDeliveries'] });
+    },
+  });
+  const deliveries = useQuery({
+    queryKey: ['webhookDeliveries', open],
+    queryFn: () => api.webhooks.deliveries(open!),
+    enabled: !!open,
+  });
+  const redeliver = useMutation({
+    mutationFn: (id: string) => api.webhooks.redeliver(open!, id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['webhookDeliveries'] }),
+  });
+  return (
+    <div className="card stack">
+      <h3>Webhooks</h3>
+      <p className="small muted">
+        We POST a JSON event to your URL when the registry or the stock exchange changes. Check the{' '}
+        <code>X-OVL-Signature</code> header with your secret (the SDK has <code>verifyWebhookSignature</code>
+        ); failed deliveries are retried for about 15 hours.
+      </p>
+      <AnimatePresence>
+        {secret && (
+          <motion.div
+            className="alert success stack-sm"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <div className="grow stack-sm">
+              <b>Copy the signing secret now — it is shown only once:</b>
+              <code style={{ wordBreak: 'break-all' }}>{secret}</code>
+            </div>
+            <button
+              className="btn sm"
+              onClick={() =>
+                navigator.clipboard?.writeText(secret).then(() => toast.success('Secret copied'))
+              }
+            >
+              <Icon name="copy" size={14} /> Copy
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <form
+        className="stack-sm"
+        onSubmit={(e) => {
+          e.preventDefault();
+          create.mutate();
+        }}
+      >
+        <div className="row-wrap">
+          <input
+            className="input"
+            style={{ flex: '2 1 280px' }}
+            type="url"
+            placeholder="https://example.com/ovl-webhook"
+            aria-label="Webhook URL"
+            value={form.url}
+            required
+            onChange={(e) => setForm({ ...form, url: e.target.value })}
+          />
+          <input
+            className="input"
+            style={{ flex: '1 1 180px' }}
+            placeholder="Description (optional)"
+            aria-label="Webhook description"
+            value={form.description}
+            maxLength={200}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+          />
+        </div>
+        <div className="row-wrap">
+          {WEBHOOK_EVENTS.map((ev) => (
+            <label key={ev} className="row small" style={{ gap: 6 }}>
+              <input
+                type="checkbox"
+                checked={form.events.includes(ev)}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    events: e.target.checked ? [...form.events, ev] : form.events.filter((x) => x !== ev),
+                  })
+                }
+              />
+              {EVENT_LABELS[ev]}
+            </label>
+          ))}
+        </div>
+        <div>
+          <button className="btn primary" disabled={create.isPending || !form.events.length}>
+            Add webhook
+          </button>
+        </div>
+      </form>
+      <ErrorAlert error={create.error ?? act.error ?? redeliver.error} />
+      <div className="list">
+        {hooks.data?.map((w) => (
+          <div key={w.id} className="stack-sm">
+            <div className="list-item" style={{ cursor: 'default' }}>
+              <span className="kpi-icon">
+                <Icon name="zap" size={16} />
+              </span>
+              <div className="grow" style={{ minWidth: 0 }}>
+                <div className="bold ellipsis">{w.description || w.url}</div>
+                <div className="small muted ellipsis">
+                  {w.description && `${w.url} · `}
+                  {w.events.length} {w.events.length === 1 ? 'event' : 'events'}
+                  {w.lastDeliveryAt && ` · last delivery ${formatDate(w.lastDeliveryAt)}`}
+                  {w.failures > 0 && ` · ${w.failures} failed in a row`}
+                </div>
+                {w.disabledReason && <div className="small neg">{w.disabledReason}</div>}
+              </div>
+              <span className={`badge ${w.active ? 'ok' : ''}`}>{w.active ? 'Active' : 'Off'}</span>
+              <div className="row" style={{ gap: 4 }}>
+                <button
+                  className="btn sm ghost"
+                  disabled={act.isPending}
+                  onClick={() => act.mutate({ w, action: 'test' })}
+                >
+                  Test
+                </button>
+                <button className="btn sm ghost" onClick={() => setOpen(open === w.id ? null : w.id)}>
+                  Log
+                </button>
+                <button
+                  className="btn sm ghost"
+                  disabled={act.isPending}
+                  onClick={() => act.mutate({ w, action: 'toggle' })}
+                >
+                  {w.active ? 'Turn off' : 'Turn on'}
+                </button>
+                <button
+                  className="btn sm ghost"
+                  disabled={act.isPending}
+                  onClick={() => act.mutate({ w, action: 'rotate' })}
+                >
+                  New secret
+                </button>
+                <button
+                  className="btn sm ghost"
+                  aria-label={`Delete webhook ${w.url}`}
+                  disabled={act.isPending}
+                  onClick={() => act.mutate({ w, action: 'delete' })}
+                >
+                  <Icon name="trash" size={14} />
+                </button>
+              </div>
+            </div>
+            {open === w.id && (
+              <div className="table-wrap">
+                <table className="table">
+                  <tbody>
+                    {deliveries.data?.map((d) => (
+                      <tr key={d.id}>
+                        <td className="small nowrap">{formatDate(d.createdAt)}</td>
+                        <td>
+                          <code className="small">{d.event}</code>
+                        </td>
+                        <td>
+                          <StatusBadge status={d.status} />
+                        </td>
+                        <td className="small muted">
+                          {d.responseStatus ? `HTTP ${d.responseStatus}` : ''}{' '}
+                          {d.error && d.error !== `HTTP ${d.responseStatus}` ? d.error : ''}
+                          {d.nextAttemptAt &&
+                            (d.attempts > 0
+                              ? ` · retry ${formatDate(d.nextAttemptAt)}`
+                              : 'Waiting to be sent')}
+                        </td>
+                        <td className="right">
+                          {d.status !== 'delivered' && (
+                            <button
+                              className="btn sm ghost"
+                              disabled={redeliver.isPending}
+                              onClick={() => redeliver.mutate(d.id)}
+                            >
+                              Send again
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {deliveries.data?.length === 0 && <p className="small muted">Nothing delivered yet.</p>}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function SettingsPage() {
   const [params, setParams] = useSearchParams();
   const section = (SECTIONS.find((s) => s.id === params.get('section'))?.id ?? 'profile') as Section;
@@ -1118,7 +1370,12 @@ export function SettingsPage() {
             {section === 'accounts' && <AccountsSection />}
             {section === 'security' && <SecuritySection />}
             {section === 'identity' && <IdentitySection />}
-            {section === 'developer' && <DeveloperSection />}
+            {section === 'developer' && (
+              <div className="stack-lg">
+                <DeveloperSection />
+                <WebhooksCard />
+              </div>
+            )}
           </motion.div>
         </AnimatePresence>
       </div>

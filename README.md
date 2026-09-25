@@ -71,7 +71,7 @@ Android, iOS, macOS and Windows.
   more (virtual only). Approval: **moderation → council vote (quorum) → owner confirmation**, then the
   license is rolled out into the public registry with a registry number.
 - **Public registry** — licenses, organizations and virtual countries; searchable in the app and via
-  the public API (`X-API-Key` developer keys for other services). Every entry has a PDF certificate
+  the public API (`X-API-Key` developer keys and signed webhooks for other services). Every entry has a PDF certificate
   whose QR code opens a public verification page. Licences expire after a term and are renewed
   through moderation; virtual countries can issue their own currency.
 - **Service stories** — short-lived announcements that council members, admins and the owner publish
@@ -175,6 +175,7 @@ Server environment variables (see `server/src/config.ts`):
 | `CASH_FOUR_EYES_AMOUNT`                                                | `10000`                 | Cash operations of at least this amount need a second finance manager (`0`: off)                                                            |
 | `SCHEDULER_ENABLED`                                                    | `true`                  | Background jobs such as recurring invoices; every instance may run them, they share the work                                                |
 | `LICENSE_TERM_MONTHS`                                                  | `12`                    | Licences and virtual countries run this long before they need a renewal (`0`: no expiry)                                                    |
+| `WEBHOOK_ALLOW_PRIVATE_NETWORKS`                                       | `false` in production   | Let webhooks call private and loopback addresses (on by default outside production)                                                         |
 | `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` / `OIDC_LABEL` | —                       | Single sign-on for the admin panel (redirect URI: `PUBLIC_ADMIN_URL/`)                                                                      |
 | `REQUIRE_VERIFIED_EMAIL`                                               | `true`                  | Applications need a confirmed email address                                                                                                 |
 | `STOCK_FREEZE_PERCENT`                                                 | `30`                    | Frozen share of each investment                                                                                                             |

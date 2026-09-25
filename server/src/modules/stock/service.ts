@@ -4,6 +4,7 @@ import type { Db } from '../../db/client';
 import { fundLocks, investments, organizations, stockListings, stockPriceHistory } from '../../db/schema';
 import { badRequest, conflict, notFound } from '../../lib/errors';
 import { iso } from '../../lib/mappers';
+import { emitEvent } from '../../lib/webhooks';
 import { credit, debit, getOrCreateWallet, lockWallet } from '../wallets/service';
 
 export type ListingRow = typeof stockListings.$inferSelect;
@@ -93,6 +94,7 @@ export async function createListing(
     })
     .returning();
   await db.insert(stockPriceHistory).values({ listingId: listing!.id, price: input.sharePrice });
+  await emitEvent(db, 'listing.created', (await listingDtos(db, [listing!]))[0]! as unknown as Record<string, unknown>);
   return listing!;
 }
 

@@ -20,7 +20,7 @@ import {
 import { conflict } from '../../lib/errors';
 import { slugify } from '../../lib/slug';
 import { createChannel } from '../chats/service';
-import { issueRegistryEntry, licenceExpiry } from '../registry';
+import { emitRegistryEvent, issueRegistryEntry, licenceExpiry } from '../registry';
 import { changeRole } from '../roles';
 import { createListing } from '../stock/service';
 import { getOrCreateWallet } from '../wallets/service';
@@ -173,6 +173,7 @@ export async function applyApprovedApplication(
         .update(registryEntries)
         .set({ status: 'active', expiresAt, reminderStage: 0, updatedAt: new Date() })
         .where(eq(registryEntries.id, entry.id));
+      await emitRegistryEvent(db, 'registry.updated', entry.id);
       return {
         result: {
           registryNumber: entry.number,

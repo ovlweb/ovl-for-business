@@ -28,6 +28,7 @@ import { iso, isoOrNull } from '../lib/mappers';
 import { actionEmail } from '../lib/mailer';
 import { certificatePdf, pdfDate } from '../lib/pdf';
 import { apiKeyGuard, publicRouteConfig } from '../lib/public-api';
+import { emitEvent } from '../lib/webhooks';
 import { currentUser } from '../plugins/auth';
 
 type RegistryKind = (typeof registryEntries.$inferInsert)['kind'];
@@ -82,7 +83,14 @@ export async function issueRegistryEntry(db: Db, input: IssueRegistryEntry) {
       expiresAt: input.expiresAt ?? null,
     })
     .returning();
+  await emitRegistryEvent(db, 'registry.created', entry!.id);
   return entry!;
+}
+
+/** Tell webhook subscribers about a registry entry (call inside the transaction that changed it). */
+export async function emitRegistryEvent(db: Db, type: 'registry.created' | 'registry.updated', id: string) {
+  const entry = await getRegistryEntry(db, id);
+  if (entry) await emitEvent(db, type, entry as unknown as Record<string, unknown>);
 }
 
 const registrySelect = {
@@ -214,6 +222,7 @@ export async function runLicenceExpiry(app: FastifyInstance, now = new Date()) {
           .update(registryEntries)
           .set({ status: 'expired', updatedAt: now })
           .where(eq(registryEntries.id, entry.id));
+        await emitRegistryEvent(tx, 'registry.updated', entry.id);
         return { entry, kind: 'expired' as const };
       }
       const stage = entry.expiresAt!.getTime() - now.getTime() <= 7 * day ? 2 : 1;

@@ -63,6 +63,7 @@ export function RegistryPage() {
         />
         <select
           className="select"
+          aria-label="Status filter"
           value={status}
           onChange={(e) => {
             setStatus(e.target.value as RegistryEntry['status']);
