@@ -94,7 +94,11 @@ export async function createListing(
     })
     .returning();
   await db.insert(stockPriceHistory).values({ listingId: listing!.id, price: input.sharePrice });
-  await emitEvent(db, 'listing.created', (await listingDtos(db, [listing!]))[0]! as unknown as Record<string, unknown>);
+  await emitEvent(
+    db,
+    'listing.created',
+    (await listingDtos(db, [listing!]))[0]! as unknown as Record<string, unknown>,
+  );
   return listing!;
 }
 

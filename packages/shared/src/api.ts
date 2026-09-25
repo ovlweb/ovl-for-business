@@ -883,7 +883,12 @@ export type RegistryEntry = z.infer<typeof registryEntrySchema>;
 // ---------------------------------------------------------------------------
 
 /** What an endpoint can subscribe to; "ping" is sent by the test button only. */
-export const WEBHOOK_EVENTS = ['registry.created', 'registry.updated', 'listing.created', 'listing.updated'] as const;
+export const WEBHOOK_EVENTS = [
+  'registry.created',
+  'registry.updated',
+  'listing.created',
+  'listing.updated',
+] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number] | 'ping';
 
 export const webhookEndpointSchema = z.object({

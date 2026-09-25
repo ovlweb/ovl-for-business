@@ -114,7 +114,8 @@ export async function webhookRoutes(fastify: FastifyInstance) {
           .select({ n: count() })
           .from(webhookEndpoints)
           .where(eq(webhookEndpoints.userId, me.id));
-        if ((existing?.n ?? 0) >= MAX_ENDPOINTS) throw conflict(`You can have at most ${MAX_ENDPOINTS} webhooks`);
+        if ((existing?.n ?? 0) >= MAX_ENDPOINTS)
+          throw conflict(`You can have at most ${MAX_ENDPOINTS} webhooks`);
         await checkUrl(req.body.url);
         const secret = newSecret();
         const [row] = await app.db
@@ -153,7 +154,9 @@ export async function webhookRoutes(fastify: FastifyInstance) {
             ...(url ? { url } : {}),
             ...(events ? { events: [...new Set(events)] } : {}),
             ...(description !== undefined ? { description } : {}),
-            ...(active !== undefined ? { active, ...(active ? { failures: 0, disabledReason: null } : {}) } : {}),
+            ...(active !== undefined
+              ? { active, ...(active ? { failures: 0, disabledReason: null } : {}) }
+              : {}),
           })
           .where(eq(webhookEndpoints.id, req.params.id))
           .returning();
@@ -251,7 +254,12 @@ export async function webhookRoutes(fastify: FastifyInstance) {
         const [row] = await app.db
           .update(webhookDeliveries)
           .set({ status: 'pending', attempts: 0, nextAttemptAt: new Date(), lockedUntil: null, error: null })
-          .where(and(eq(webhookDeliveries.id, req.params.deliveryId), eq(webhookDeliveries.endpointId, req.params.id)))
+          .where(
+            and(
+              eq(webhookDeliveries.id, req.params.deliveryId),
+              eq(webhookDeliveries.endpointId, req.params.id),
+            ),
+          )
           .returning();
         if (!row) throw notFound('Delivery');
         await deliverNow(app, row.id);

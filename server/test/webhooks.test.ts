@@ -70,14 +70,19 @@ describe('webhooks', () => {
     webhook = created.body;
     const list = await api.get('/webhooks', dev);
     expect(list.body).toEqual([
-      expect.objectContaining({ id: webhook.id, url, active: true, events: ['registry.created', 'registry.updated'] }),
+      expect.objectContaining({
+        id: webhook.id,
+        url,
+        active: true,
+        events: ['registry.created', 'registry.updated'],
+      }),
     ]);
     expect(list.body[0].secret).toBeUndefined();
     expect((await api.get('/webhooks', other)).body).toEqual([]);
     expect((await api.patch(`/webhooks/${webhook.id}`, other, { active: false })).status).toBe(404);
-    expect((await api.post('/webhooks', dev, { url: 'ftp://example.com', events: ['registry.created'] })).status).toBe(
-      400,
-    );
+    expect(
+      (await api.post('/webhooks', dev, { url: 'ftp://example.com', events: ['registry.created'] })).status,
+    ).toBe(400);
   });
 
   it('the test button sends a signed ping', async () => {
@@ -92,7 +97,9 @@ describe('webhooks', () => {
     expect(Math.abs(t - Date.now() / 1000)).toBeLessThan(60);
     // What consumers do with the SDK.
     expect(await verifyWebhookSignature(webhook.secret, signature, got.body)).toBe(true);
-    expect(await verifyWebhookSignature(webhook.secret, signature, got.body.replace('Hello', 'Hullo'))).toBe(false);
+    expect(await verifyWebhookSignature(webhook.secret, signature, got.body.replace('Hello', 'Hullo'))).toBe(
+      false,
+    );
     expect(await verifyWebhookSignature('whsec_wrong', signature, got.body)).toBe(false);
     expect(await verifyWebhookSignature(webhook.secret, signature, got.body, -1)).toBe(false);
   });
@@ -106,7 +113,10 @@ describe('webhooks', () => {
       holder: { type: 'user', id: dev.id },
     });
     expect(await deliverWebhooks(app)).toBe(1);
-    expect(parsed()).toMatchObject({ type: 'registry.created', data: { id: entry.id, number: entry.number } });
+    expect(parsed()).toMatchObject({
+      type: 'registry.created',
+      data: { id: entry.id, number: entry.number },
+    });
     expect(last().headers['x-ovl-event']).toBe('registry.created');
 
     await api.patch(`/admin/registry/${entry.id}`, owner, { status: 'suspended' });
@@ -126,7 +136,13 @@ describe('webhooks', () => {
     });
     expect(await deliverWebhooks(app)).toBe(0);
     const [failed] = (await api.get(`/webhooks/${webhook.id}/deliveries`, dev)).body;
-    expect(failed).toMatchObject({ event: 'registry.created', status: 'pending', attempts: 1, responseStatus: 500, error: 'HTTP 500' });
+    expect(failed).toMatchObject({
+      event: 'registry.created',
+      status: 'pending',
+      attempts: 1,
+      responseStatus: 500,
+      error: 'HTTP 500',
+    });
     const retryIn = new Date(failed.nextAttemptAt).getTime() - Date.now();
     expect(retryIn).toBeGreaterThan(50_000);
     expect(retryIn).toBeLessThan(70_000);

@@ -630,7 +630,11 @@ export async function adminRoutes(fastify: FastifyInstance) {
         if (price !== undefined && price !== listing.sharePrice) {
           await tx.insert(stockPriceHistory).values({ listingId: listing.id, price });
         }
-        await emitEvent(tx, 'listing.updated', (await listingDtos(tx, [row!]))[0]! as unknown as Record<string, unknown>);
+        await emitEvent(
+          tx,
+          'listing.updated',
+          (await listingDtos(tx, [row!]))[0]! as unknown as Record<string, unknown>,
+        );
         await audit(tx, {
           actorId: me.id,
           action: 'stock.listing_update',

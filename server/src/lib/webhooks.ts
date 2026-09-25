@@ -151,7 +151,8 @@ async function send(app: FastifyInstance, { delivery, endpoint, event }: Claimed
       lockedUntil: null,
       status: ok ? 'delivered' : finalFailure ? 'failed' : 'pending',
       deliveredAt: ok ? new Date() : null,
-      nextAttemptAt: ok || finalFailure ? delivery.nextAttemptAt : new Date(Date.now() + BACKOFF_MS[attempts - 1]!),
+      nextAttemptAt:
+        ok || finalFailure ? delivery.nextAttemptAt : new Date(Date.now() + BACKOFF_MS[attempts - 1]!),
     })
     .where(eq(webhookDeliveries.id, delivery.id));
   if (ok) {

@@ -771,7 +771,10 @@ export const webhookDeliveries = pgTable(
     endpointId: uuid('endpoint_id')
       .notNull()
       .references(() => webhookEndpoints.id, { onDelete: 'cascade' }),
-    status: varchar('status', { length: 16 }).$type<'pending' | 'delivered' | 'failed'>().notNull().default('pending'),
+    status: varchar('status', { length: 16 })
+      .$type<'pending' | 'delivered' | 'failed'>()
+      .notNull()
+      .default('pending'),
     attempts: integer('attempts').notNull().default(0),
     nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
     /** A worker holds the delivery while it sends it (so two never send it at once). */

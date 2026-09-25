@@ -14,10 +14,16 @@ export async function verifyWebhookSignature(
   const timestamp = Number(match[1]);
   if (Math.abs(Date.now() / 1000 - timestamp) > toleranceSeconds) return false;
   const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, [
-    'sign',
-  ]);
-  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(`${timestamp}.${rawBody}`)));
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const mac = new Uint8Array(
+    await crypto.subtle.sign('HMAC', key, encoder.encode(`${timestamp}.${rawBody}`)),
+  );
   const expected = [...mac].map((b) => b.toString(16).padStart(2, '0')).join('');
   // Constant-time comparison.
   let diff = expected.length ^ match[2]!.length;
