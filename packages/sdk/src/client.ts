@@ -50,7 +50,11 @@ import type {
   Passkey,
   PaymentApproval,
   MyStockLimits,
+  NotificationPage,
   Proposal,
+  PushConfig,
+  PushDevice,
+  PushSubscriptionInput,
   ReadReceipt,
   RiskDisclosure,
   Shareholder,
@@ -605,6 +609,24 @@ export class OvlClient {
       this.get<Message[]>(`/chats/${id}/messages/${postId}/comments`, query),
     comment: (id: string, postId: number, body: string, fileIds?: string[]) =>
       this.post<Message>(`/chats/${id}/messages/${postId}/comments`, { body, fileIds }),
+  };
+
+  /** Your notification center, and the devices that receive push notifications. */
+  notifications = {
+    list: (query?: { before?: string; unread?: boolean; limit?: number }) =>
+      this.get<NotificationPage>('/notifications', {
+        ...query,
+        unread: query?.unread === undefined ? undefined : String(query.unread),
+      }),
+    /** Mark these (or, without ids, all) as read. */
+    read: (ids?: string[]) => this.post<{ unreadCount: number }>('/notifications/read', { ids }),
+    remove: (id: string) => this.del(`/notifications/${id}`),
+    pushConfig: () => this.get<PushConfig>('/push/config'),
+    devices: () => this.get<PushDevice[]>('/me/push-subscriptions'),
+    /** Register this device: a browser PushSubscription (toJSON()) or an FCM / APNs token. */
+    addDevice: (input: PushSubscriptionInput) => this.post<PushDevice>('/me/push-subscriptions', input),
+    removeDevice: (id: string) => this.del(`/me/push-subscriptions/${id}`),
+    test: () => this.post<{ devices: number; delivered: number }>('/me/push-subscriptions/test'),
   };
 
   support = {

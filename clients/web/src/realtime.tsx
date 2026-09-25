@@ -71,6 +71,16 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
           }
           break;
         }
+        case 'notification.created': {
+          queryClient.invalidateQueries({ queryKey: ['notifications'] });
+          const n = event.notification;
+          // Messages already announce themselves (mentions included); everything else does here.
+          if (!['mention', 'reply', 'comment'].includes(n.type))
+            showNotification(n.title, n.body, `n-${n.id}`, () => {
+              location.hash = n.link ?? '/notifications';
+            });
+          break;
+        }
         case 'chat.updated':
           queryClient.invalidateQueries({ queryKey: ['chats'] });
           queryClient.invalidateQueries({ queryKey: ['chat', event.chatId] });

@@ -19,6 +19,7 @@ import 'screens/shell.dart';
 import 'screens/splash.dart';
 import 'screens/support.dart';
 import 'screens/invoices.dart';
+import 'screens/notifications.dart';
 import 'screens/wallet.dart';
 import 'state/session.dart';
 import 'theme/theme_controller.dart';
@@ -125,6 +126,13 @@ final sections = <Section>[
     navIcons['contacts']!,
     'Workspace',
     GoRoute(path: '/contacts', builder: (_, _) => const ContactsScreen()),
+  ),
+  Section(
+    '/notifications',
+    'Notifications',
+    navIcons['notifications']!,
+    'Workspace',
+    GoRoute(path: '/notifications', builder: (_, _) => const NotificationsScreen()),
   ),
   Section(
     '/wallet',

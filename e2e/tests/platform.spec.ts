@@ -133,6 +133,13 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(maria.getByText('Available: 380.00 USD')).toBeVisible();
     await ivan.goto('./#/wallet');
     await expect(ivan.getByText('Transfer from @maria — Share of the registration fee')).toBeVisible();
+    // The notification center counts it and leads back to the wallet.
+    const nav = ivan.getByRole('navigation', { name: 'Main' });
+    await expect(nav.getByRole('link', { name: /Notifications\s*1/ })).toBeVisible();
+    await ivan.goto('./#/notifications');
+    await ivan.locator('.notification-open', { hasText: 'Money received: 120.00 USD' }).click();
+    await expect(ivan).toHaveURL(/#\/wallet$/);
+    await expect(nav.getByRole('link', { name: 'Notifications', exact: true })).toBeVisible();
   });
 
   test('a payout request holds the money until the cash desk pays it out; statement export', async () => {

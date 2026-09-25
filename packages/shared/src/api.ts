@@ -84,6 +84,8 @@ export const preferencesSchema = z.object({
   statementEmails: z.boolean().optional(),
   /** Let others see when you read their messages (and see theirs); on unless false. */
   readReceipts: z.boolean().optional(),
+  /** Push new direct and group messages to your devices while you are away; on unless false. */
+  pushChats: z.boolean().optional(),
 });
 export type Preferences = z.infer<typeof preferencesSchema>;
 
@@ -1534,6 +1536,80 @@ export const adminStatsSchema = z.object({
 export type AdminStats = z.infer<typeof adminStatsSchema>;
 
 // ---------------------------------------------------------------------------
+// Notification center and push notifications
+// ---------------------------------------------------------------------------
+
+export const NOTIFICATION_TYPES = [
+  'mention',
+  'reply',
+  'comment',
+  'money',
+  'invoice',
+  'payment_approval',
+  'application',
+  'identity',
+  'cash_request',
+  'licence',
+  'test',
+] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+export const notificationSchema = z.object({
+  id: uuid,
+  type: z.enum(NOTIFICATION_TYPES),
+  title: z.string(),
+  body: z.string(),
+  link: z.string().nullable().describe('Where it leads in the apps, e.g. /chats/<id> or /invoices'),
+  read: z.boolean(),
+  createdAt: isoDate,
+});
+export type Notification = z.infer<typeof notificationSchema>;
+
+export const notificationPageSchema = z.object({
+  items: z.array(notificationSchema),
+  unreadCount: z.number().int(),
+});
+export type NotificationPage = z.infer<typeof notificationPageSchema>;
+
+export const notificationsQuery = z.object({
+  before: isoDate.optional().describe('Older than this (the createdAt of the last one you have)'),
+  unread: z.enum(['true', 'false']).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+});
+
+export const pushConfigSchema = z.object({
+  webPushKey: z
+    .string()
+    .nullable()
+    .describe('VAPID public key for PushManager.subscribe (applicationServerKey)'),
+  fcm: z.boolean().describe('Firebase Cloud Messaging is configured'),
+  apns: z.boolean().describe('Apple Push Notification service is configured'),
+});
+export type PushConfig = z.infer<typeof pushConfigSchema>;
+
+const deviceLabel = z.string().trim().max(100).optional().describe('Shown in your device list');
+export const pushSubscriptionInputSchema = z.union([
+  z.object({
+    kind: z.literal('webpush'),
+    endpoint: z.url().max(2000),
+    keys: z.object({ p256dh: z.string().min(20).max(200), auth: z.string().min(8).max(100) }),
+    label: deviceLabel,
+  }),
+  z.object({ kind: z.literal('fcm'), token: z.string().min(16).max(4096), label: deviceLabel }),
+  z.object({ kind: z.literal('apns'), token: z.string().regex(/^[0-9a-fA-F]{32,200}$/), label: deviceLabel }),
+]);
+export type PushSubscriptionInput = z.infer<typeof pushSubscriptionInputSchema>;
+
+export const pushDeviceSchema = z.object({
+  id: uuid,
+  kind: z.enum(['webpush', 'fcm', 'apns']),
+  label: z.string(),
+  createdAt: isoDate,
+  lastUsedAt: isoDate.nullable(),
+});
+export type PushDevice = z.infer<typeof pushDeviceSchema>;
+
+// ---------------------------------------------------------------------------
 // Realtime (WebSocket /api/v1/realtime?token=ACCESS_TOKEN)
 // ---------------------------------------------------------------------------
 
@@ -1545,6 +1621,7 @@ export type RealtimeEvent =
   | { type: 'chat.removed'; chatId: string }
   | { type: 'typing'; chatId: string; userId: string }
   | { type: 'chat.read'; chatId: string; userId: string; messageId: number }
+  | { type: 'notification.created'; notification: Notification }
   | { type: 'application.updated'; applicationId: string; status: string; stageIndex: number }
   | { type: 'story.created'; storyId: string }
   | { type: 'wallet.updated'; walletId: string }

@@ -262,6 +262,10 @@ export function Layout() {
     queryFn: () => api.invoices.list({ direction: 'incoming', status: 'open' }),
   });
   const unread = chats.data?.reduce((sum, c) => sum + c.unreadCount, 0) ?? 0;
+  const inbox = useQuery({
+    queryKey: ['notifications', 'count'],
+    queryFn: () => api.notifications.list({ unread: true, limit: 1 }),
+  });
 
   useEffect(() => {
     document.title = unread ? `(${unread}) OVL For Business` : 'OVL For Business';
@@ -285,6 +289,7 @@ export function Layout() {
         { to: '/home', icon: 'home', label: 'Home', primary: true },
         { to: '/chats', icon: 'chat', label: 'Chats', count: unread, primary: true },
         { to: '/contacts', icon: 'users', label: 'Contacts' },
+        { to: '/notifications', icon: 'bell', label: 'Notifications', count: inbox.data?.unreadCount },
       ],
     },
     {

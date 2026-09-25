@@ -29,6 +29,7 @@ import {
   lockWallet,
   type WalletRow,
 } from './wallets/service';
+import { queueNotification } from '../lib/notify';
 
 /** Pending payouts hold the money until a manager pays it out or declines. */
 const WITHDRAWAL_HOLD = 'withdrawal_request';
@@ -190,6 +191,18 @@ export async function cashRoutes(fastify: FastifyInstance) {
   const announce = async (walletId: string, requestId: string, status: string) => {
     const wallet = await loadWallet(walletId);
     const audience = await walletAudience(app.db, wallet);
+    if (status === 'completed' || status === 'declined') {
+      const [request] = await app.db.select().from(cashRequests).where(eq(cashRequests.id, requestId));
+      if (request) {
+        const what = `${request.type === 'deposit' ? 'Deposit' : 'Payout'} of ${formatAmount(request.amount, request.currency)} ${request.currency}`;
+        await queueNotification(app.db, [request.requestedBy], {
+          type: 'cash_request',
+          title: `${what} ${status === 'completed' ? 'completed' : 'declined'}`,
+          body: status === 'declined' ? (request.declineReason ?? '') : 'Your balance is up to date.',
+          link: '/wallet',
+        });
+      }
+    }
     app.hub.sendToUsers(audience, { type: 'cash_request.updated', requestId, walletId, status });
     app.hub.sendToUsers(audience, { type: 'wallet.updated', walletId });
   };

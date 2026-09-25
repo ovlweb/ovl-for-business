@@ -102,6 +102,7 @@ class Preferences {
     this.goals = const [],
     this.statementEmails = false,
     this.readReceipts = true,
+    this.pushChats = true,
   });
 
   factory Preferences.fromJson(Json? j) => Preferences(
@@ -110,6 +111,7 @@ class Preferences {
     goals: List<String>.from(j?['goals'] as List? ?? const []),
     statementEmails: j?['statementEmails'] as bool? ?? false,
     readReceipts: j?['readReceipts'] as bool? ?? true,
+    pushChats: j?['pushChats'] as bool? ?? true,
   );
 
   final String? theme;
@@ -121,6 +123,9 @@ class Preferences {
 
   /// Share (and see) read receipts in direct chats and groups.
   final bool readReceipts;
+
+  /// Push new direct and group messages while away.
+  final bool pushChats;
 }
 
 class Me extends UserSummary {
@@ -1270,4 +1275,37 @@ class RealtimeEvent {
   final String? userId;
   final int? messageId;
   final String? status;
+}
+
+/// An entry in the notification center.
+class AppNotification {
+  AppNotification.fromJson(Json j)
+    : id = j['id'] as String,
+      type = j['type'] as String,
+      title = j['title'] as String,
+      body = j['body'] as String? ?? '',
+      link = j['link'] as String?,
+      read = j['read'] as bool? ?? false,
+      createdAt = _date(j['createdAt']);
+
+  final String id;
+
+  /// mention, reply, comment, money, invoice, payment_approval, application, identity, cash_request, licence, test
+  final String type;
+  final String title;
+  final String body;
+
+  /// App route, e.g. `/invoices` or `/chats/<id>?message=<id>`.
+  final String? link;
+  final bool read;
+  final DateTime createdAt;
+}
+
+class NotificationPage {
+  NotificationPage.fromJson(Json j)
+    : items = _list(j['items'], AppNotification.fromJson),
+      unreadCount = j['unreadCount'] as int;
+
+  final List<AppNotification> items;
+  final int unreadCount;
 }

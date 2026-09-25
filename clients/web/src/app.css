@@ -2033,3 +2033,50 @@ kbd {
   background: var(--danger-soft, rgba(239, 68, 68, 0.12));
   color: var(--danger, #b91c1c);
 }
+
+/* ---------- notification center ---------- */
+
+.notification-list {
+  display: flex;
+  flex-direction: column;
+}
+.notification-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.notification-item:last-child {
+  border-bottom: 0;
+}
+.notification-item.unread {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+.notification-item.unread .bold::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: 1px;
+}
+.notification-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.notification-open:hover .bold {
+  text-decoration: underline;
+}

@@ -72,7 +72,9 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
 
 - ✅ Attachments (images, documents), message search, mentions, reactions, read receipts (0.2;
   the apps show attachments, sending files is on the web).
-- OS push notifications (Web Push, FCM, APNs) and a notification center (in-app banners exist).
+- ✅ OS push notifications (Web Push, FCM, APNs) and a notification center (0.2; the browser
+  subscribes itself, the apps register FCM / APNs tokens with `POST /me/push-subscriptions` once a
+  Firebase / Apple project is configured for them).
 - ✅ Channel posts with comments (0.2).
 
 ### Platform

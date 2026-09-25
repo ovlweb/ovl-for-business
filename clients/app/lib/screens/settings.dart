@@ -380,6 +380,20 @@ class _EmailState extends State<_Email> {
           ),
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
+            value: me.preferences.pushChats,
+            title: const Text('Push new messages'),
+            subtitle: const Text('Also push direct and group messages to your devices while you are away.'),
+            onChanged: (on) => session
+                .updatePreferences({'pushChats': on})
+                .then((_) {
+                  if (context.mounted) toast(context, on ? 'Message pushes on' : 'Message pushes off');
+                })
+                .catchError((Object e) {
+                  if (context.mounted) toast(context, errorText(e), error: true);
+                }),
+          ),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
             value: me.preferences.readReceipts,
             title: const Text('Read receipts'),
             subtitle: const Text(

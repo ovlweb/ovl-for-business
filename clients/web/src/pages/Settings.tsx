@@ -47,6 +47,7 @@ import {
   notificationsEnabled,
   notificationsSupported,
 } from '../notifications';
+import { disablePush, enablePush, pushDeviceId, pushSupported } from '../push';
 
 type Section =
   'profile' | 'appearance' | 'notifications' | 'accounts' | 'security' | 'identity' | 'developer';
@@ -54,7 +55,7 @@ type Section =
 const SECTIONS: { id: Section; label: string; icon: IconName; hint: string }[] = [
   { id: 'profile', label: 'Profile', icon: 'user', hint: 'Name, bio and avatar' },
   { id: 'appearance', label: 'Appearance', icon: 'palette', hint: 'Themes' },
-  { id: 'notifications', label: 'Notifications', icon: 'bell', hint: 'Background alerts' },
+  { id: 'notifications', label: 'Notifications', icon: 'bell', hint: 'Push and background alerts' },
   { id: 'accounts', label: 'Accounts', icon: 'users', hint: 'Switch or add accounts' },
   { id: 'security', label: 'Security', icon: 'lock', hint: 'Password and sessions' },
   { id: 'identity', label: 'Identity', icon: 'shield', hint: 'Verification for company owners' },
@@ -307,9 +308,116 @@ function NotificationsSection() {
           Notifications are blocked for this site. Allow them in your browser settings.
         </div>
       )}
+      <PushRows />
       <StatementEmailsRow />
       <ReadReceiptsRow />
     </div>
+  );
+}
+
+/** Push notifications to this browser while you are away, and the devices that get them. */
+function PushRows() {
+  const me = useMe();
+  const { updatePreferences } = useAuth();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const devices = useQuery({ queryKey: ['push-devices'], queryFn: api.notifications.devices });
+  const thisDevice = pushDeviceId(me.id);
+  const onHere = !!thisDevice && !!devices.data?.some((d) => d.id === thisDevice);
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['push-devices'] });
+  const toggle = useMutation({
+    mutationFn: (on: boolean) => (on ? enablePush(me.id) : disablePush(me.id)),
+    onSuccess: (_, on) => {
+      refresh();
+      toast.success(
+        on ? 'Push notifications on for this browser' : 'Push notifications off for this browser',
+      );
+    },
+    onError: toast.error,
+  });
+  const test = useMutation({
+    mutationFn: api.notifications.test,
+    onSuccess: (r) =>
+      r.delivered
+        ? toast.success(`Sent to ${r.delivered} of ${r.devices} devices`)
+        : toast.error(
+            r.devices ? 'No device took the test notification' : 'Turn push notifications on first',
+          ),
+    onError: toast.error,
+  });
+  const remove = useMutation({ mutationFn: api.notifications.removeDevice, onSuccess: refresh });
+  return (
+    <>
+      <div className="setting-row">
+        <span className="kpi-icon">
+          <Icon name="smartphone" size={17} />
+        </span>
+        <div className="grow">
+          <b>Push notifications on this browser</b>
+          <div className="small muted">
+            Mentions, payments, invoices and approvals reach you even when OVL For Business is closed. One
+            account per browser gets them: the one that turned them on last.
+          </div>
+        </div>
+        {pushSupported() ? (
+          <Switch
+            label="Push notifications on this browser"
+            checked={onHere}
+            disabled={toggle.isPending}
+            onChange={(on) => toggle.mutate(on)}
+          />
+        ) : (
+          <span className="small muted">Not supported here</span>
+        )}
+      </div>
+      <div className="setting-row">
+        <span className="kpi-icon">
+          <Icon name="chat" size={17} />
+        </span>
+        <div className="grow">
+          <b>Push new messages</b>
+          <div className="small muted">Also push direct and group messages while you are away.</div>
+        </div>
+        <Switch
+          label="Push new messages"
+          checked={me.preferences.pushChats !== false}
+          onChange={(value) =>
+            updatePreferences({ pushChats: value })
+              .then(() => toast.success(value ? 'Message pushes on' : 'Message pushes off'))
+              .catch(toast.error)
+          }
+        />
+      </div>
+      {!!devices.data?.length && (
+        <div className="stack-sm">
+          <div className="spread">
+            <b className="small">Devices with push notifications</b>
+            <button className="btn sm" disabled={test.isPending} onClick={() => test.mutate()}>
+              Send a test
+            </button>
+          </div>
+          {devices.data.map((d) => (
+            <div key={d.id} className="row small">
+              <Icon name={d.kind === 'webpush' ? 'monitor' : 'smartphone'} size={15} />
+              <span className="grow ellipsis">
+                {d.label || d.kind}
+                {d.id === thisDevice && <span className="muted"> · this browser</span>}
+              </span>
+              <span className="muted nowrap">
+                {d.lastUsedAt ? `last push ${formatDate(d.lastUsedAt)}` : 'no pushes yet'}
+              </span>
+              <button
+                className="btn ghost icon sm"
+                aria-label={`Remove ${d.label || d.kind}`}
+                onClick={() => remove.mutate(d.id)}
+              >
+                <Icon name="x" size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 

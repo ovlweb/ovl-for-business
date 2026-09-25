@@ -99,6 +99,22 @@ const envSchema = z.object({
   /** Webhooks may call private and loopback addresses (development and tests only by default). */
   WEBHOOK_ALLOW_PRIVATE_NETWORKS: flag(false),
 
+  /** Web Push (VAPID). Without keys the server makes a pair once and keeps it in the database. */
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().default('mailto:admin@localhost'),
+  /** Firebase Cloud Messaging: the service account JSON (or its base64). */
+  FCM_SERVICE_ACCOUNT: z.string().optional(),
+  FCM_API_URL: z.url().default('https://fcm.googleapis.com'),
+  /** Apple Push Notification service: the .p8 key (PEM), its key id, your team id and the app's bundle id. */
+  APNS_KEY: z.string().optional(),
+  APNS_KEY_ID: z.string().optional(),
+  APNS_TEAM_ID: z.string().optional(),
+  APNS_TOPIC: z.string().optional(),
+  APNS_HOST: z.url().default('https://api.push.apple.com'),
+  /** Notifications older than this many days are removed. */
+  NOTIFICATION_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
+
   /** Investors accept the risk disclosure before their first investment or trade. */
   STOCK_REQUIRE_RISK_ACK: flag(true),
 

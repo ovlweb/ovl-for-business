@@ -253,6 +253,8 @@ class Session extends ChangeNotifier with WidgetsBindingObserver {
       case 'identity.updated':
         queries.invalidate('orgs');
         reload().ignore();
+      case 'notification.created':
+        queries.invalidate('notifications');
     }
   }
 

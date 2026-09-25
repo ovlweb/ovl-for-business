@@ -129,7 +129,7 @@ export async function runDueSchedules(
     if (!outcome) break;
     if (outcome.invoice) {
       issued.push(outcome.invoice);
-      await announceInvoice(app, outcome.invoice);
+      await announceInvoice(app, outcome.invoice, 'issued');
     }
   }
   return issued;

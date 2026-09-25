@@ -1226,3 +1226,54 @@ export const auditLogs = pgTable(
   },
   (t) => [index('audit_logs_created_idx').on(t.createdAt)],
 );
+
+// ---------------------------------------------------------------------------
+// Notification center and push notifications
+// ---------------------------------------------------------------------------
+
+/**
+ * Written in the same transaction as what they are about; `deliveredAt` is set once they went
+ * out over realtime and push (right after the request, or by the scheduler).
+ */
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    type: varchar('type', { length: 32 }).notNull(),
+    title: varchar('title', { length: 200 }).notNull(),
+    body: text('body').notNull().default(''),
+    link: varchar('link', { length: 300 }),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('notifications_user_idx').on(t.userId, t.createdAt),
+    index('notifications_undelivered_idx')
+      .on(t.createdAt)
+      .where(sql`${t.deliveredAt} is null`),
+  ],
+);
+
+/** A device that receives push notifications: a browser (Web Push), an Android (FCM) or Apple (APNs) app. */
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: varchar('kind', { length: 12 }).notNull(),
+    /** The Web Push endpoint URL, or the FCM / APNs device token. */
+    endpoint: text('endpoint').notNull().unique(),
+    keys: jsonb('keys').$type<{ p256dh?: string; auth?: string }>().notNull().default({}),
+    label: varchar('label', { length: 100 }).notNull().default(''),
+    failures: integer('failures').notNull().default(0),
+    createdAt: createdAt(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  },
+  (t) => [index('push_subscriptions_user_idx').on(t.userId)],
+);

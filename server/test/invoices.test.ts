@@ -100,6 +100,15 @@ describe('invoices', () => {
       [`INV-${year}-0001`, 'incoming'],
     ]);
     expect((await api.get('/invoices?direction=outgoing', bob)).body).toEqual([]);
+    // The recipient hears about each new invoice.
+    await app.push.flush();
+    const notes = (await api.get('/notifications', bob)).body.items;
+    expect(notes).toHaveLength(3);
+    expect(notes[0]).toMatchObject({
+      type: 'invoice',
+      title: `Invoice INV-${year}-0001 from Eve: 240.00 EUR`,
+      link: '/invoices',
+    });
     expect((await api.get(`/invoices/${first.id}`, accountant)).body.direction).toBe('outgoing');
     // People outside both sides (and company members without a finance role) cannot see it.
     expect((await api.get(`/invoices/${first.id}`, eve)).status).toBe(404);

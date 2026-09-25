@@ -562,6 +562,10 @@ code,
   background: var(--surface-3);
   transition: background 0.2s var(--ease);
 }
+.switch:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
 .switch::after {
   content: '';
   position: absolute;

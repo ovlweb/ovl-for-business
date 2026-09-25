@@ -19,6 +19,7 @@ import { actionEmail } from '../lib/mailer';
 import { iso, isoOrNull, summaryColumns, toUserSummary } from '../lib/mappers';
 import { currentUser } from '../plugins/auth';
 import { attachFiles, fileDtos, filesOf } from './files';
+import { queueNotification } from '../lib/notify';
 
 type CheckRow = typeof identityChecks.$inferSelect;
 
@@ -116,6 +117,12 @@ export async function identityRoutes(fastify: FastifyInstance) {
   };
   const tell = async (userId: string, status: string, subject: string, lines: string[]) => {
     app.hub.sendToUsers([userId], { type: 'identity.updated', status });
+    await queueNotification(app.db, [userId], {
+      type: 'identity',
+      title: subject,
+      body: lines[0] ?? '',
+      link: '/settings',
+    });
     const [user] = await app.db.select().from(users).where(eq(users.id, userId));
     if (user) {
       await app.mailer

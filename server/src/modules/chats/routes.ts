@@ -32,6 +32,7 @@ import {
   loadChat,
   mentionedMembers,
   messageDtos,
+  notifyNewMessage,
   publishMessage,
   receiptsAllowed,
   requireReadable,
@@ -473,7 +474,9 @@ export async function chatRoutes(fastify: FastifyInstance) {
           attachmentIds: fileIds,
         });
       });
-      return reply.status(201).send(await publishMessage(app, chat, message, 'message.created', me.id));
+      const dto = await publishMessage(app, chat, message, 'message.created', me.id);
+      await notifyNewMessage(app, chat, message, me);
+      return reply.status(201).send(dto);
     },
   );
 
@@ -816,6 +819,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
       });
       const dto = await publishMessage(app, chat, comment, 'message.created', me.id);
       await publishPost(chat, post.id);
+      await notifyNewMessage(app, chat, comment, me);
       return reply.status(201).send(dto);
     },
   );

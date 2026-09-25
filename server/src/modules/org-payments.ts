@@ -32,6 +32,7 @@ import { approvePayrollRun, releasePayrollRun } from './payroll';
 import { approveDividend, releaseDividend } from './stock/shareholders';
 import { executeTransfer, walletAudience } from './wallets/routes';
 import { assertWalletAccess, frozenAmounts, lockWallet, orgRoleOf, type WalletRow } from './wallets/service';
+import { queueNotification } from '../lib/notify';
 
 /** Money of a payment waiting for its second signature is set aside until someone decides. */
 const APPROVAL_HOLD = 'payment_approval';
@@ -203,6 +204,30 @@ export async function announceApproval(app: FastifyInstance, row: ApprovalRow) {
   const [wallet] = await app.db.select().from(wallets).where(eq(wallets.id, row.walletId));
   if (!wallet) return;
   const audience = await walletAudience(app.db, wallet);
+  const [org] = await app.db
+    .select({ name: organizations.name, slug: organizations.slug })
+    .from(organizations)
+    .where(eq(organizations.id, row.organizationId));
+  const amount = `${formatAmount(row.amount, row.currency)} ${row.currency}`;
+  const link = org ? `/companies/${org.slug}` : '/companies';
+  if (row.status === 'pending')
+    await queueNotification(
+      app.db,
+      audience.filter((id) => id !== row.requestedBy),
+      {
+        type: 'payment_approval',
+        title: `${org?.name ?? 'A company'} payment needs your signature: ${amount}`,
+        body: row.description,
+        link,
+      },
+    );
+  else
+    await queueNotification(app.db, [row.requestedBy], {
+      type: 'payment_approval',
+      title: `${row.status === 'approved' ? 'Approved' : 'Not approved'}: ${amount} from ${org?.name ?? 'the company'}`,
+      body: row.reason ? `${row.description} — ${row.reason}` : row.description,
+      link,
+    });
   app.hub.sendToUsers(audience, {
     type: 'payment_approval.updated',
     organizationId: row.organizationId,
@@ -378,7 +403,7 @@ export async function orgPaymentRoutes(fastify: FastifyInstance) {
       await announceApproval(app, outcome.approval);
       for (const w of outcome.touched.slice(1))
         app.hub.sendToUsers(await walletAudience(app.db, w), { type: 'wallet.updated', walletId: w.id });
-      if (outcome.invoice) await announceInvoice(app, outcome.invoice);
+      if (outcome.invoice) await announceInvoice(app, outcome.invoice, 'paid');
       return approvalDto(app, outcome.approval);
     },
   );

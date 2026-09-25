@@ -17,6 +17,7 @@ const navIcons = <String, IconData>{
   'home': LucideIcons.house,
   'chats': LucideIcons.messageCircle,
   'contacts': LucideIcons.users,
+  'notifications': LucideIcons.bell,
   'wallet': LucideIcons.wallet,
   'invoices': LucideIcons.receipt,
   'companies': LucideIcons.building2,
@@ -65,10 +66,16 @@ class _AppShellState extends State<AppShell> {
         client: session.queries,
         queryKey: 'invoices:incoming:true',
         fetch: () => session.api.invoices(direction: 'incoming', status: 'open'),
-        builder: (context, toPay) => _layout(context, visible, current, width, {
-          '/chats': chats.data?.fold<int>(0, (s, c) => s + c.unreadCount) ?? 0,
-          '/invoices': toPay.data?.length ?? 0,
-        }),
+        builder: (context, toPay) => Query<NotificationPage>(
+          client: session.queries,
+          queryKey: 'notifications:count',
+          fetch: () => session.api.notifications(unreadOnly: true, limit: 1),
+          builder: (context, inbox) => _layout(context, visible, current, width, {
+            '/chats': chats.data?.fold<int>(0, (s, c) => s + c.unreadCount) ?? 0,
+            '/invoices': toPay.data?.length ?? 0,
+            '/notifications': inbox.data?.unreadCount ?? 0,
+          }),
+        ),
       ),
     );
   }

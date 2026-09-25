@@ -45,6 +45,7 @@ import {
   walletOwnerId,
   type WalletRow,
 } from './wallets/service';
+import { queueNotification } from '../lib/notify';
 
 export type InvoiceRow = typeof invoices.$inferSelect;
 export type Party = { type: 'user' | 'organization'; id: string };
@@ -230,13 +231,46 @@ function visibleTo(userId: string, orgIds: string[], direction?: 'incoming' | 'o
   return or(incoming, outgoing)!;
 }
 
-/** Tell both sides that an invoice changed. */
-export async function announceInvoice(app: FastifyInstance, row: InvoiceRow) {
-  const audience = new Set([
-    ...(await partyAudience(app.db, issuerOf(row))),
-    ...(await partyAudience(app.db, recipientOf(row))),
-  ]);
-  app.hub.sendToUsers([...audience], { type: 'invoice.updated', invoiceId: row.id, status: row.status });
+/** Tell both sides that an invoice changed (and the side it concerns, in their notifications). */
+export async function announceInvoice(
+  app: FastifyInstance,
+  row: InvoiceRow,
+  event?: 'issued' | 'paid' | 'cancelled',
+) {
+  const issuers = await partyAudience(app.db, issuerOf(row));
+  const recipients = await partyAudience(app.db, recipientOf(row));
+  app.hub.sendToUsers([...issuers, ...recipients], {
+    type: 'invoice.updated',
+    invoiceId: row.id,
+    status: row.status,
+  });
+  if (!event) return;
+  const [view] = await invoiceDtos(app.db, [row], row.issuerUserId ?? '', []);
+  const total = `${formatAmount(row.total, row.currency)} ${row.currency}`;
+  if (event === 'issued')
+    await queueNotification(app.db, recipients, {
+      type: 'invoice',
+      title: `Invoice ${row.number} from ${view!.issuer.name}: ${total}`,
+      body: row.dueDate ? `Due ${row.dueDate}` : 'Pay it from Invoices.',
+      link: '/invoices',
+    });
+  else if (event === 'paid')
+    await queueNotification(app.db, issuers, {
+      type: 'invoice',
+      title:
+        row.status === 'paid'
+          ? `Invoice ${row.number} was paid: ${total}`
+          : `Invoice ${row.number}: ${formatAmount(row.amountPaid, row.currency)} of ${total} paid`,
+      body: `By ${view!.recipient.name}`,
+      link: '/invoices',
+    });
+  else
+    await queueNotification(app.db, recipients, {
+      type: 'invoice',
+      title: `Invoice ${row.number} from ${view!.issuer.name} was cancelled`,
+      body: total,
+      link: '/invoices',
+    });
 }
 
 /** Lock an open invoice and check that `wallet` may pay it and its issuer can be paid. */
@@ -419,8 +453,6 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
   const tags = ['invoices'];
   app.addHook('preHandler', app.authenticate);
 
-  const announce = (row: InvoiceRow) => announceInvoice(app, row);
-
   const load = async (id: string, userId: string) => {
     const orgIds = await financeOrgIds(app.db, userId);
     const [row] = await app.db
@@ -499,7 +531,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
           createdBy: me.id,
         }),
       );
-      await announce(row);
+      await announceInvoice(app, row, 'issued');
       return reply.status(201).send(await dto(row.id, me.id));
     },
   );
@@ -553,7 +585,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
         return reply.status(202).send(await approvalDto(app, outcome.approval));
       }
       const { invoice, target } = outcome.paid!;
-      await announceInvoice(app, invoice);
+      await announceInvoice(app, invoice, 'paid');
       for (const w of [wallet, target]) {
         app.hub.sendToUsers(await walletAudience(app.db, w), { type: 'wallet.updated', walletId: w.id });
       }
@@ -594,7 +626,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
         );
         return { cancelled, dropped };
       });
-      await announce(cancelled);
+      await announceInvoice(app, cancelled, 'cancelled');
       for (const approval of dropped) await announceApproval(app, approval);
       return dto(row.id, me.id);
     },

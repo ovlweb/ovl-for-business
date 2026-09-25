@@ -30,6 +30,7 @@ import { certificatePdf, pdfDate } from '../lib/pdf';
 import { apiKeyGuard, publicRouteConfig } from '../lib/public-api';
 import { emitEvent } from '../lib/webhooks';
 import { currentUser } from '../plugins/auth';
+import { queueNotification } from '../lib/notify';
 
 type RegistryKind = (typeof registryEntries.$inferInsert)['kind'];
 
@@ -236,6 +237,12 @@ export async function runLicenceExpiry(app: FastifyInstance, now = new Date()) {
     if (outcome.kind === 'expired') done.expired++;
     else done.reminded++;
     if (!person) continue;
+    await queueNotification(app.db, [person.id], {
+      type: 'licence',
+      title: outcome.kind === 'expired' ? `${entry.title} has expired` : `${entry.title} expires on ${when}`,
+      body: 'Ask for a renewal in Applications.',
+      link: `/applications?renew=${entry.id}`,
+    });
     await app.mailer
       .send(
         actionEmail({

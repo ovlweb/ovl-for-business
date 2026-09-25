@@ -13,6 +13,7 @@ import { chatMembers, chats, files, messageReactions, messages, users } from '..
 import { forbidden, notFound } from '../../lib/errors';
 import { iso, isoOrNull, summaryColumns, toUserSummary } from '../../lib/mappers';
 import { fileDtos } from '../files';
+import { queueNotification } from '../../lib/notify';
 
 export type ChatRow = typeof chats.$inferSelect;
 export type MessageRow = typeof messages.$inferSelect;
@@ -428,4 +429,77 @@ export async function createChannel(
     .returning();
   await db.insert(chatMembers).values({ chatId: chat!.id, userId: input.ownerId, role: 'owner' });
   return chat!;
+}
+
+// ---------------------------------------------------------------------------
+// Notifications about messages
+// ---------------------------------------------------------------------------
+
+const summaryOf = (m: MessageRow) =>
+  m.body ||
+  (m.attachmentIds.length > 1
+    ? `${m.attachmentIds.length} files`
+    : m.attachmentIds.length
+      ? 'Sent a file'
+      : '');
+
+/**
+ * After a message is sent: mentions, replies and comments on someone's post go to the
+ * notification center; everyone else in a direct chat, group or ticket who is away gets a push.
+ */
+export async function notifyNewMessage(
+  app: FastifyInstance,
+  chat: ChatRow,
+  message: MessageRow,
+  sender: { id: string; displayName: string },
+) {
+  if (message.kind !== 'text') return;
+  const where = chat.type === 'direct' ? '' : ` in ${chat.title}`;
+  const link =
+    chat.type === 'support'
+      ? `/support/${chat.id}`
+      : `/chats/${chat.id}?message=${message.threadId ?? message.id}`;
+  const body = summaryOf(message);
+  const told = new Set([sender.id]);
+  const tell = async (
+    userIds: (string | null | undefined)[],
+    type: 'mention' | 'reply' | 'comment',
+    title: string,
+  ) => {
+    const fresh = userIds.filter((id): id is string => !!id && !told.has(id));
+    fresh.forEach((id) => told.add(id));
+    await queueNotification(app.db, fresh, { type, title, body, link });
+  };
+  await tell(message.mentions, 'mention', `${sender.displayName} mentioned you${where}`);
+  for (const [id, type, title] of [
+    [message.replyToId, 'reply', `${sender.displayName} replied to you${where}`],
+    [message.threadId, 'comment', `${sender.displayName} commented on your post${where}`],
+  ] as const) {
+    if (!id) continue;
+    const [original] = await app.db
+      .select({ senderId: messages.senderId })
+      .from(messages)
+      .where(eq(messages.id, id));
+    await tell([original?.senderId], type, title);
+  }
+
+  // Everything else in private conversations: a push to people who are away (channels are news, not pushed).
+  if (message.threadId || chat.type === 'channel') return;
+  const away = (await chatAudience(app, chat)).filter((id) => !told.has(id) && !app.hub.isOnline(id));
+  if (!away.length) return;
+  const wanting = await app.db
+    .select({ id: users.id })
+    .from(users)
+    .where(
+      and(inArray(users.id, away), sql`coalesce(${users.preferences} ->> 'pushChats', 'true') <> 'false'`),
+    );
+  app.push.sendToUsers(
+    wanting.map((u) => u.id),
+    {
+      title: chat.type === 'direct' ? sender.displayName : `${sender.displayName} · ${chat.title}`,
+      body: body.length > 200 ? `${body.slice(0, 199)}…` : body,
+      link,
+      tag: `chat-${chat.id}`,
+    },
+  );
 }

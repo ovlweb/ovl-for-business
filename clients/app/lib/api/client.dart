@@ -460,6 +460,26 @@ class OvlApi {
   Future<void> markRead(String chatId, int messageId) => _post('/chats/$chatId/read', {'messageId': messageId});
   Future<void> leave(String chatId, String myId) => _delete('/chats/$chatId/members/$myId');
 
+  // --- notification center ----------------------------------------------------------------
+
+  Future<NotificationPage> notifications({DateTime? before, bool unreadOnly = false, int limit = 30}) async =>
+      NotificationPage.fromJson(
+        await _get('/notifications', {
+          'before': before?.toUtc().toIso8601String(),
+          'unread': unreadOnly ? 'true' : null,
+          'limit': limit,
+        }),
+      );
+
+  /// Mark these (or, without ids, all) notifications as read; returns what is still unread.
+  Future<int> readNotifications([List<String>? ids]) async =>
+      ((await _post('/notifications/read', {'ids': ?ids})) as Json)['unreadCount'] as int;
+  Future<void> deleteNotification(String id) => _delete('/notifications/$id');
+
+  /// Register an FCM or APNs device token for push notifications.
+  Future<void> addPushDevice({required String kind, required String token, String? label}) =>
+      _post('/me/push-subscriptions', {'kind': kind, 'token': token, 'label': ?label});
+
   // --- support -----------------------------------------------------------------------------
 
   Future<List<Chat>> myTickets() => _getList('/support/tickets', Chat.fromJson);

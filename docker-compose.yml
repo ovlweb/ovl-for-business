@@ -49,6 +49,14 @@ services:
       STOCK_FREEZE_PERCENT: ${STOCK_FREEZE_PERCENT:-30}
       STOCK_LOCK_DAYS: ${STOCK_LOCK_DAYS:-90}
       STOCK_REQUIRE_RISK_ACK: ${STOCK_REQUIRE_RISK_ACK:-true}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@localhost}
+      FCM_SERVICE_ACCOUNT: ${FCM_SERVICE_ACCOUNT:-}
+      APNS_KEY: ${APNS_KEY:-}
+      APNS_KEY_ID: ${APNS_KEY_ID:-}
+      APNS_TEAM_ID: ${APNS_TEAM_ID:-}
+      APNS_TOPIC: ${APNS_TOPIC:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # Uploaded files: the volume below, or an S3-compatible bucket (STORAGE_DRIVER=s3).
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}

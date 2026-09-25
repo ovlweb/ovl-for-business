@@ -16,6 +16,7 @@ import { OnboardingPage } from './pages/Onboarding';
 import { RegistryPage } from './pages/Registry';
 import { ReviewPage } from './pages/Review';
 import { SettingsPage } from './pages/Settings';
+import { NotificationsPage } from './pages/Notifications';
 import { SupportPage } from './pages/Support';
 import { UserPage } from './pages/User';
 import { VerifyPage } from './pages/Verify';
@@ -88,6 +89,7 @@ export function App() {
             <Route path="/support/:chatId" element={<SupportPage />} />
             <Route path="/review" element={<ReviewPage />} />
             <Route path="/review/:id" element={<ReviewPage />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/profile" element={<Navigate to="/settings" replace />} />
             <Route path="/u/:username" element={<UserPage />} />

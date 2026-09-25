@@ -4,6 +4,7 @@ import type { Db } from '../../db/client';
 import { fundLocks, ledgerEntries, organizationMembers, wallets } from '../../db/schema';
 import { badRequest, forbidden, HttpError, insufficientFunds, notFound } from '../../lib/errors';
 import { iso } from '../../lib/mappers';
+import { queueNotification } from '../../lib/notify';
 
 export type WalletRow = typeof wallets.$inferSelect;
 export type WalletOwner = { type: 'user'; id: string } | { type: 'organization'; id: string };
@@ -90,6 +91,14 @@ export async function lockWallet(db: Db, walletId: string): Promise<WalletRow> {
   return wallet;
 }
 
+/** Money arriving on a personal balance that people hear about (invoices notify on their own). */
+const MONEY_NEWS: Partial<Record<LedgerKind, string>> = {
+  transfer_in: 'Money received',
+  payroll_in: 'Salary paid',
+  dividend_in: 'Dividend received',
+  trade_in: 'Shares sold',
+};
+
 async function postEntry(db: Db, wallet: WalletRow, delta: bigint, kind: LedgerKind, options: EntryOptions) {
   const [updated] = await db
     .update(wallets)
@@ -107,6 +116,14 @@ async function postEntry(db: Db, wallet: WalletRow, delta: bigint, kind: LedgerK
     actorId: options.actorId ?? null,
     counterpartyWalletId: options.counterpartyWalletId ?? null,
   });
+  const news = MONEY_NEWS[kind];
+  if (delta > 0n && news && wallet.userId && options.referenceType !== 'invoice')
+    await queueNotification(db, [wallet.userId], {
+      type: 'money',
+      title: `${news}: ${formatAmount(delta, wallet.currency)} ${wallet.currency}`,
+      body: options.description ?? '',
+      link: '/wallet',
+    });
   return updated!;
 }
 

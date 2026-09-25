@@ -168,6 +168,29 @@ Server-to-server: `new OvlClient({ baseUrl, apiKey: 'ovl_…' })` and use `regis
   unread count, and posts carry `commentCount`. Channel admins switch them off with
   `PATCH /chats/:id {commentsEnabled: false}`.
 
+## Notifications and push
+
+Mentions, replies, comments on your posts, money received (transfers, salary, dividends, sold
+shares), invoices, payment approvals, application outcomes, identity checks, cash requests and
+licence expiry land in your notification center: `GET /notifications?unread=true&before=<createdAt>`
+returns `{items, unreadCount}`, `POST /notifications/read {ids?}` marks some (or all) as read and
+`DELETE /notifications/:id` removes one. Connected apps receive `notification.created` live.
+
+People who are away (no open realtime connection) also get a push on their devices, and so do
+direct and group messages unless the `pushChats` preference is off:
+
+- **Browsers**: `GET /push/config` gives `webPushKey` (VAPID; the server makes a pair on first use
+  unless `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` are set). Subscribe with
+  `PushManager.subscribe({applicationServerKey})` and send it with
+  `POST /me/push-subscriptions {kind: 'webpush', endpoint, keys: {p256dh, auth}}`. The web client's
+  service worker shows the pushes; the payload is `{title, body, link, tag}`.
+- **Android / iOS**: `POST /me/push-subscriptions {kind: 'fcm' | 'apns', token}` with
+  `FCM_SERVICE_ACCOUNT` or `APNS_KEY` / `APNS_KEY_ID` / `APNS_TEAM_ID` / `APNS_TOPIC` configured.
+
+`GET /me/push-subscriptions` lists your devices, `DELETE /me/push-subscriptions/:id` removes one and
+`POST /me/push-subscriptions/test` sends a test to all of them. Devices the push service reports as
+gone are forgotten, as are ones that fail 10 times in a row.
+
 ## Realtime events
 
 Connect to `wss://…/api/v1/realtime?token=<accessToken>`. The server sends JSON events:
@@ -181,6 +204,7 @@ Connect to `wss://…/api/v1/realtime?token=<accessToken>`. The server sends JSO
 | `chat.removed`             | `chatId`                                 |
 | `typing`                   | `chatId`, `userId`                       |
 | `chat.read`                | `chatId`, `userId`, `messageId`          |
+| `notification.created`     | `notification`                           |
 | `application.updated`      | `applicationId`, `status`, `stageIndex`  |
 | `story.created`            | `storyId`                                |
 | `wallet.updated`           | `walletId`                               |

@@ -39,6 +39,9 @@ import { orgPaymentRoutes } from './modules/org-payments';
 import { invoiceScheduleRoutes } from './modules/invoice-schedules';
 import { payrollRoutes } from './modules/payroll';
 import { webhookRoutes } from './modules/webhooks';
+import { notificationRoutes } from './modules/notifications';
+import { deliverNotifications, hasQueuedNotifications } from './lib/notify';
+import { PushService } from './lib/push';
 import {
   loadVirtualCurrencies,
   refreshVirtualCurrencies,
@@ -68,6 +71,7 @@ declare module 'fastify' {
     db: Database;
     hub: RealtimeHub;
     mailer: Mailer;
+    push: PushService;
     scheduler: Scheduler;
     storage: Storage;
   }
@@ -110,13 +114,19 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
   app.decorate('mailer', createMailer(config, app.log));
   app.decorate('storage', createStorage(config));
   app.decorate('scheduler', new Scheduler(app.log));
+  app.decorate('push', new PushService(app));
 
   if (config.SCHEDULER_ENABLED) app.addHook('onReady', async () => app.scheduler.start());
   // Virtual-country currencies live in the database; every instance keeps its table fresh.
   app.addHook('onReady', async () => loadVirtualCurrencies(db));
   app.addHook('onRequest', async () => refreshVirtualCurrencies(db));
+  // Notifications written while handling a request go out as soon as it is answered (and committed).
+  app.addHook('onResponse', async () => {
+    if (hasQueuedNotifications()) app.push.track(deliverNotifications(app));
+  });
   app.addHook('onClose', async () => {
     await app.scheduler.stop();
+    await app.push.flush();
     app.hub.closeAll();
     await client.end({ timeout: 5 });
   });
@@ -245,6 +255,7 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
       await api.register(storyRoutes);
       await api.register(apiKeyRoutes);
       await api.register(webhookRoutes);
+      await api.register(notificationRoutes);
       await api.register(adminRoutes);
       await api.register(realtimeRoutes);
     },

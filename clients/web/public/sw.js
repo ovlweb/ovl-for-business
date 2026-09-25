@@ -28,3 +28,35 @@ self.addEventListener('fetch', (event) => {
       .catch(() => caches.match(event.request).then((hit) => hit || caches.match('./index.html'))),
   );
 });
+
+// Push notifications (Web Push): the server sends { title, body, link, tag } while you are away.
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { title: 'OVL For Business', body: event.data ? event.data.text() : '' };
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'OVL For Business', {
+      body: data.body || '',
+      tag: data.tag || undefined,
+      icon: './icon-192.png',
+      badge: './icon-192.png',
+      data: { link: data.link || '/notifications' },
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = new URL(`./#${event.notification.data?.link || '/notifications'}`, self.registration.scope)
+    .href;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+      const open = windows.find((w) => w.url.startsWith(self.registration.scope));
+      if (open) return open.navigate(target).then((w) => (w || open).focus());
+      return self.clients.openWindow(target);
+    }),
+  );
+});

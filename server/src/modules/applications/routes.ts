@@ -14,6 +14,7 @@ import {
   type Role,
   attachmentIdsSchema,
   resubmitApplicationSchema,
+  WORKFLOWS,
 } from '@ovl/shared';
 import { and, count, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -42,6 +43,7 @@ import {
   type Announcement,
   type ApplicationRow,
 } from './engine';
+import { queueNotification } from '../../lib/notify';
 
 export async function applicationRoutes(fastify: FastifyInstance) {
   const app = fastify.withTypeProvider<ZodTypeProvider>();
@@ -53,6 +55,18 @@ export async function applicationRoutes(fastify: FastifyInstance) {
 
   const afterCommit = async (row: ApplicationRow, announcements: Announcement[]) => {
     for (const { chat, message } of announcements) await publishMessage(app, chat, message);
+    const outcome = {
+      approved: 'was approved',
+      rejected: 'was not approved',
+      changes_requested: 'needs changes',
+    }[row.status as 'approved'];
+    if (outcome)
+      await queueNotification(app.db, [row.applicantId], {
+        type: 'application',
+        title: `Your application ${outcome}: ${WORKFLOWS[row.type].label}`,
+        body: row.status === 'changes_requested' ? 'See what to change and send it again.' : '',
+        link: '/applications',
+      });
     app.hub.sendToUsers([row.applicantId], {
       type: 'application.updated',
       applicationId: row.id,
