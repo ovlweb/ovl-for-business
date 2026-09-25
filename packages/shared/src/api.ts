@@ -1117,7 +1117,10 @@ export const orderBookSchema = z.object({
   trades: z.array(stockTradeSchema).describe('The latest trades, newest first'),
 });
 export type OrderBook = z.infer<typeof orderBookSchema>;
-export const placeOrderResultSchema = z.object({ order: stockOrderSchema, trades: z.array(stockTradeSchema) });
+export const placeOrderResultSchema = z.object({
+  order: stockOrderSchema,
+  trades: z.array(stockTradeSchema),
+});
 
 export const updateListingSchema = z.object({
   sharePrice: decimalAmountSchema.optional(),

@@ -934,7 +934,9 @@ export const stockOrders = pgTable(
     side: orderSideEnum('side').notNull(),
     price: money('price').notNull(),
     shares: bigint('shares', { mode: 'bigint' }).notNull(),
-    filled: bigint('filled', { mode: 'bigint' }).notNull().default(sql`0`),
+    filled: bigint('filled', { mode: 'bigint' })
+      .notNull()
+      .default(sql`0`),
     status: orderStatusEnum('status').notNull().default('open'),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

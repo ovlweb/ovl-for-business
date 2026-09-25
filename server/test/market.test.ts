@@ -41,7 +41,10 @@ beforeAll(async () => {
       listing: { ticker: 'NWS', sharePrice: '5', totalShares: 1000 },
     },
   });
-  await api.post(`/applications/${res.body.id}/review`, moderator, { decision: 'approve', checklist: ALL_COMPANY_CHECKS });
+  await api.post(`/applications/${res.body.id}/review`, moderator, {
+    decision: 'approve',
+    checklist: ALL_COMPANY_CHECKS,
+  });
   await api.post(`/applications/${res.body.id}/review`, owner, { decision: 'approve' });
   listingId = (await api.get('/stock/listings/NWS', null)).body.id;
   await api.deposit(ann, 'USD', '1000.00');
@@ -62,7 +65,10 @@ describe('secondary market', () => {
   it('orders rest in the book until a matching order arrives', async () => {
     const sell = await order(ann, 'sell', 10, '6');
     expect(sell.status).toBe(201);
-    expect(sell.body).toMatchObject({ order: { side: 'sell', shares: '10', filled: '0', status: 'open' }, trades: [] });
+    expect(sell.body).toMatchObject({
+      order: { side: 'sell', shares: '10', filled: '0', status: 'open' },
+      trades: [],
+    });
     const low = await order(ben, 'buy', 4, '5.50');
     expect(low.body.trades).toEqual([]);
     expect(await usd(ben)).toMatchObject({ balance: '200.00', frozen: '22.00', available: '178.00' });

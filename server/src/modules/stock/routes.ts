@@ -262,7 +262,11 @@ export async function stockRoutes(fastify: FastifyInstance) {
           })
           .from(stockOrders)
           .where(
-            and(eq(stockOrders.listingId, listing.id), eq(stockOrders.side, side), eq(stockOrders.status, 'open')),
+            and(
+              eq(stockOrders.listingId, listing.id),
+              eq(stockOrders.side, side),
+              eq(stockOrders.status, 'open'),
+            ),
           )
           .groupBy(stockOrders.price)
           .orderBy(side === 'buy' ? desc(stockOrders.price) : asc(stockOrders.price))
@@ -302,7 +306,7 @@ export async function stockRoutes(fastify: FastifyInstance) {
         tags: ['stock exchange'],
         description:
           'Place a limit order on the secondary market. It trades at once with matching orders (best price, ' +
-          'then oldest first, at the resting order\'s price) and the rest stays in the book. A buy order holds ' +
+          "then oldest first, at the resting order's price) and the rest stays in the book. A buy order holds " +
           'its money; only shares past their lock period can be sold.',
         params: z.object({ ticker: z.string().min(1).max(8) }),
         body: placeOrderSchema,

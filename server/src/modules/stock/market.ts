@@ -1,7 +1,15 @@
 import { formatAmount, type StockOrder, type StockTrade } from '@ovl/shared';
 import { and, asc, desc, eq, gt, gte, lte, ne, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client';
-import { fundLocks, investments, shareholdings, stockListings, stockOrders, stockPriceHistory, stockTrades } from '../../db/schema';
+import {
+  fundLocks,
+  investments,
+  shareholdings,
+  stockListings,
+  stockOrders,
+  stockPriceHistory,
+  stockTrades,
+} from '../../db/schema';
 import { badRequest, conflict, insufficientFunds } from '../../lib/errors';
 import { iso } from '../../lib/mappers';
 import { credit, debit, frozenAmounts, getOrCreateWallet, lockWallet } from '../wallets/service';
@@ -147,7 +155,9 @@ async function executeTrade(
       .where(eq(stockOrders.id, order.id));
     order.filled = filled;
     if (filled === order.shares && order.side === 'buy')
-      await tx.delete(fundLocks).where(and(eq(fundLocks.reason, ORDER_HOLD), eq(fundLocks.referenceId, order.id)));
+      await tx
+        .delete(fundLocks)
+        .where(and(eq(fundLocks.reason, ORDER_HOLD), eq(fundLocks.referenceId, order.id)));
   }
   // Price discovery: the listing trades at its last price.
   await tx.insert(stockPriceHistory).values({ listingId: listing.id, price });
@@ -220,7 +230,9 @@ export async function placeOrder(
       .limit(1)
       .for('update');
     if (!counter) break;
-    const shares = [order!.shares - order!.filled, counter.shares - counter.filled].reduce((a, b) => (a < b ? a : b));
+    const shares = [order!.shares - order!.filled, counter.shares - counter.filled].reduce((a, b) =>
+      a < b ? a : b,
+    );
     const trade = await executeTrade(
       tx,
       listing,
@@ -244,5 +256,7 @@ export async function cancelOrder(tx: Db, order: OrderRow) {
     .update(stockOrders)
     .set({ status: 'cancelled', updatedAt: new Date() })
     .where(eq(stockOrders.id, order.id));
-  await tx.delete(fundLocks).where(and(eq(fundLocks.reason, ORDER_HOLD), eq(fundLocks.referenceId, order.id)));
+  await tx
+    .delete(fundLocks)
+    .where(and(eq(fundLocks.reason, ORDER_HOLD), eq(fundLocks.referenceId, order.id)));
 }
