@@ -63,6 +63,8 @@ import { walletRoutes } from './modules/wallets/routes';
 import { registerAuth } from './plugins/auth';
 import { realtimeRoutes } from './realtime/routes';
 import { RealtimeHub } from './realtime/hub';
+import { PostgresBroker } from './realtime/postgres-broker';
+import { cleanRateLimits, postgresRateLimitStore } from './lib/rate-limit-store';
 import { Scheduler } from './lib/scheduler';
 
 declare module 'fastify' {
@@ -110,7 +112,13 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
 
   app.decorate('config', config);
   app.decorate('db', db);
-  app.decorate('hub', new RealtimeHub());
+  const hub = new RealtimeHub();
+  app.decorate('hub', hub);
+  const broker = config.REALTIME_BROKER === 'postgres' ? new PostgresBroker(client, db, hub, app.log) : null;
+  if (broker) {
+    hub.useBroker(broker);
+    app.addHook('onReady', async () => broker.start());
+  }
   app.decorate('mailer', createMailer(config, app.log));
   app.decorate('storage', createStorage(config));
   app.decorate('scheduler', new Scheduler(app.log));
@@ -128,6 +136,7 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
     await app.scheduler.stop();
     await app.push.flush();
     app.hub.closeAll();
+    await broker?.stop();
     await client.end({ timeout: 5 });
   });
 
@@ -177,11 +186,16 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
 
+  const sharedLimits = config.RATE_LIMIT_STORE === 'postgres';
   await app.register(rateLimit, {
     max: config.GLOBAL_RATE_LIMIT,
     timeWindow: '1 minute',
     allowList: () => config.NODE_ENV === 'test',
+    // A database hiccup should not lock everyone out.
+    ...(sharedLimits ? { store: postgresRateLimitStore(db), skipOnError: true } : {}),
   });
+  if (sharedLimits)
+    app.scheduler.add({ name: 'rate-limit-cleanup', everySeconds: 600, run: () => cleanRateLimits(db) });
 
   await app.register(swagger, {
     openapi: {

@@ -99,6 +99,14 @@ const envSchema = z.object({
   /** Webhooks may call private and loopback addresses (development and tests only by default). */
   WEBHOOK_ALLOW_PRIVATE_NETWORKS: flag(false),
 
+  /**
+   * How instances share realtime events and who is online: `postgres` (LISTEN/NOTIFY, works for one
+   * instance or many) or `memory` (a single instance only).
+   */
+  REALTIME_BROKER: z.enum(['postgres', 'memory']).default('postgres'),
+  /** Where rate-limit counters live: `memory` (per instance) or `postgres` (shared by all instances). */
+  RATE_LIMIT_STORE: z.enum(['memory', 'postgres']).default('memory'),
+
   /** Web Push (VAPID). Without keys the server makes a pair once and keeps it in the database. */
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),

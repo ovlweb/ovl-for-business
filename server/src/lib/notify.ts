@@ -82,9 +82,10 @@ export async function deliverNotifications(app: FastifyInstance, limit = 500): P
         );
     return due;
   });
+  const online = rows.length ? await app.hub.onlineAmong(rows.map((r) => r.userId)) : new Set<string>();
   for (const row of rows) {
     app.hub.sendToUsers([row.userId], { type: 'notification.created', notification: notificationDto(row) });
-    if (app.hub.isOnline(row.userId) || Date.now() - row.createdAt.getTime() > PUSH_MAX_AGE_MS) continue;
+    if (online.has(row.userId) || Date.now() - row.createdAt.getTime() > PUSH_MAX_AGE_MS) continue;
     app.push.sendToUsers([row.userId], { title: row.title, body: row.body, link: row.link, tag: row.type });
   }
   if (rows.length === limit) queued = true;

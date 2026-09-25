@@ -27,6 +27,7 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
     REQUIRE_VERIFIED_EMAIL: 'false',
     SCHEDULER_ENABLED: 'false',
     STOCK_REQUIRE_RISK_ACK: 'false',
+    REALTIME_BROKER: 'memory',
     REQUIRE_IDENTITY_FOR_COMPANIES: 'false',
     CASH_FOUR_EYES_AMOUNT: '0',
     STORAGE_DIR: join(tmpdir(), 'ovl-test-uploads'),

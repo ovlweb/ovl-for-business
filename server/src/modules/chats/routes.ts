@@ -36,6 +36,7 @@ import {
   publishMessage,
   receiptsAllowed,
   requireReadable,
+  sendToChat,
   sortChats,
   type ChatRow,
   type MessageRow,
@@ -50,8 +51,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
   const oneChat = async (chat: ChatRow, user: AuthUser) => (await chatDtos(app, [chat], user.id))[0]!;
 
   const notifyChat = async (chat: ChatRow, extraUserIds: string[] = []) => {
-    const audience = await chatAudience(app, chat);
-    app.hub.sendToUsers([...audience, ...extraUserIds], { type: 'chat.updated', chatId: chat.id });
+    await sendToChat(app, chat, { type: 'chat.updated', chatId: chat.id });
+    app.hub.sendToUsers(extraUserIds, { type: 'chat.updated', chatId: chat.id });
   };
 
   const assertContacts = async (ownerId: string, userIds: string[]) => {

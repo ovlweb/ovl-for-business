@@ -1277,3 +1277,37 @@ export const pushSubscriptions = pgTable(
   },
   (t) => [index('push_subscriptions_user_idx').on(t.userId)],
 );
+
+// ---------------------------------------------------------------------------
+// Running several server instances
+// ---------------------------------------------------------------------------
+
+/** Who has an open realtime connection on which instance (instances refresh `seenAt`). */
+export const realtimePresence = pgTable(
+  'realtime_presence',
+  {
+    instanceId: varchar('instance_id', { length: 64 }).notNull(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    seenAt: timestamp('seen_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.instanceId, t.userId] }),
+    index('realtime_presence_user_idx').on(t.userId),
+  ],
+);
+
+/** Realtime events too large for a NOTIFY payload; instances read them by id, then they expire. */
+export const realtimeEvents = pgTable('realtime_events', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  payload: jsonb('payload').notNull(),
+  createdAt: createdAt(),
+});
+
+/** Rate-limit counters shared by all instances (RATE_LIMIT_STORE=postgres). */
+export const rateLimits = pgTable('rate_limits', {
+  key: varchar('key', { length: 300 }).primaryKey(),
+  count: integer('count').notNull(),
+  resetAt: timestamp('reset_at', { withTimezone: true }).notNull(),
+});

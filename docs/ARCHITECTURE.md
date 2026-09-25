@@ -113,9 +113,29 @@ the review queue in the client shows everything waiting for the current user.
 ## Realtime
 
 `GET /api/v1/realtime?token=<access token>` upgrades to a WebSocket. The server pushes
-`message.created/updated`, `chat.updated/removed`, `typing`, `application.updated`, `story.created`
-and `wallet.updated`. Clients use them to refresh their caches. The hub is in-process; for several
-API replicas put Redis or Postgres `LISTEN/NOTIFY` behind `RealtimeHub` (see roadmap).
+`message.created/updated`, `chat.updated/removed`, `typing`, `application.updated`, `story.created`,
+`wallet.updated`, `notification.created` and more (see API.md). Clients use them to refresh their
+caches.
+
+## Running several instances
+
+Any number of API instances can run behind a load balancer on one database; nothing else is
+needed:
+
+- **Realtime** (`REALTIME_BROKER=postgres`, the default): every instance keeps its own sockets in
+  `RealtimeHub` and publishes each event with `NOTIFY ovl_realtime`; all instances `LISTEN` and
+  deliver to the sockets they hold. Events too large for a NOTIFY payload (about 8 KB) are stored
+  in `realtime_events` and sent by id. Signing a session out closes its socket wherever it is.
+- **Presence**: who is connected where lives in `realtime_presence` (each instance refreshes its
+  rows every 30 s, rows of a crashed instance expire after 90 s). Push notifications use it to
+  reach only people who are not connected anywhere.
+- **Rate limits** (`RATE_LIMIT_STORE=postgres`): counters in `rate_limits`, one upsert per request,
+  so a client cannot multiply its allowance by spreading requests over instances. The default,
+  `memory`, counts per instance.
+- **Background jobs** claim their work with `FOR UPDATE SKIP LOCKED`, so every instance may run
+  the scheduler; notifications and webhooks are written in the transaction of the change (outbox)
+  and delivered by whichever instance gets there first.
+- **Files** need shared storage: the S3 driver (`STORAGE_DRIVER=s3`) or one volume for all.
 
 ## Security
 

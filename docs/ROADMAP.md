@@ -79,8 +79,8 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
 
 ### Platform
 
-- Horizontal scaling of realtime (Redis or Postgres `LISTEN/NOTIFY` behind `RealtimeHub`) and shared
-  rate-limit storage.
+- ✅ Horizontal scaling of realtime (Postgres `LISTEN/NOTIFY` behind `RealtimeHub`, shared
+  presence) and shared rate-limit storage (0.2).
 - Localisation (English, Russian, …).
 - Observability: metrics, tracing, structured audit export; automated backups.
 - Governance settings: majority vs. quorum voting, council terms, published transparency reports.

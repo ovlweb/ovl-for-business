@@ -4,6 +4,7 @@ import {
   MODERATION_CHAT_ROLES,
   type Chat,
   type Message,
+  type RealtimeEvent,
   type Role,
 } from '@ovl/shared';
 import { and, count, desc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
@@ -196,15 +197,25 @@ export async function insertMessage(
   return message!;
 }
 
-/** Everyone who should receive live events of a chat. */
+/** The members of a chat (support tickets also reach every connected support agent: see sendToChat). */
 export async function chatAudience(app: FastifyInstance, chat: ChatRow): Promise<string[]> {
   const rows = await app.db
     .select({ userId: chatMembers.userId })
     .from(chatMembers)
     .where(eq(chatMembers.chatId, chat.id));
-  const ids = rows.map((r) => r.userId);
-  if (chat.type === 'support') ids.push(...app.hub.supportStaffIds());
-  return ids;
+  return rows.map((r) => r.userId);
+}
+
+/** Send a live event to everyone in a chat (and to support staff on every instance, for tickets). */
+export async function sendToChat(
+  app: FastifyInstance,
+  chat: ChatRow,
+  event: RealtimeEvent,
+  except: string[] = [],
+) {
+  const members = (await chatAudience(app, chat)).filter((id) => !except.includes(id));
+  app.hub.sendToUsers(members, event);
+  if (chat.type === 'support') app.hub.sendToSupportStaff(event, [...except, ...members]);
 }
 
 /**
@@ -228,12 +239,9 @@ export async function publishMessage(
       ? { ...base!, reactions: base!.reactions.map((r) => ({ ...r, mine: mine.has(r.emoji) })) }
       : base!;
   };
-  const audience = await chatAudience(app, chat);
-  app.hub.sendToUsers(
-    audience.filter((id) => !reactors.has(id)),
-    { type, chatId: chat.id, message: base! },
-  );
-  for (const userId of audience.filter((id) => reactors.has(id)))
+  // Everyone gets the plain copy, except those who reacted: they get theirs.
+  await sendToChat(app, chat, { type, chatId: chat.id, message: base! }, [...reactors.keys()]);
+  for (const userId of reactors.keys())
     app.hub.sendToUsers([userId], { type, chatId: chat.id, message: viewFor(userId) });
   return viewFor(viewerId);
 }
@@ -485,7 +493,9 @@ export async function notifyNewMessage(
 
   // Everything else in private conversations: a push to people who are away (channels are news, not pushed).
   if (message.threadId || chat.type === 'channel') return;
-  const away = (await chatAudience(app, chat)).filter((id) => !told.has(id) && !app.hub.isOnline(id));
+  const members = (await chatAudience(app, chat)).filter((id) => !told.has(id));
+  const online = await app.hub.onlineAmong(members);
+  const away = members.filter((id) => !online.has(id));
   if (!away.length) return;
   const wanting = await app.db
     .select({ id: users.id })
