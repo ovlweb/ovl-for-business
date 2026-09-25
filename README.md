@@ -55,8 +55,9 @@ Android, iOS, macOS and Windows.
   either as a manager-handled transfer or as **physical cash at the desk**, each with a reference and
   a journal entry. People and companies ask for deposits and payouts from their wallet; a payout
   holds the amount until a manager pays it out or declines it. Transfers between people and
-  companies, **invoices** paid from a balance in one step, per-currency balances, statements with
-  CSV export.
+  companies, **invoices** paid from a balance in one step, per-currency balances, **currency
+  conversion** at rates the finance team manages, statements with CSV export. Companies can set an
+  **approval limit**: larger payments wait for a second owner, director or accountant.
 - **Tech support** — tickets are support chats. Moderators, admins and the owner answer from the same
   client in a separate _Support desk_ section; replies carry a staff badge and the owner's replies a
   special owner badge. The council cannot answer tickets.

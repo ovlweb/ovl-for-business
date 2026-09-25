@@ -265,18 +265,19 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
   bool _busy = false;
   Object? _error;
 
-  Future<void> _run(Future<Invoice> Function() action, String Function(Invoice) message) async {
+  /// Runs an action that returns the message to show when it worked.
+  Future<void> _run(Future<String> Function() action) async {
     final session = context.read<Session>();
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final result = await action();
-      for (final k in ['invoices', 'wallets', 'entries', 'orgs']) {
+      final message = await action();
+      for (final k in ['invoices', 'wallets', 'entries', 'orgs', 'paymentApprovals']) {
         session.queries.invalidate(k);
       }
-      if (mounted) toast(context, message(result));
+      if (mounted) toast(context, message);
     } catch (e) {
       if (mounted) setState(() => _error = e);
     } finally {
@@ -423,10 +424,12 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
               label: 'Pay ${money(i.total, i.currency)}',
               icon: LucideIcons.check,
               busy: _busy,
-              onPressed: () => _run(
-                () => session.api.payInvoice(i.id, wallet.id),
-                (paid) => 'Paid ${money(paid.total, paid.currency)} to ${paid.issuer.name}',
-              ),
+              onPressed: () => _run(() async {
+                final (paid, approval) = await session.api.payInvoice(i.id, wallet.id);
+                return approval != null
+                    ? 'Above the approval limit: another finance member has to approve this payment'
+                    : 'Paid ${money(paid!.total, paid.currency)} to ${paid.issuer.name}';
+              }),
             ),
           ],
         );
@@ -451,7 +454,10 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
       ),
     );
     if (ok != true) return;
-    await _run(() => session.api.cancelInvoice(i.id, reason: reason.text.trim()), (_) => 'Invoice cancelled');
+    await _run(() async {
+      await session.api.cancelInvoice(i.id, reason: reason.text.trim());
+      return 'Invoice cancelled';
+    });
   }
 }
 

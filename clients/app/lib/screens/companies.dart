@@ -208,6 +208,7 @@ class CompanyScreen extends StatelessWidget {
                 ),
               ),
               if (o.canSeeMoney) ...[
+                _PaymentApprovals(org: o),
                 const SizedBox(height: 18),
                 Text('Company balances', style: context.text.titleLarge),
                 const SizedBox(height: 10),
@@ -264,6 +265,11 @@ class _CompanyWalletsState extends State<_CompanyWallets> {
               icon: const Icon(LucideIcons.arrowUpRight, size: 17),
               label: const Text('Withdraw'),
             ),
+            OutlinedButton.icon(
+              onPressed: () => showConvertSheet(context, selected),
+              icon: const Icon(LucideIcons.arrowLeftRight, size: 17),
+              label: const Text('Convert'),
+            ),
           ],
         ),
         CashRequests(wallet: selected),
@@ -271,6 +277,158 @@ class _CompanyWalletsState extends State<_CompanyWallets> {
         Statement(wallet: selected),
       ],
     );
+  }
+}
+
+const _kindIcon = {
+  'transfer': LucideIcons.send,
+  'invoice': LucideIcons.receipt,
+  'exchange': LucideIcons.arrowLeftRight,
+  'payroll': LucideIcons.users,
+};
+
+/// Company payments above the approval limit: a second finance member approves or declines them.
+class _PaymentApprovals extends StatelessWidget {
+  const _PaymentApprovals({required this.org});
+
+  final Organization org;
+
+  @override
+  Widget build(BuildContext context) {
+    final session = context.watch<Session>();
+    final c = context.c;
+    return Query<List<PaymentApproval>>(
+      client: session.queries,
+      queryKey: 'paymentApprovals:${org.id}',
+      fetch: () => session.api.paymentApprovals(org.id, status: 'pending'),
+      builder: (context, s) {
+        final waiting = s.data ?? const <PaymentApproval>[];
+        if (org.approvalLimit == null && waiting.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 18),
+          child: OvlCard(
+            padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Payments waiting for approval', style: context.text.titleLarge),
+                      const SizedBox(height: 4),
+                      Text(
+                        org.approvalLimit == null
+                            ? 'The approval limit is off: payments go through at once.'
+                            : 'Payments of ${money(org.approvalLimit!, org.baseCurrency)} or more need a second owner, '
+                                  'director or accountant. The money is set aside meanwhile.',
+                        style: context.text.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                if (s.hasData && waiting.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 6, 14, 8),
+                    child: Text('Nothing is waiting.', style: context.text.bodyMedium),
+                  ),
+                for (final (i, a) in waiting.indexed)
+                  FadeSlideIn(
+                    delay: stagger(i, 30),
+                    child: ListTile(
+                      leading: IconTile(_kindIcon[a.kind] ?? LucideIcons.banknote, size: 38, color: c.warning),
+                      title: Text(a.description, style: context.text.titleSmall, maxLines: 2),
+                      subtitle: Text(
+                        '${a.requestedById == session.me?.id ? 'You' : a.requestedBy} · ${date(a.createdAt)}',
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '−${money(a.amount, a.currency)}',
+                            style: font(body, 14, FontWeight.w700, color: c.text),
+                          ),
+                          const SizedBox(width: 6),
+                          if (a.requestedById != session.me?.id)
+                            IconButton(
+                              tooltip: 'Approve',
+                              onPressed: () => _approve(context, a),
+                              icon: Icon(LucideIcons.check, size: 19, color: c.success),
+                            ),
+                          IconButton(
+                            tooltip: a.requestedById == session.me?.id ? 'Withdraw' : 'Decline',
+                            onPressed: () => _decline(context, a),
+                            icon: Icon(LucideIcons.x, size: 18, color: c.text3),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _refresh(Session session) {
+    for (final k in ['paymentApprovals', 'wallets', 'entries', 'orgs', 'invoices']) {
+      session.queries.invalidate(k);
+    }
+  }
+
+  Future<void> _approve(BuildContext context, PaymentApproval a) async {
+    final session = context.read<Session>();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: const Text('Approve this payment?'),
+        content: Text('${a.description}\n\n${money(a.amount, a.currency)} leaves the company balance now.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('Not now')),
+          FilledButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('Approve')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await session.api.approvePayment(org.id, a.id);
+      _refresh(session);
+      if (context.mounted) toast(context, 'Approved: ${a.description}');
+    } catch (e) {
+      if (context.mounted) toast(context, errorText(e), error: true);
+    }
+  }
+
+  Future<void> _decline(BuildContext context, PaymentApproval a) async {
+    final session = context.read<Session>();
+    final mine = a.requestedById == session.me?.id;
+    final reason = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: Text(mine ? 'Withdraw this payment?' : 'Decline this payment?'),
+        content: TextField(
+          controller: reason,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Reason (at least 3 characters)'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('Keep')),
+          FilledButton(onPressed: () => Navigator.pop(dialog, true), child: Text(mine ? 'Withdraw' : 'Decline')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await session.api.rejectPayment(org.id, a.id, reason.text.trim());
+      _refresh(session);
+      if (context.mounted) toast(context, mine ? 'Payment withdrawn' : 'Payment declined');
+    } catch (e) {
+      if (context.mounted) toast(context, errorText(e), error: true);
+    }
   }
 }
 

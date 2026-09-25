@@ -2,9 +2,11 @@ import {
   addOrgMemberSchema,
   can,
   currencyCodeSchema,
+  formatAmount,
   orgMemberSchema,
   organizationSchema,
   ORG_FINANCE_ROLES,
+  parseAmount,
   updateOrganizationSchema,
   walletSchema,
   type Organization,
@@ -20,6 +22,7 @@ import { audit } from '../lib/audit';
 import { badRequest, forbidden, notFound } from '../lib/errors';
 import { iso, summaryColumns, toUserSummary } from '../lib/mappers';
 import { currentUser, type AuthUser } from '../plugins/auth';
+import { financeMemberCount } from './org-payments';
 import { getOrCreateWallet, listOwnerWallets, orgRoleOf, walletDtos } from './wallets/service';
 
 type OrgRow = typeof organizations.$inferSelect;
@@ -74,6 +77,8 @@ export async function organizationDtos(db: Db, rows: OrgRow[], viewerId?: string
     memberCount: countById.get(o.id) ?? 0,
     myRole: roleById.get(o.id) ?? null,
     verified: o.verifiedAt !== null && o.status === 'active',
+    approvalLimit:
+      roleById.has(o.id) && o.approvalLimit !== null ? formatAmount(o.approvalLimit, o.baseCurrency) : null,
     createdAt: iso(o.createdAt),
   }));
 }
@@ -150,14 +155,29 @@ export async function organizationRoutes(fastify: FastifyInstance) {
     },
     async (req) => {
       const me = currentUser(req);
-      await loadOrg(req.params.id);
+      const current = await loadOrg(req.params.id);
       await requireOrgRole(req.params.id, me, ['owner', 'director']);
-      const patch = { ...req.body, website: req.body.website === '' ? null : req.body.website };
+      const { approvalLimit, ...rest } = req.body;
+      const patch: Partial<OrgRow> = { ...rest, website: rest.website === '' ? null : rest.website };
+      if (approvalLimit !== undefined) {
+        patch.approvalLimit = approvalLimit === '' ? null : parseAmount(approvalLimit, current.baseCurrency);
+        if (patch.approvalLimit !== null && (await financeMemberCount(app.db, current.id)) < 2)
+          throw badRequest('Add a second owner, director or accountant first: someone has to approve');
+      }
       const [org] = await app.db
         .update(organizations)
         .set(patch)
         .where(eq(organizations.id, req.params.id))
         .returning();
+      if (approvalLimit !== undefined && patch.approvalLimit !== current.approvalLimit)
+        await audit(app.db, {
+          actorId: me.id,
+          action: 'organization.approval_limit',
+          targetType: 'organization',
+          targetId: current.id,
+          data: { approvalLimit: approvalLimit || null, currency: current.baseCurrency },
+          ip: req.ip,
+        });
       const [dto] = await organizationDtos(app.db, [org!], me.id);
       return dto!;
     },

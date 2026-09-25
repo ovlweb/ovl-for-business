@@ -40,6 +40,8 @@ export const PERMISSIONS = {
   'stories.publish': ['council', 'admin', 'owner'],
   /** Create news channels directly (everyone else applies through moderation). */
   'channels.create': ['moderator', 'admin', 'owner'],
+  /** Set exchange rates and the exchange fee. */
+  'exchange.manage': ['manager', 'admin', 'owner'],
   /** Check people's identity documents (KYC) and grant or revoke "verified". */
   'identity.review': ['moderator', 'admin', 'owner'],
   /** See every application, not only the ones waiting for you. */

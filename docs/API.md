@@ -82,19 +82,20 @@ Server-to-server: `new OvlClient({ baseUrl, apiKey: 'ovl_…' })` and use `regis
 
 Connect to `wss://…/api/v1/realtime?token=<accessToken>`. The server sends JSON events:
 
-| Event                  | Payload                                 |
-| ---------------------- | --------------------------------------- |
-| `ready`                | `userId`                                |
-| `message.created`      | `chatId`, `message`                     |
-| `message.updated`      | `chatId`, `message` (edits, deletions)  |
-| `chat.updated`         | `chatId`                                |
-| `chat.removed`         | `chatId`                                |
-| `typing`               | `chatId`, `userId`                      |
-| `application.updated`  | `applicationId`, `status`, `stageIndex` |
-| `story.created`        | `storyId`                               |
-| `wallet.updated`       | `walletId`                              |
-| `cash_request.updated` | `requestId`, `walletId`, `status`       |
-| `invoice.updated`      | `invoiceId`, `status`                   |
+| Event                      | Payload                                  |
+| -------------------------- | ---------------------------------------- |
+| `ready`                    | `userId`                                 |
+| `message.created`          | `chatId`, `message`                      |
+| `message.updated`          | `chatId`, `message` (edits, deletions)   |
+| `chat.updated`             | `chatId`                                 |
+| `chat.removed`             | `chatId`                                 |
+| `typing`                   | `chatId`, `userId`                       |
+| `application.updated`      | `applicationId`, `status`, `stageIndex`  |
+| `story.created`            | `storyId`                                |
+| `wallet.updated`           | `walletId`                               |
+| `cash_request.updated`     | `requestId`, `walletId`, `status`        |
+| `invoice.updated`          | `invoiceId`, `status`                    |
+| `payment_approval.updated` | `organizationId`, `approvalId`, `status` |
 
 Clients may send `{"type":"typing","chatId":"…"}` and `{"type":"ping"}`. A close code `4401`
 means the access token expired or the session was signed out: refresh and reconnect (the refresh
@@ -197,15 +198,39 @@ open. `GET /invoices?direction=incoming|outgoing&status=open|paid|cancelled` lis
 invoice says whether it is `incoming` or `outgoing` for the caller and whether it is `overdue`.
 Both sides receive `invoice.updated`.
 
+## Currency exchange
+
+Staff with `exchange.manage` publish rates with `PUT /admin/exchange {base?, feePercent?, rates?}`:
+each rate says what one unit of a currency is worth in the base currency (`{currency: 'EUR', rate:
+'1.08'}`), and a `null` rate removes a currency. `GET /exchange` returns the base, the fee and the
+rates. `POST /exchange/quote {fromWalletId, toCurrency, amount}` shows what the owner would get: the
+fee is taken from the amount first, and the result is rounded down to the target currency's minor
+unit. `POST /exchange` with the same body moves the money into the owner's balance in the target
+currency (opened if needed); the ledger shows `exchange_out` and `exchange_in` entries that
+reference the exchange.
+
+## Multi-signature company payments
+
+A company's owner or director sets `approvalLimit` (in its base currency) with
+`PATCH /organizations/:id`; it needs at least two owners, directors or accountants, and `""` turns
+it off. From then on a transfer, exchange or invoice payment of at least the limit (other currencies
+are compared at the exchange rates, and count as above the limit without one) answers **202** with a
+`PaymentApproval` instead of moving the money. The amount is set aside at once (lock reason
+`payment_approval`). Another finance member calls
+`POST /organizations/:id/payment-approvals/:approvalId/approve` to make the payment, or `/reject`
+with a `reason` (the requester can withdraw their own this way). Cancelling an invoice declines its
+waiting payment. `GET /organizations/:id/payment-approvals?status=pending` lists them, and the finance
+team receives `payment_approval.updated` and `wallet.updated`.
+
 ## Main endpoints
 
 | Area         | Endpoints                                                                                                                                                                                                                                                                                                                                                                              |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Auth & me    | `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `GET/PATCH /me`, `POST /me/password`, `GET /me/sessions`, `DELETE /me/sessions/:id`, `POST /me/sessions/sign-out-others`, `GET /me/2fa`, `POST /me/2fa/{setup,enable,disable,recovery-codes}`, `POST /me/email`, `POST /me/email/verification`, `POST /auth/verify-email`, `POST /auth/password/{forgot,reset}` |
 | People       | `GET /users/search`, `GET /users/:username`, `GET/POST /contacts`, `DELETE /contacts/:userId`                                                                                                                                                                                                                                                                                          |
-| Wallets      | `GET/POST /wallets`, `GET /wallets/:id`, `/entries`, `/locks`, `POST /wallets/transfer`, `GET/POST /wallets/:id/cash-requests`, `POST /cash-requests/:id/cancel`, `GET /wallets/:id/statement.csv`, `POST /wallets/:id/statement-link`                                                                                                                                                 |
+| Wallets      | `GET/POST /wallets`, `GET /wallets/:id`, `/entries`, `/locks`, `POST /wallets/transfer`, `GET/POST /wallets/:id/cash-requests`, `POST /cash-requests/:id/cancel`, `GET /wallets/:id/statement.csv`, `POST /wallets/:id/statement-link`, `GET /exchange`, `POST /exchange/quote`, `POST /exchange`                                                                                      |
 | Invoices     | `GET/POST /invoices`, `GET /invoices/:id`, `POST /invoices/:id/pay`, `POST /invoices/:id/cancel`                                                                                                                                                                                                                                                                                       |
-| Companies    | `GET /organizations/mine`, `GET /organizations/:slug`, `PATCH /organizations/:id`, members, wallets                                                                                                                                                                                                                                                                                    |
+| Companies    | `GET /organizations/mine`, `GET /organizations/:slug`, `PATCH /organizations/:id`, members, wallets, `GET /organizations/:id/payment-approvals`, `POST …/:approvalId/approve`, `POST …/:approvalId/reject`                                                                                                                                                                             |
 | Applications | `POST /applications`, `GET /applications/mine`, `/queue`, `/:id`, `POST /:id/review`, `/:id/withdraw`, `/:id/resubmit`; `POST /files`, `GET/DELETE /files/:id`                                                                                                                                                                                                                         |
 | Registry     | `GET /registry`, `GET /registry/:idOrNumber`                                                                                                                                                                                                                                                                                                                                           |
 | Stock        | `GET /stock/listings`, `/stock/listings/:ticker`, `POST …/invest`, `GET /stock/portfolio`                                                                                                                                                                                                                                                                                              |

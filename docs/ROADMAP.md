@@ -36,8 +36,10 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
   holds its amount until handled (0.2).
 - ✅ Invoices between people and companies, paid from a balance in one step, printable (0.2).
   Next: partial payments, recurring invoices and payroll.
-- Currency exchange between balances with managed rates and fees.
-- Multi-signature company payments (e.g. director + accountant above a limit).
+- ✅ Currency exchange between balances with managed rates and a fee, on web, in the apps and in
+  the admin panel (0.2).
+- ✅ Multi-signature company payments: above a company's approval limit, transfers, exchanges and
+  invoice payments wait for a second owner, director or accountant, with the money set aside (0.2).
 - ✅ Statement export as CSV on web and in the apps (0.2). Next: PDF and monthly statements.
 
 ### Stock exchange

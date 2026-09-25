@@ -224,6 +224,82 @@ class Wallet {
   bool get hasFrozen => (double.tryParse(frozen) ?? 0) > 0;
 }
 
+/// A company payment above its approval limit, waiting for (or decided by) a second finance member.
+class PaymentApproval {
+  PaymentApproval.fromJson(Json j)
+    : id = j['id'] as String,
+      organizationId = j['organizationId'] as String,
+      walletId = j['walletId'] as String,
+      kind = j['kind'] as String,
+      amount = j['amount'] as String,
+      currency = j['currency'] as String,
+      description = j['description'] as String,
+      status = j['status'] as String,
+      requestedById = (j['requestedBy'] as Json)['id'] as String,
+      requestedBy = (j['requestedBy'] as Json)['displayName'] as String,
+      decidedBy = (j['decidedBy'] as Json?)?['displayName'] as String?,
+      reason = j['reason'] as String?,
+      createdAt = _date(j['createdAt']),
+      decidedAt = _dateOrNull(j['decidedAt']);
+
+  /// Payment endpoints answer 202 with one of these instead of the finished result.
+  static bool matches(Object? j) => j is Json && j.containsKey('kind') && j.containsKey('requestedBy');
+
+  final String id;
+  final String organizationId;
+  final String walletId;
+
+  /// transfer, invoice, exchange or payroll
+  final String kind;
+  final String amount;
+  final String currency;
+  final String description;
+  final String status;
+  final String requestedById;
+
+  /// Display names.
+  final String requestedBy;
+  final String? decidedBy;
+  final String? reason;
+  final DateTime createdAt;
+  final DateTime? decidedAt;
+}
+
+/// Exchange rates against the base currency, and the fee.
+class ExchangeInfo {
+  ExchangeInfo.fromJson(Json j)
+    : base = j['base'] as String,
+      feePercent = j['feePercent'] as String,
+      rates = {for (final r in j['rates'] as List) (r as Json)['currency'] as String: r['rate'] as String};
+
+  final String base;
+  final String feePercent;
+
+  /// Currency → what one unit is worth in [base].
+  final Map<String, String> rates;
+
+  List<String> targetsFrom(String currency) => [base, ...rates.keys].where((c) => c != currency).toList();
+}
+
+class ExchangeQuote {
+  ExchangeQuote.fromJson(Json j)
+    : fromCurrency = j['fromCurrency'] as String,
+      toCurrency = j['toCurrency'] as String,
+      amount = j['amount'] as String,
+      fee = j['fee'] as String,
+      receive = j['receive'] as String,
+      rate = j['rate'] as String;
+
+  final String fromCurrency;
+  final String toCurrency;
+  final String amount;
+  final String fee;
+  final String receive;
+
+  /// Target units per source unit.
+  final String rate;
+}
+
 /// A deposit or payout someone asked a finance manager for.
 class CashRequest {
   CashRequest.fromJson(Json j)
@@ -382,10 +458,14 @@ class Organization {
       memberCount = j['memberCount'] as int,
       myRole = j['myRole'] as String?,
       verified = j['verified'] as bool? ?? false,
+      approvalLimit = j['approvalLimit'] as String?,
       createdAt = _date(j['createdAt']);
 
   /// Verified business: its owner passed an identity check.
   final bool verified;
+
+  /// Payments of at least this much (base currency) need a second finance member; members only.
+  final String? approvalLimit;
   final String id;
   final String name;
   final String slug;

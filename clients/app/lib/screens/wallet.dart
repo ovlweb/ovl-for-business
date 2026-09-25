@@ -74,6 +74,11 @@ class _WalletScreenState extends State<WalletScreen> {
                       icon: const Icon(LucideIcons.arrowUpRight, size: 17),
                       label: const Text('Withdraw'),
                     ),
+                    OutlinedButton.icon(
+                      onPressed: selected == null ? null : () => showConvertSheet(context, selected),
+                      icon: const Icon(LucideIcons.arrowLeftRight, size: 17),
+                      label: const Text('Convert'),
+                    ),
                     FilledButton.icon(
                       onPressed: wallets.isEmpty ? null : () => showTransferSheet(context, from: selected),
                       icon: const Icon(LucideIcons.send, size: 17),
@@ -583,7 +588,7 @@ void showTransferSheet(BuildContext context, {Wallet? from}) {
                               error = null;
                             });
                             try {
-                              await session.api.transfer(
+                              final approval = await session.api.transfer(
                                 fromWalletId: wallet!.id,
                                 username: username.text.trim().replaceFirst('@', '').toLowerCase(),
                                 amount: amount.text.trim().replaceAll(',', '.'),
@@ -591,11 +596,14 @@ void showTransferSheet(BuildContext context, {Wallet? from}) {
                               );
                               session.queries.invalidate('wallets');
                               session.queries.invalidate('entries');
+                              session.queries.invalidate('paymentApprovals');
                               if (sheet.mounted) Navigator.pop(sheet);
                               if (context.mounted) {
                                 toast(
                                   context,
-                                  'Sent ${money(amount.text.trim(), wallet!.currency)} to @${username.text.trim()}',
+                                  approval != null
+                                      ? 'Above the approval limit: another finance member has to approve this payment'
+                                      : 'Sent ${money(amount.text.trim(), wallet!.currency)} to @${username.text.trim()}',
                                 );
                               }
                             } catch (e) {
@@ -612,6 +620,169 @@ void showTransferSheet(BuildContext context, {Wallet? from}) {
           },
         ),
       ),
+    ),
+  );
+}
+
+/// Convert between two balances of the same owner at the managed rate, with a live quote.
+void showConvertSheet(BuildContext context, Wallet wallet) {
+  final session = context.read<Session>();
+  final amount = TextEditingController();
+  final infoFuture = session.api.exchangeInfo();
+  String? target;
+  ExchangeQuote? quote;
+  Object? quoteError;
+  Object? error;
+  var busy = false;
+  var asked = 0;
+  showModalBottomSheet<void>(
+    context: context,
+    useRootNavigator: true,
+    isScrollControlled: true,
+    builder: (sheet) => StatefulBuilder(
+      builder: (sheet, set) {
+        Future<void> refreshQuote() async {
+          final value = amount.text.trim().replaceAll(',', '.');
+          final ticket = ++asked;
+          if (target == null || (double.tryParse(value) ?? 0) <= 0) {
+            set(() => quote = quoteError = null);
+            return;
+          }
+          try {
+            final q = await session.api.exchangeQuote(wallet.id, target!, value);
+            if (ticket == asked && sheet.mounted) set(() => (quote, quoteError) = (q, null));
+          } catch (e) {
+            if (ticket == asked && sheet.mounted) set(() => (quote, quoteError) = (null, e));
+          }
+        }
+
+        final c = sheet.c;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(sheet).bottom),
+          child: FutureBuilder<ExchangeInfo>(
+            future: infoFuture,
+            builder: (sheet, snap) {
+              final info = snap.data;
+              final targets = info?.targetsFrom(wallet.currency) ?? const <String>[];
+              target ??= targets.firstOrNull;
+              Widget line(String label, String value, {bool strong = false}) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(label, style: sheet.text.bodyMedium)),
+                    Text(
+                      value,
+                      style: strong ? font(display, 20, FontWeight.w700, color: c.text) : sheet.text.bodyMedium,
+                    ),
+                  ],
+                ),
+              );
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Convert ${wallet.currency}', style: sheet.text.headlineSmall),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Available: ${money(wallet.available, wallet.currency)}. The fee is taken before converting.',
+                    style: sheet.text.bodyMedium,
+                  ),
+                  const SizedBox(height: 16),
+                  if (snap.hasError) ErrorBox(snap.error!),
+                  if (!snap.hasData && !snap.hasError) const SkeletonList(rows: 2),
+                  if (info != null && targets.isEmpty)
+                    const EmptyState(
+                      icon: LucideIcons.arrowLeftRight,
+                      title: 'No exchange rates yet',
+                      text: 'Finance managers publish rates in the admin panel.',
+                    ),
+                  if (info != null && targets.isNotEmpty) ...[
+                    if (error != null) ...[ErrorBox(error!), const SizedBox(height: 12)],
+                    LabeledField(
+                      label: 'Amount (${wallet.currency})',
+                      controller: amount,
+                      icon: LucideIcons.banknote,
+                      keyboard: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (_) => refreshQuote(),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final t in targets)
+                          ChoiceChip(
+                            label: Text(t),
+                            selected: t == target,
+                            onSelected: (_) {
+                              set(() => target = t);
+                              refreshQuote();
+                            },
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    OvlCard(
+                      child: Column(
+                        children: [
+                          line('You get', quote == null ? '—' : money(quote!.receive, quote!.toCurrency), strong: true),
+                          line(
+                            'Rate',
+                            quote == null ? '—' : '1 ${quote!.fromCurrency} = ${quote!.rate} ${quote!.toCurrency}',
+                          ),
+                          line(
+                            'Fee (${info.feePercent}%)',
+                            quote == null ? '—' : money(quote!.fee, quote!.fromCurrency),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (quoteError != null) ...[const SizedBox(height: 10), ErrorBox(quoteError!)],
+                    const SizedBox(height: 18),
+                    GradientButton(
+                      label: 'Convert',
+                      icon: LucideIcons.arrowLeftRight,
+                      busy: busy,
+                      onPressed: quote == null
+                          ? null
+                          : () async {
+                              set(() {
+                                busy = true;
+                                error = null;
+                              });
+                              try {
+                                final (done, approval) = await session.api.exchange(
+                                  wallet.id,
+                                  target!,
+                                  amount.text.trim().replaceAll(',', '.'),
+                                );
+                                for (final k in ['wallets', 'entries', 'orgs', 'paymentApprovals']) {
+                                  session.queries.invalidate(k);
+                                }
+                                if (sheet.mounted) Navigator.pop(sheet);
+                                if (context.mounted) {
+                                  toast(
+                                    context,
+                                    approval != null
+                                        ? 'Above the approval limit: another finance member has to approve this exchange'
+                                        : 'Converted to ${money(done!.receive, done.toCurrency)}',
+                                  );
+                                }
+                              } catch (e) {
+                                set(() {
+                                  busy = false;
+                                  error = e;
+                                });
+                              }
+                            },
+                    ),
+                  ],
+                ],
+              );
+            },
+          ),
+        );
+      },
     ),
   );
 }

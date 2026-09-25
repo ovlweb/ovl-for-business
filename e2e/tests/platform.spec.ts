@@ -383,6 +383,60 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(maria.getByRole('link', { name: 'https://northwind.example.com' })).toBeVisible();
   });
 
+  test('money: staff publish exchange rates and people convert between balances', async () => {
+    await admin
+      .getByRole('navigation', { name: 'Admin' })
+      .getByRole('link', { name: 'Exchange rates' })
+      .click();
+    await admin.getByLabel('Currency to add').selectOption('EUR');
+    await admin.getByRole('button', { name: 'Add currency' }).click();
+    await admin.getByLabel('EUR rate').fill('1.08');
+    await admin.getByRole('button', { name: 'Save rates' }).click();
+    await expect(admin.getByText('Exchange rates saved')).toBeVisible();
+
+    await maria.goto('./#/wallet');
+    await maria.getByRole('button', { name: 'Convert' }).click();
+    const dialog = maria.getByRole('dialog');
+    await dialog.getByLabel('Amount (USD)').fill('100');
+    await dialog.getByLabel('Into').selectOption('EUR');
+    await expect(dialog.getByText('1 USD = 0.925925 EUR')).toBeVisible();
+    await expect(dialog.getByText('92.12 EUR')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Convert' }).click();
+    await expect(maria.getByText('Converted to 92.12 EUR')).toBeVisible();
+    await expect(maria.locator('.bank-card', { hasText: 'EUR' })).toContainText('92.12');
+  });
+
+  test('multi-signature: a company payment above the limit waits for a second finance member', async () => {
+    await maria.goto('./#/companies/northwind-studio');
+    await maria.getByLabel('Username to add').fill('ivan');
+    await maria.getByLabel('Role', { exact: true }).selectOption('accountant');
+    await maria.getByRole('button', { name: 'Add / change role' }).click();
+    await expect(maria.locator('.list-item', { hasText: 'Ivan Sokolov' })).toContainText('Accountant');
+    await maria.getByRole('button', { name: 'Edit profile' }).click();
+    await maria.getByLabel('Approval limit (USD)').fill('20');
+    await maria.getByRole('button', { name: 'Save' }).click();
+    await expect(maria.getByText(/Payments of 20\.00 USD or more need a second/)).toBeVisible();
+
+    await maria.getByRole('button', { name: 'Send money' }).click();
+    const dialog = maria.getByRole('dialog');
+    await dialog.getByLabel('Username').fill('ivan');
+    await dialog.getByLabel('Amount (USD)').fill('30');
+    await dialog.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect(maria.getByText(/another finance member has to approve/)).toBeVisible();
+    const waiting = (page: Page) => page.locator('.list-item', { hasText: 'Transfer 30.00 USD to @ivan' });
+    await expect(waiting(maria)).toContainText('Pending');
+    // The investment's frozen 30.00 plus the 30.00 set aside for the payment.
+    await expect(maria.getByText('60.00 frozen')).toBeVisible();
+
+    await ivan.goto('./#/companies/northwind-studio');
+    await waiting(ivan).getByRole('button', { name: 'Approve' }).click();
+    await expect(ivan.getByText('Approved: Transfer 30.00 USD to @ivan')).toBeVisible();
+    // Maria's page follows live: nothing waits and the money has left.
+    await expect(maria.getByText('Nothing is waiting.')).toBeVisible();
+    await expect(maria.getByText('30.00 frozen')).toBeVisible();
+    await expect(maria.locator('.bank-card')).toContainText('45.00');
+  });
+
   test('settings: switching the theme applies instantly and is saved', async () => {
     await maria.goto('./#/settings?section=appearance');
     await maria.getByRole('radio', { name: 'Midnight' }).click();

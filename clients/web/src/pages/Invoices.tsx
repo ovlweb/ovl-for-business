@@ -31,6 +31,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
+import { isPendingApproval } from '../components/WalletPanel';
 
 type Direction = 'incoming' | 'outgoing';
 
@@ -310,13 +311,16 @@ function InvoiceModal({ id, onClose }: { id: string; onClose: () => void }) {
     };
   }, []);
   const done = (message: string) => {
-    for (const key of ['invoices', 'wallets', 'orgWallets', 'entries', 'wallet'])
+    for (const key of ['invoices', 'wallets', 'orgWallets', 'entries', 'wallet', 'paymentApprovals'])
       queryClient.invalidateQueries({ queryKey: [key] });
     toast.success(message);
   };
   const pay = useMutation({
     mutationFn: () => api.invoices.pay(id, wallet!.id),
-    onSuccess: (paid) => done(`Paid ${formatMoney(paid.total, paid.currency)} to ${paid.issuer.name}`),
+    onSuccess: (paid) =>
+      isPendingApproval(paid)
+        ? done('Above the approval limit: another finance member has to approve this payment')
+        : done(`Paid ${formatMoney(paid.total, paid.currency)} to ${paid.issuer.name}`),
   });
   const cancel = useMutation({
     mutationFn: () => api.invoices.cancel(id, reason || undefined),

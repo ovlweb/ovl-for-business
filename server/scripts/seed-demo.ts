@@ -173,6 +173,19 @@ async function main() {
     if ('kind' in done) await owner.client.admin.approveCash(done.id);
   }
 
+  // --- Exchange rates (what one unit is worth in USD) -----------------------------------
+  await sofia.admin.setExchange({
+    base: 'USD',
+    feePercent: '0.5',
+    rates: [
+      { currency: 'EUR', rate: '1.08' },
+      { currency: 'GBP', rate: '1.27' },
+      { currency: 'CHF', rate: '1.12' },
+      { currency: 'JPY', rate: '0.0067' },
+      { currency: 'CNY', rate: '0.138' },
+    ],
+  });
+
   // --- Companies through the full approval workflow -----------------------------------
   const companies = [
     {
@@ -230,6 +243,8 @@ async function main() {
     for (const price of c.prices) await owner.client.admin.updateListing(listing.id, { sharePrice: price });
   }
 
+  const maria = u('maria').client;
+
   // --- Investments ---------------------------------------------------------------------
   const invest: [string, string, string][] = [
     ['ivan', 'AURA', '25000'],
@@ -244,6 +259,24 @@ async function main() {
     await u(name)
       .client.stock.invest(ticker, amount)
       .catch(() => undefined);
+  }
+
+  // --- Multi-signature: Aurora's large payments need two people ------------------------------
+  const aurora = (await maria.organizations.mine()).find((o) => o.name === 'Aurora Media Group');
+  if (aurora) {
+    const members = await maria.organizations.members(aurora.id);
+    if (!members.some((m) => m.user.username === 'ivan'))
+      await maria.organizations.addMember(aurora.id, 'ivan', 'director');
+    if (!aurora.approvalLimit) await maria.organizations.update(aurora.id, { approvalLimit: '5000' });
+    const waiting = await maria.organizations.paymentApprovals(aurora.id, 'pending');
+    const eur = (await maria.organizations.wallets(aurora.id)).find((w) => w.currency === 'EUR');
+    if (!waiting.length && eur && Number(eur.available) > 6000)
+      await maria.wallets.transfer({
+        fromWalletId: eur.id,
+        to: { type: 'organization', slug: 'helios-works' },
+        amount: '6000',
+        note: 'Studio lease, Q4',
+      });
   }
 
   // --- Licenses -------------------------------------------------------------------------
@@ -294,7 +327,6 @@ async function main() {
   }
 
   // --- Contacts, chats, a group and a news channel --------------------------------------
-  const maria = u('maria').client;
   for (const name of ['ivan', 'chen', 'amara', 'elena'])
     await maria.contacts.add(name).catch(() => undefined);
   await u('ivan')

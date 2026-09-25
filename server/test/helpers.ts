@@ -46,7 +46,7 @@ export interface Session {
   username: string;
 }
 
-type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /** Small typed wrapper around app.inject. */
 export function client(app: FastifyInstance) {
@@ -71,6 +71,7 @@ export function client(app: FastifyInstance) {
     call,
     get: <T = any>(url: string, s?: Session | null) => call<T>('GET', url, s),
     post: <T = any>(url: string, s: Session | null, body?: unknown) => call<T>('POST', url, s, body ?? {}),
+    put: <T = any>(url: string, s: Session | null, body?: unknown) => call<T>('PUT', url, s, body ?? {}),
     patch: <T = any>(url: string, s: Session | null, body?: unknown) => call<T>('PATCH', url, s, body ?? {}),
     del: <T = any>(url: string, s: Session | null) => call<T>('DELETE', url, s),
 

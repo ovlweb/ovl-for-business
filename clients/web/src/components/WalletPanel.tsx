@@ -1,4 +1,4 @@
-import type { CashRequest, Wallet } from '@ovl/shared';
+import type { CashRequest, PaymentApproval, Wallet } from '@ovl/shared';
 import { CURRENCIES } from '@ovl/shared';
 import {
   AnimatedNumber,
@@ -20,7 +20,7 @@ import {
   useToast,
 } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useDeferredValue, useState } from 'react';
 import { api } from '../api';
 import { Icon } from './Icon';
 
@@ -131,6 +131,17 @@ export function OpenWalletForm({ onOpen }: { onOpen: (currency: string) => Promi
   );
 }
 
+/** Holds that end with a decision rather than on a date. */
+function lockRelease(reason: string): string | null {
+  if (reason === 'withdrawal_request' || reason === 'withdrawal_approval') return 'When paid out';
+  if (reason === 'payment_approval') return 'When approved or declined';
+  return null;
+}
+
+/** A company payment above its approval limit comes back waiting for a second signature. */
+export const isPendingApproval = (value: object): value is PaymentApproval =>
+  'kind' in value && 'requestedBy' in value;
+
 export function Statement({ wallet }: { wallet: Wallet }) {
   const [offset, setOffset] = useState(0);
   const limit = 20;
@@ -150,8 +161,8 @@ export function Statement({ wallet }: { wallet: Wallet }) {
         <div className="card flat stack-sm">
           <h3>Frozen funds</h3>
           <p className="small muted">
-            Money set aside for payouts you asked for, and the part of every stock investment that stays
-            frozen on a business balance until its unlock date.
+            Money set aside for payouts you asked for, company payments waiting for a second signature, and
+            the part of every stock investment that stays frozen on a business balance until its unlock date.
           </p>
           <table className="table">
             <thead>
@@ -168,9 +179,7 @@ export function Statement({ wallet }: { wallet: Wallet }) {
                     <Money amount={l.amount} currency={l.currency} />
                   </td>
                   <td>{humanize(l.reason)}</td>
-                  <td>
-                    {l.reason === 'withdrawal_request' ? 'When paid out' : formatDate(l.unlocksAt, false)}
-                  </td>
+                  <td>{lockRelease(l.reason) ?? formatDate(l.unlocksAt, false)}</td>
                 </tr>
               ))}
             </tbody>
@@ -506,10 +515,12 @@ export function TransferModal({ wallet, onClose }: { wallet: Wallet; onClose: ()
         amount: form.amount,
         note: form.note || undefined,
       }),
-    onSuccess: () => {
-      for (const key of ['wallets', 'orgWallets', 'entries', 'wallet'])
+    onSuccess: (result) => {
+      for (const key of ['wallets', 'orgWallets', 'entries', 'wallet', 'paymentApprovals'])
         queryClient.invalidateQueries({ queryKey: [key] });
-      toast.success(`Sent ${formatMoney(form.amount, wallet.currency)}`);
+      if (isPendingApproval(result))
+        toast.info('Above the approval limit: another finance member has to approve this payment');
+      else toast.success(`Sent ${formatMoney(form.amount, wallet.currency)}`);
       onClose();
     },
   });
@@ -570,6 +581,105 @@ export function TransferModal({ wallet, onClose }: { wallet: Wallet; onClose: ()
           Send
         </button>
       </form>
+    </Modal>
+  );
+}
+
+/** Convert money between two balances of the same owner at the managed rate. */
+export function ConvertModal({ wallet, onClose }: { wallet: Wallet; onClose: () => void }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const info = useQuery({ queryKey: ['exchangeRates'], queryFn: api.exchange.info });
+  const targets = info.data
+    ? [info.data.base, ...info.data.rates.map((r) => r.currency)].filter((c) => c !== wallet.currency)
+    : [];
+  const [to, setTo] = useState<string>();
+  const [amount, setAmount] = useState('');
+  const target = to ?? targets[0];
+  const input = useDeferredValue({ target, amount });
+  const valid = !!input.target && /^\d+(\.\d+)?$/.test(input.amount) && Number(input.amount) > 0;
+  const quote = useQuery({
+    queryKey: ['exchangeQuote', wallet.id, input.target, input.amount],
+    queryFn: () =>
+      api.exchange.quote({ fromWalletId: wallet.id, toCurrency: input.target!, amount: input.amount }),
+    enabled: valid,
+    retry: false,
+  });
+  const convert = useMutation({
+    mutationFn: () => api.exchange.execute({ fromWalletId: wallet.id, toCurrency: target!, amount }),
+    onSuccess: (result) => {
+      for (const key of ['wallets', 'orgWallets', 'entries', 'wallet', 'paymentApprovals'])
+        queryClient.invalidateQueries({ queryKey: [key] });
+      if (isPendingApproval(result))
+        toast.info('Above the approval limit: another finance member has to approve this exchange');
+      else toast.success(`Converted to ${formatMoney(result.receive, result.toCurrency)}`);
+      onClose();
+    },
+  });
+  const q = valid ? quote.data : undefined;
+
+  return (
+    <Modal title={`Convert ${wallet.currency}`} onClose={onClose}>
+      {info.isLoading && <SkeletonList rows={2} avatar={false} />}
+      <ErrorAlert error={info.error} />
+      {info.data && targets.length === 0 && (
+        <Empty title="No exchange rates yet">
+          Finance managers publish rates in the admin panel; conversion opens once there is one for{' '}
+          {wallet.currency}.
+        </Empty>
+      )}
+      {info.data && targets.length > 0 && (
+        <form
+          className="stack"
+          onSubmit={(e) => {
+            e.preventDefault();
+            convert.mutate();
+          }}
+        >
+          <div className="alert info">Available: {formatMoney(wallet.available, wallet.currency)}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+            <Field label={`Amount (${wallet.currency})`}>
+              <input
+                className="input"
+                inputMode="decimal"
+                placeholder="0.00"
+                value={amount}
+                autoFocus
+                onChange={(e) => setAmount(e.target.value.replace(',', '.'))}
+                required
+              />
+            </Field>
+            <Field label="Into">
+              <select className="select" value={target} onChange={(e) => setTo(e.target.value)}>
+                {targets.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <div className="card flat stack-sm" aria-live="polite">
+            <div className="spread">
+              <span className="muted">You get</span>
+              <b style={{ fontSize: 20 }}>{q ? formatMoney(q.receive, q.toCurrency) : '—'}</b>
+            </div>
+            <div className="spread small muted">
+              <span>Rate</span>
+              <span>{q ? `1 ${q.fromCurrency} = ${q.rate} ${q.toCurrency}` : '—'}</span>
+            </div>
+            <div className="spread small muted">
+              <span>Fee ({info.data.feePercent}%)</span>
+              <span>{q ? formatMoney(q.fee, q.fromCurrency) : '—'}</span>
+            </div>
+          </div>
+          {valid && <ErrorAlert error={quote.error} />}
+          <ErrorAlert error={convert.error} />
+          <button className="btn primary" disabled={convert.isPending || !q}>
+            Convert
+          </button>
+        </form>
+      )}
     </Modal>
   );
 }

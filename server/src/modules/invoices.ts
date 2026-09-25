@@ -7,6 +7,7 @@ import {
   ORG_FINANCE_ROLES,
   parseAmount,
   payInvoiceSchema,
+  paymentApprovalSchema,
   type Invoice,
 } from '@ovl/shared';
 import { and, count, desc, eq, inArray, like, or, sql, type SQL } from 'drizzle-orm';
@@ -19,10 +20,24 @@ import { invoices, organizationMembers, organizations, users, wallets } from '..
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors';
 import { iso, isoOrNull } from '../lib/mappers';
 import { currentUser } from '../plugins/auth';
+import {
+  announceApproval,
+  approvalDto,
+  dropPendingApprovals,
+  needsSecondSignature,
+  pendingApprovalFor,
+  requestSecondSignature,
+} from './org-payments';
 import { walletAudience } from './wallets/routes';
-import { assertWalletAccess, getOrCreateWallet, transfer, walletOwnerId } from './wallets/service';
+import {
+  assertWalletAccess,
+  getOrCreateWallet,
+  transfer,
+  walletOwnerId,
+  type WalletRow,
+} from './wallets/service';
 
-type InvoiceRow = typeof invoices.$inferSelect;
+export type InvoiceRow = typeof invoices.$inferSelect;
 type Party = { type: 'user' | 'organization'; id: string };
 
 /** Largest invoice total (fits the bigint money column with room to spare). */
@@ -143,18 +158,73 @@ function visibleTo(userId: string, orgIds: string[], direction?: 'incoming' | 'o
   return or(incoming, outgoing)!;
 }
 
+/** Tell both sides that an invoice changed. */
+export async function announceInvoice(app: FastifyInstance, row: InvoiceRow) {
+  const audience = new Set([
+    ...(await partyAudience(app.db, issuerOf(row))),
+    ...(await partyAudience(app.db, recipientOf(row))),
+  ]);
+  app.hub.sendToUsers([...audience], { type: 'invoice.updated', invoiceId: row.id, status: row.status });
+}
+
+/** Lock an open invoice and check that `wallet` may pay it and its issuer can be paid. */
+async function checkPayable(tx: Db, invoiceId: string, wallet: WalletRow): Promise<InvoiceRow> {
+  const [invoice] = await tx.select().from(invoices).where(eq(invoices.id, invoiceId)).for('update');
+  if (!invoice) throw notFound('Invoice');
+  if (invoice.status !== 'open') throw conflict(`This invoice is already ${invoice.status}`);
+  const payer = recipientOf(invoice);
+  if (wallet.ownerType !== payer.type || walletOwnerId(wallet) !== payer.id)
+    throw badRequest('Pay from a balance of the invoice recipient');
+  if (wallet.currency !== invoice.currency) throw badRequest(`Pay from a ${invoice.currency} balance`);
+  const issuer = issuerOf(invoice);
+  const [active] =
+    issuer.type === 'user'
+      ? await tx.select({ status: users.status }).from(users).where(eq(users.id, issuer.id))
+      : await tx
+          .select({ status: organizations.status })
+          .from(organizations)
+          .where(eq(organizations.id, issuer.id));
+  if (active?.status !== 'active') throw conflict('The issuer is suspended; this invoice cannot be paid now');
+  return invoice;
+}
+
+/** Pay an invoice from `wallet`; call inside a transaction (access is checked by the caller). */
+export async function executeInvoicePayment(
+  tx: Db,
+  input: { invoiceId: string; wallet: WalletRow; amount: bigint; actorId: string },
+) {
+  const invoice = await checkPayable(tx, input.invoiceId, input.wallet);
+  if (input.amount !== invoice.total) throw conflict('The invoice total changed; pay it again');
+  const [view] = await invoiceDtos(tx, [invoice], input.actorId, []);
+  const target = await getOrCreateWallet(tx, issuerOf(invoice), invoice.currency);
+  await transfer(
+    tx,
+    input.wallet.id,
+    target.id,
+    invoice.total,
+    { out: 'transfer_out', in: 'transfer_in' },
+    {
+      description: `Invoice ${invoice.number} from ${view!.issuer.name}`,
+      actorId: input.actorId,
+      referenceType: 'invoice',
+      referenceId: invoice.id,
+    },
+    `Invoice ${invoice.number} paid by ${view!.recipient.name}`,
+  );
+  const [paid] = await tx
+    .update(invoices)
+    .set({ status: 'paid', paidAt: new Date(), paidBy: input.actorId, paidFromWalletId: input.wallet.id })
+    .where(eq(invoices.id, invoice.id))
+    .returning();
+  return { invoice: paid!, target };
+}
+
 export async function invoiceRoutes(fastify: FastifyInstance) {
   const app = fastify.withTypeProvider<ZodTypeProvider>();
   const tags = ['invoices'];
   app.addHook('preHandler', app.authenticate);
 
-  const announce = async (row: InvoiceRow) => {
-    const audience = new Set([
-      ...(await partyAudience(app.db, issuerOf(row))),
-      ...(await partyAudience(app.db, recipientOf(row))),
-    ]);
-    app.hub.sendToUsers([...audience], { type: 'invoice.updated', invoiceId: row.id, status: row.status });
-  };
+  const announce = (row: InvoiceRow) => announceInvoice(app, row);
 
   const load = async (id: string, userId: string) => {
     const orgIds = await financeOrgIds(app.db, userId);
@@ -307,63 +377,49 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
     {
       schema: {
         tags,
-        description: "Pay the invoice in full from one of the recipient's balances in its currency.",
+        description:
+          "Pay the invoice in full from one of the recipient's balances in its currency. Company payments " +
+          'of at least the approval limit wait for a second finance member (202).',
         params: z.object({ id: z.uuid() }),
         body: payInvoiceSchema,
-        response: { 200: invoiceSchema },
+        response: { 200: invoiceSchema, 202: paymentApprovalSchema },
       },
     },
-    async (req) => {
+    async (req, reply) => {
       const me = currentUser(req);
       const { row } = await load(req.params.id, me.id);
-      const touched = await app.db.transaction(async (tx) => {
-        const [invoice] = await tx.select().from(invoices).where(eq(invoices.id, row.id)).for('update');
-        if (invoice!.status !== 'open') throw conflict(`This invoice is already ${invoice!.status}`);
-        const payer = recipientOf(invoice!);
-        const [wallet] = await tx.select().from(wallets).where(eq(wallets.id, req.body.walletId));
-        if (!wallet) throw notFound('Wallet');
-        if (wallet.ownerType !== payer.type || walletOwnerId(wallet) !== payer.id)
-          throw badRequest('Pay from a balance of the invoice recipient');
-        if (wallet.currency !== invoice!.currency)
-          throw badRequest(`Pay from a ${invoice!.currency} balance`);
-        await assertWalletAccess(tx, wallet, me, true);
-
-        const issuer = issuerOf(invoice!);
-        const [active] =
-          issuer.type === 'user'
-            ? await tx.select({ status: users.status }).from(users).where(eq(users.id, issuer.id))
-            : await tx
-                .select({ status: organizations.status })
-                .from(organizations)
-                .where(eq(organizations.id, issuer.id));
-        if (active?.status !== 'active')
-          throw conflict('The issuer is suspended; this invoice cannot be paid now');
-
-        const [dtoRow] = await invoiceDtos(tx, [invoice!], me.id, []);
-        const target = await getOrCreateWallet(tx, issuer, invoice!.currency);
-        await transfer(
-          tx,
-          wallet.id,
-          target.id,
-          invoice!.total,
-          { out: 'transfer_out', in: 'transfer_in' },
-          {
-            description: `Invoice ${invoice!.number} from ${dtoRow!.issuer.name}`,
-            actorId: me.id,
-            referenceType: 'invoice',
-            referenceId: invoice!.id,
-          },
-          `Invoice ${invoice!.number} paid by ${dtoRow!.recipient.name}`,
-        );
-        const [paid] = await tx
-          .update(invoices)
-          .set({ status: 'paid', paidAt: new Date(), paidBy: me.id, paidFromWalletId: wallet.id })
-          .where(eq(invoices.id, invoice!.id))
-          .returning();
-        return { paid: paid!, wallets: [wallet, target] };
+      const [wallet] = await app.db.select().from(wallets).where(eq(wallets.id, req.body.walletId));
+      if (!wallet) throw notFound('Wallet');
+      await assertWalletAccess(app.db, wallet, me, true);
+      const outcome = await app.db.transaction(async (tx) => {
+        const amount = row.total;
+        if (await needsSecondSignature(tx, wallet, amount)) {
+          const invoice = await checkPayable(tx, row.id, wallet);
+          if (await pendingApprovalFor(tx, 'invoice', 'invoiceId', invoice.id))
+            throw conflict('A payment of this invoice is already waiting for approval');
+          const [view] = await invoiceDtos(tx, [invoice], me.id, []);
+          const approval = await requestSecondSignature(tx, {
+            wallet,
+            kind: 'invoice',
+            action: { invoiceId: invoice.id },
+            amount,
+            description: `Invoice ${invoice.number} from ${view!.issuer.name}`,
+            requestedBy: me.id,
+            ip: req.ip,
+          });
+          return { approval };
+        }
+        return {
+          paid: await executeInvoicePayment(tx, { invoiceId: row.id, wallet, amount, actorId: me.id }),
+        };
       });
-      await announce(touched.paid);
-      for (const w of touched.wallets) {
+      if (outcome.approval) {
+        await announceApproval(app, outcome.approval);
+        return reply.status(202).send(await approvalDto(app, outcome.approval));
+      }
+      const { invoice, target } = outcome.paid!;
+      await announceInvoice(app, invoice);
+      for (const w of [wallet, target]) {
         app.hub.sendToUsers(await walletAudience(app.db, w), { type: 'wallet.updated', walletId: w.id });
       }
       return dto(row.id, me.id);
@@ -385,13 +441,24 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
       const me = currentUser(req);
       const { row, orgIds } = await load(req.params.id, me.id);
       if (!actsFor(issuerOf(row), me.id, orgIds)) throw forbidden('Only the issuer can cancel an invoice');
-      const [cancelled] = await app.db
-        .update(invoices)
-        .set({ status: 'cancelled', cancelledAt: new Date(), cancelReason: req.body.reason || null })
-        .where(and(eq(invoices.id, row.id), eq(invoices.status, 'open')))
-        .returning();
-      if (!cancelled) throw conflict('This invoice is no longer open');
+      const { cancelled, dropped } = await app.db.transaction(async (tx) => {
+        const [cancelled] = await tx
+          .update(invoices)
+          .set({ status: 'cancelled', cancelledAt: new Date(), cancelReason: req.body.reason || null })
+          .where(and(eq(invoices.id, row.id), eq(invoices.status, 'open')))
+          .returning();
+        if (!cancelled) throw conflict('This invoice is no longer open');
+        const dropped = await dropPendingApprovals(
+          tx,
+          'invoice',
+          'invoiceId',
+          row.id,
+          'The invoice was cancelled',
+        );
+        return { cancelled, dropped };
+      });
       await announce(cancelled);
+      for (const approval of dropped) await announceApproval(app, approval);
       return dto(row.id, me.id);
     },
   );

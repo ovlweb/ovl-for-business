@@ -244,6 +244,8 @@ export const organizations = pgTable('organizations', {
   applicationId: uuid('application_id'),
   /** Verified business: set while the owner's identity is verified. */
   verifiedAt: timestamp('verified_at', { withTimezone: true }),
+  /** Payments of at least this much (base currency, minor units) need a second finance member. */
+  approvalLimit: money('approval_limit'),
   createdAt: createdAt(),
 });
 
@@ -436,6 +438,72 @@ export const cashApprovals = pgTable(
     decidedAt: timestamp('decided_at', { withTimezone: true }),
   },
   (t) => [index('cash_approvals_status_idx').on(t.status, t.createdAt)],
+);
+
+/** Platform-wide settings edited in the admin panel (exchange fee, governance…). */
+export const platformSettings = pgTable('platform_settings', {
+  key: varchar('key', { length: 64 }).primaryKey(),
+  value: jsonb('value').$type<Record<string, unknown>>().notNull(),
+  updatedBy: uuid('updated_by').references(() => users.id),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Managed exchange rates: what one unit of `currency` is worth in the base currency. */
+export const exchangeRates = pgTable('exchange_rates', {
+  currency: char('currency', { length: 3 }).primaryKey(),
+  rate: varchar('rate', { length: 32 }).notNull(),
+  updatedBy: uuid('updated_by').references(() => users.id),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const exchanges = pgTable(
+  'exchanges',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    actorId: uuid('actor_id')
+      .notNull()
+      .references(() => users.id),
+    fromWalletId: uuid('from_wallet_id')
+      .notNull()
+      .references(() => wallets.id),
+    toWalletId: uuid('to_wallet_id')
+      .notNull()
+      .references(() => wallets.id),
+    fromAmount: money('from_amount').notNull(),
+    toAmount: money('to_amount').notNull(),
+    fee: money('fee').notNull(),
+    rate: varchar('rate', { length: 32 }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('exchanges_from_idx').on(t.fromWalletId)],
+);
+
+/** Multi-signature: a company payment above its approval limit, waiting for a second member. */
+export const paymentApprovals = pgTable(
+  'payment_approvals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    walletId: uuid('wallet_id')
+      .notNull()
+      .references(() => wallets.id),
+    kind: varchar('kind', { length: 16 }).$type<'transfer' | 'invoice' | 'exchange' | 'payroll'>().notNull(),
+    action: jsonb('action').$type<Record<string, unknown>>().notNull(),
+    amount: money('amount').notNull(),
+    currency: char('currency', { length: 3 }).notNull(),
+    description: text('description').notNull(),
+    status: cashApprovalStatusEnum('status').notNull().default('pending'),
+    requestedBy: uuid('requested_by')
+      .notNull()
+      .references(() => users.id),
+    decidedBy: uuid('decided_by').references(() => users.id),
+    reason: text('reason'),
+    createdAt: createdAt(),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+  },
+  (t) => [index('payment_approvals_org_idx').on(t.organizationId, t.status)],
 );
 
 export const fundLocks = pgTable(

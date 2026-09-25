@@ -33,6 +33,8 @@ import { identityRoutes } from './modules/identity';
 import { cashRoutes } from './modules/cash';
 import { cashApprovalRoutes } from './modules/cash-approvals';
 import { invoiceRoutes } from './modules/invoices';
+import { exchangeRoutes } from './modules/exchange';
+import { orgPaymentRoutes } from './modules/org-payments';
 import { sessionRoutes } from './modules/sessions';
 import { twoFactorRoutes } from './modules/two-factor';
 import { chatRoutes } from './modules/chats/routes';
@@ -207,6 +209,8 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
       await api.register(cashRoutes);
       await api.register(cashApprovalRoutes);
       await api.register(invoiceRoutes);
+      await api.register(exchangeRoutes);
+      await api.register(orgPaymentRoutes);
       await api.register(organizationRoutes);
       await api.register(applicationRoutes);
       await api.register(registryRoutes);

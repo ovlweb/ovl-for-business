@@ -254,6 +254,8 @@ export const LEDGER_KINDS = [
   'transfer_out',
   'investment_in',
   'investment_out',
+  'exchange_in',
+  'exchange_out',
   'adjustment',
 ] as const;
 
@@ -403,6 +405,89 @@ export const statementLinkSchema = z.object({
 export type StatementLink = z.infer<typeof statementLinkSchema>;
 
 // ---------------------------------------------------------------------------
+// Currency exchange
+// ---------------------------------------------------------------------------
+
+export const exchangeRateSchema = z.object({
+  currency: z.string(),
+  rate: z.string().describe('How much one unit is worth in the base currency'),
+  updatedAt: isoDate,
+});
+export const exchangeInfoSchema = z.object({
+  base: z.string().describe('Rates are quoted against this currency'),
+  feePercent: z.string().describe('Taken from the amount before converting'),
+  rates: z.array(exchangeRateSchema),
+});
+export type ExchangeInfo = z.infer<typeof exchangeInfoSchema>;
+
+export const exchangeInputSchema = z.object({
+  fromWalletId: uuid,
+  toCurrency: currencyCodeSchema,
+  amount: decimalAmountSchema.describe('How much to exchange, in the source currency'),
+});
+export type ExchangeInput = z.input<typeof exchangeInputSchema>;
+
+export const exchangeQuoteSchema = z.object({
+  fromCurrency: z.string(),
+  toCurrency: z.string(),
+  amount: z.string(),
+  fee: z.string().describe('In the source currency'),
+  receive: z.string().describe('In the target currency'),
+  rate: z.string().describe('Target units per source unit'),
+});
+export type ExchangeQuote = z.infer<typeof exchangeQuoteSchema>;
+export const exchangeResultSchema = exchangeQuoteSchema.extend({
+  id: uuid,
+  fromWalletId: uuid,
+  toWalletId: uuid,
+  createdAt: isoDate,
+});
+export type ExchangeResult = z.infer<typeof exchangeResultSchema>;
+
+export const setExchangeSchema = z.object({
+  base: currencyCodeSchema.optional(),
+  feePercent: z
+    .string()
+    .regex(/^\d{1,2}(\.\d{1,2})?$/, 'A percentage such as "0.5"')
+    .optional(),
+  rates: z
+    .array(
+      z.object({
+        currency: currencyCodeSchema,
+        rate: z
+          .string()
+          .regex(/^\d{1,12}(\.\d{1,12})?$/, 'A positive decimal')
+          .nullable()
+          .describe('null removes the currency from exchange'),
+      }),
+    )
+    .max(200)
+    .optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Multi-signature company payments
+// ---------------------------------------------------------------------------
+
+export const PAYMENT_APPROVAL_KINDS = ['transfer', 'invoice', 'exchange', 'payroll'] as const;
+export const paymentApprovalSchema = z.object({
+  id: uuid,
+  organizationId: uuid,
+  walletId: uuid,
+  kind: z.enum(PAYMENT_APPROVAL_KINDS),
+  amount: z.string(),
+  currency: z.string(),
+  description: z.string(),
+  status: z.enum(['pending', 'approved', 'rejected']),
+  requestedBy: userSummarySchema.pick({ id: true, username: true, displayName: true }),
+  decidedBy: userSummarySchema.pick({ id: true, username: true, displayName: true }).nullable(),
+  reason: z.string().nullable(),
+  createdAt: isoDate,
+  decidedAt: isoDate.nullable(),
+});
+export type PaymentApproval = z.infer<typeof paymentApprovalSchema>;
+
+// ---------------------------------------------------------------------------
 // Invoices
 // ---------------------------------------------------------------------------
 
@@ -504,6 +589,10 @@ export const organizationSchema = z.object({
   memberCount: z.number().int(),
   myRole: orgRoleSchema.nullable(),
   verified: z.boolean().describe('Verified business: its owner passed an identity check'),
+  approvalLimit: z
+    .string()
+    .nullable()
+    .describe('Payments of at least this much (in the base currency) need a second finance member'),
   createdAt: isoDate,
 });
 export type Organization = z.infer<typeof organizationSchema>;
@@ -519,6 +608,10 @@ export const addOrgMemberSchema = z.object({
 export const updateOrganizationSchema = z.object({
   description: z.string().trim().min(10).max(5000).optional(),
   website: z.union([z.url({ protocol: /^https?$/ }), z.literal('')]).optional(),
+  approvalLimit: z
+    .union([decimalAmountSchema, z.literal('')])
+    .optional()
+    .describe('Owners and directors: payments of at least this much need two people ("" turns it off)'),
 });
 
 // ---------------------------------------------------------------------------
@@ -952,7 +1045,8 @@ export type RealtimeEvent =
   | { type: 'wallet.updated'; walletId: string }
   | { type: 'cash_request.updated'; requestId: string; walletId: string; status: string }
   | { type: 'invoice.updated'; invoiceId: string; status: string }
-  | { type: 'identity.updated'; status: string };
+  | { type: 'identity.updated'; status: string }
+  | { type: 'payment_approval.updated'; organizationId: string; approvalId: string; status: string };
 
 /** Messages a client may send over the realtime socket. */
 export type RealtimeClientMessage = { type: 'typing'; chatId: string } | { type: 'ping' };

@@ -7,7 +7,9 @@ import {
   pageOf,
   paginationQuery,
   parseAmount,
+  paymentApprovalSchema,
   transferSchema,
+  type TransferInput,
   walletSchema,
 } from '@ovl/shared';
 import { and, count, desc, eq, gt, inArray } from 'drizzle-orm';
@@ -26,6 +28,7 @@ import {
 import { badRequest, notFound } from '../../lib/errors';
 import { iso } from '../../lib/mappers';
 import { currentUser } from '../../plugins/auth';
+import { announceApproval, approvalDto, needsSecondSignature, requestSecondSignature } from '../org-payments';
 import {
   assertWalletAccess,
   getOrCreateWallet,
@@ -48,6 +51,53 @@ export async function walletAudience(db: Db, wallet: WalletRow): Promise<string[
       ),
     );
   return rows.map((r) => r.userId);
+}
+
+/** The wallet a transfer lands in (opened if needed), and how the recipient is called. */
+export async function resolveRecipient(tx: Db, to: TransferInput['to'], source: WalletRow) {
+  let target: WalletRow;
+  let name: string;
+  if (to.type === 'user') {
+    const [user] = await tx.select().from(users).where(eq(users.username, to.username));
+    if (!user || user.status !== 'active') throw notFound('Recipient');
+    target = await getOrCreateWallet(tx, { type: 'user', id: user.id }, source.currency);
+    name = `@${user.username}`;
+  } else {
+    const [org] = await tx.select().from(organizations).where(eq(organizations.slug, to.slug));
+    if (!org || org.status !== 'active') throw notFound('Recipient company');
+    target = await getOrCreateWallet(tx, { type: 'organization', id: org.id }, source.currency);
+    name = org.name;
+  }
+  if (target.id === source.id) throw badRequest('Cannot transfer to the same wallet');
+  return { target, name };
+}
+
+/** Move the money of a transfer; call inside a transaction. */
+export async function executeTransfer(
+  tx: Db,
+  input: { source: WalletRow; to: TransferInput['to']; amount: bigint; note?: string; actorId: string },
+) {
+  const { source } = input;
+  const { target, name: recipientName } = await resolveRecipient(tx, input.to, source);
+  let senderName: string;
+  if (source.ownerType === 'organization') {
+    const [org] = await tx.select().from(organizations).where(eq(organizations.id, source.organizationId!));
+    senderName = org?.name ?? '';
+  } else {
+    const [user] = await tx.select().from(users).where(eq(users.id, source.userId!));
+    senderName = `@${user?.username ?? ''}`;
+  }
+  const note = input.note ? ` — ${input.note}` : '';
+  await transfer(
+    tx,
+    source.id,
+    target.id,
+    input.amount,
+    { out: 'transfer_out', in: 'transfer_in' },
+    { description: `Transfer to ${recipientName}${note}`, actorId: input.actorId, referenceType: 'transfer' },
+    `Transfer from ${senderName}${note}`,
+  );
+  return { target };
 }
 
 export async function walletRoutes(fastify: FastifyInstance) {
@@ -177,56 +227,43 @@ export async function walletRoutes(fastify: FastifyInstance) {
     {
       schema: {
         tags,
-        description: 'Send money to a person or a company in the same currency.',
+        description:
+          'Send money to a person or a company in the same currency. Company payments of at least the ' +
+          'approval limit wait for a second finance member (202).',
         body: transferSchema,
-        response: { 200: walletSchema },
+        response: { 200: walletSchema, 202: paymentApprovalSchema },
       },
     },
-    async (req) => {
+    async (req, reply) => {
       const me = currentUser(req);
       const source = await loadWallet(req.body.fromWalletId);
       await assertWalletAccess(app.db, source, me, true);
       const amount = parseAmount(req.body.amount, source.currency);
-      const { to } = req.body;
+      const { to, note } = req.body;
 
       const result = await app.db.transaction(async (tx) => {
-        let target: WalletRow;
-        let recipientName: string;
-        if (to.type === 'user') {
-          const [user] = await tx.select().from(users).where(eq(users.username, to.username));
-          if (!user || user.status !== 'active') throw notFound('Recipient');
-          target = await getOrCreateWallet(tx, { type: 'user', id: user.id }, source.currency);
-          recipientName = `@${user.username}`;
-        } else {
-          const [org] = await tx.select().from(organizations).where(eq(organizations.slug, to.slug));
-          if (!org || org.status !== 'active') throw notFound('Recipient company');
-          target = await getOrCreateWallet(tx, { type: 'organization', id: org.id }, source.currency);
-          recipientName = org.name;
+        if (await needsSecondSignature(tx, source, amount)) {
+          const recipient = await resolveRecipient(tx, to, source);
+          const approval = await requestSecondSignature(tx, {
+            wallet: source,
+            kind: 'transfer',
+            action: { to, ...(note ? { note } : {}) },
+            amount,
+            description: `Transfer ${formatAmount(amount, source.currency)} ${source.currency} to ${recipient.name}${note ? ` — ${note}` : ''}`,
+            requestedBy: me.id,
+            ip: req.ip,
+          });
+          return { approval };
         }
-        if (target.id === source.id) throw badRequest('Cannot transfer to the same wallet');
-        let senderName = `@${me.username}`;
-        if (source.ownerType === 'organization') {
-          const [org] = await tx
-            .select()
-            .from(organizations)
-            .where(eq(organizations.id, source.organizationId!));
-          senderName = org?.name ?? senderName;
-        }
-        const note = req.body.note ? ` — ${req.body.note}` : '';
-        await transfer(
-          tx,
-          source.id,
-          target.id,
-          amount,
-          { out: 'transfer_out', in: 'transfer_in' },
-          { description: `Transfer to ${recipientName}${note}`, actorId: me.id, referenceType: 'transfer' },
-          `Transfer from ${senderName}${note}`,
-        );
-        return { target };
+        return { done: await executeTransfer(tx, { source, to, amount, note, actorId: me.id }) };
       });
+      if (result.approval) {
+        await announceApproval(app, result.approval);
+        return reply.status(202).send(await approvalDto(app, result.approval));
+      }
 
       const [updated] = await app.db.select().from(wallets).where(eq(wallets.id, source.id));
-      for (const w of [updated!, result.target]) {
+      for (const w of [updated!, result.done!.target]) {
         app.hub.sendToUsers(await walletAudience(app.db, w), { type: 'wallet.updated', walletId: w.id });
       }
       const [dto] = await walletDtos(app.db, [updated!]);

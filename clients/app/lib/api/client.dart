@@ -214,17 +214,40 @@ class OvlApi {
     await _get('/wallets/$walletId/entries', {'limit': limit, 'offset': offset}),
     LedgerEntry.fromJson,
   );
-  Future<void> transfer({
+
+  /// Null when the money moved; a company payment of at least the approval limit comes back
+  /// waiting for a second finance member.
+  Future<PaymentApproval?> transfer({
     required String fromWalletId,
     required String username,
     required String amount,
     String? note,
-  }) => _post('/wallets/transfer', {
-    'fromWalletId': fromWalletId,
-    'to': {'type': 'user', 'username': username},
-    'amount': amount,
-    if (note != null && note.isNotEmpty) 'note': note,
-  });
+  }) async {
+    final r = await _post('/wallets/transfer', {
+      'fromWalletId': fromWalletId,
+      'to': {'type': 'user', 'username': username},
+      'amount': amount,
+      if (note != null && note.isNotEmpty) 'note': note,
+    });
+    return PaymentApproval.matches(r) ? PaymentApproval.fromJson(r as Json) : null;
+  }
+
+  // --- currency exchange -------------------------------------------------------------------
+
+  Future<ExchangeInfo> exchangeInfo() async => ExchangeInfo.fromJson(await _get('/exchange'));
+  Future<ExchangeQuote> exchangeQuote(String fromWalletId, String toCurrency, String amount) async =>
+      ExchangeQuote.fromJson(
+        await _post('/exchange/quote', {'fromWalletId': fromWalletId, 'toCurrency': toCurrency, 'amount': amount})
+            as Json,
+      );
+
+  /// The finished exchange, or (for large company amounts) the payment waiting for approval.
+  Future<(ExchangeQuote?, PaymentApproval?)> exchange(String fromWalletId, String toCurrency, String amount) async {
+    final r = await _post('/exchange', {'fromWalletId': fromWalletId, 'toCurrency': toCurrency, 'amount': amount});
+    return PaymentApproval.matches(r)
+        ? (null, PaymentApproval.fromJson(r as Json))
+        : (ExchangeQuote.fromJson(r as Json), null);
+  }
 
   Future<List<CashRequest>> cashRequests(String walletId) =>
       _getList('/wallets/$walletId/cash-requests', CashRequest.fromJson);
@@ -277,8 +300,15 @@ class OvlApi {
       if (note != null && note.isNotEmpty) 'note': note,
     }) as Json,
   );
-  Future<Invoice> payInvoice(String id, String walletId) async =>
-      Invoice.fromJson(await _post('/invoices/$id/pay', {'walletId': walletId}) as Json);
+
+  /// The paid invoice, or (above a company's approval limit) the payment waiting for approval.
+  Future<(Invoice?, PaymentApproval?)> payInvoice(String id, String walletId) async {
+    final r = await _post('/invoices/$id/pay', {'walletId': walletId});
+    return PaymentApproval.matches(r)
+        ? (null, PaymentApproval.fromJson(r as Json))
+        : (Invoice.fromJson(r as Json), null);
+  }
+
   Future<Invoice> cancelInvoice(String id, {String? reason}) async => Invoice.fromJson(
     await _post('/invoices/$id/cancel', {if (reason != null && reason.isNotEmpty) 'reason': reason}) as Json,
   );
@@ -289,6 +319,15 @@ class OvlApi {
   Future<Organization> organization(String slug) async =>
       Organization.fromJson(await _get('/organizations/${Uri.encodeComponent(slug)}'));
   Future<List<Wallet>> organizationWallets(String id) => _getList('/organizations/$id/wallets', Wallet.fromJson);
+  Future<List<PaymentApproval>> paymentApprovals(String orgId, {String? status}) =>
+      _getList('/organizations/$orgId/payment-approvals', PaymentApproval.fromJson, {'status': status});
+  Future<PaymentApproval> approvePayment(String orgId, String id) async =>
+      PaymentApproval.fromJson(await _post('/organizations/$orgId/payment-approvals/$id/approve') as Json);
+
+  /// Decline a waiting payment, or withdraw your own.
+  Future<PaymentApproval> rejectPayment(String orgId, String id, String reason) async => PaymentApproval.fromJson(
+    await _post('/organizations/$orgId/payment-approvals/$id/reject', {'reason': reason}) as Json,
+  );
 
   // --- applications ----------------------------------------------------------------------
 

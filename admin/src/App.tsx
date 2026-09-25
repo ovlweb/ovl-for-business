@@ -25,6 +25,7 @@ import { DashboardPage } from './pages/Dashboard';
 import { IdentityPage } from './pages/Identity';
 import { LoginPage } from './pages/Login';
 import { OrganizationsPage } from './pages/Organizations';
+import { RatesPage } from './pages/Rates';
 import { RegistryPage } from './pages/Registry';
 import { StockPage } from './pages/Stock';
 import { StoriesPage } from './pages/Stories';
@@ -75,6 +76,14 @@ export const SECTIONS: Section[] = [
     permission: 'wallet.view_all',
     element: <CashDeskPage />,
     count: ['pendingCashRequests', 'pendingCashApprovals'],
+  },
+  {
+    path: 'rates',
+    label: 'Exchange rates',
+    icon: 'refresh',
+    group: 'People & money',
+    permission: 'exchange.manage',
+    element: <RatesPage />,
   },
   {
     path: 'identity',

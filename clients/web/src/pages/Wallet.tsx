@@ -5,6 +5,7 @@ import { api } from '../api';
 import {
   CashRequestModal,
   CashRequests,
+  ConvertModal,
   OpenWalletForm,
   Statement,
   TransferModal,
@@ -16,6 +17,7 @@ export function WalletPage() {
   const wallets = useQuery({ queryKey: ['wallets'], queryFn: api.wallets.list });
   const [selectedId, setSelectedId] = useState<string>();
   const [sending, setSending] = useState(false);
+  const [converting, setConverting] = useState(false);
   const [cash, setCash] = useState<'deposit' | 'withdrawal' | null>(null);
   const selected = wallets.data?.find((w) => w.id === selectedId) ?? wallets.data?.[0];
 
@@ -33,6 +35,9 @@ export function WalletPage() {
               </button>
               <button className="btn" onClick={() => setCash('withdrawal')}>
                 <Icon name="outgoing" size={16} /> Withdraw
+              </button>
+              <button className="btn" onClick={() => setConverting(true)}>
+                <Icon name="refresh" size={16} /> Convert
               </button>
               <button className="btn primary" onClick={() => setSending(true)}>
                 <Icon name="send" size={16} /> Send money
@@ -71,6 +76,7 @@ export function WalletPage() {
       {selected && <CashRequests wallet={selected} />}
       {selected && <Statement wallet={selected} />}
       {sending && selected && <TransferModal wallet={selected} onClose={() => setSending(false)} />}
+      {converting && selected && <ConvertModal wallet={selected} onClose={() => setConverting(false)} />}
       {cash && selected && <CashRequestModal wallet={selected} type={cash} onClose={() => setCash(null)} />}
     </div>
   );

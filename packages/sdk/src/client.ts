@@ -14,6 +14,10 @@ import type {
   Chat,
   ChatMember,
   Contact,
+  ExchangeInfo,
+  ExchangeInput,
+  ExchangeQuote,
+  ExchangeResult,
   CreateApplicationInput,
   CreateInvoiceInput,
   CreateStoryInput,
@@ -31,6 +35,7 @@ import type {
   Message,
   Organization,
   Passkey,
+  PaymentApproval,
   OrgMember,
   Preferences,
   OrgRole,
@@ -201,6 +206,9 @@ export class OvlClient {
   private post<T>(path: string, body: unknown = {}) {
     return this.request<T>('POST', path, body);
   }
+  private put<T>(path: string, body: unknown) {
+    return this.request<T>('PUT', path, body);
+  }
   private patch<T>(path: string, body: unknown) {
     return this.request<T>('PATCH', path, body);
   }
@@ -337,7 +345,8 @@ export class OvlClient {
     entries: (id: string, query?: { limit?: number; offset?: number }) =>
       this.get<Page<LedgerEntry>>(`/wallets/${id}/entries`, query),
     locks: (id: string) => this.get<FundLock[]>(`/wallets/${id}/locks`),
-    transfer: (input: TransferInput) => this.post<Wallet>('/wallets/transfer', input),
+    /** Company payments of at least the approval limit come back as a PaymentApproval (HTTP 202). */
+    transfer: (input: TransferInput) => this.post<Wallet | PaymentApproval>('/wallets/transfer', input),
     cashRequests: (id: string) => this.get<CashRequest[]>(`/wallets/${id}/cash-requests`),
     /** Ask a finance manager for a deposit or a payout (a payout holds the amount meanwhile). */
     requestCash: (id: string, input: CashRequestInput) =>
@@ -357,14 +366,16 @@ export class OvlClient {
     get: (id: string) => this.get<Invoice>(`/invoices/${id}`),
     create: (input: CreateInvoiceInput) => this.post<Invoice>('/invoices', input),
     /** Pay in full from one of the recipient's balances in the invoice currency. */
-    pay: (id: string, walletId: string) => this.post<Invoice>(`/invoices/${id}/pay`, { walletId }),
+    pay: (id: string, walletId: string) =>
+      this.post<Invoice | PaymentApproval>(`/invoices/${id}/pay`, { walletId }),
     cancel: (id: string, reason?: string) => this.post<Invoice>(`/invoices/${id}/cancel`, { reason }),
   };
 
   organizations = {
     mine: () => this.get<Organization[]>('/organizations/mine'),
     get: (slug: string) => this.get<Organization>(`/organizations/${encodeURIComponent(slug)}`),
-    update: (id: string, input: { description?: string; website?: string }) =>
+    /** approvalLimit: payments of at least this much need two people ("" turns it off). */
+    update: (id: string, input: { description?: string; website?: string; approvalLimit?: string }) =>
       this.patch<Organization>(`/organizations/${id}`, input),
     members: (id: string) => this.get<OrgMember[]>(`/organizations/${id}/members`),
     addMember: (id: string, username: string, role: Exclude<OrgRole, 'owner'>) =>
@@ -373,6 +384,20 @@ export class OvlClient {
     wallets: (id: string) => this.get<Wallet[]>(`/organizations/${id}/wallets`),
     openWallet: (id: string, currency: string) =>
       this.post<Wallet>(`/organizations/${id}/wallets`, { currency }),
+    paymentApprovals: (id: string, status?: 'pending' | 'approved' | 'rejected') =>
+      this.get<PaymentApproval[]>(`/organizations/${id}/payment-approvals`, { status }),
+    approvePayment: (id: string, approvalId: string) =>
+      this.post<PaymentApproval>(`/organizations/${id}/payment-approvals/${approvalId}/approve`),
+    /** Decline a waiting payment, or withdraw your own. */
+    rejectPayment: (id: string, approvalId: string, reason: string) =>
+      this.post<PaymentApproval>(`/organizations/${id}/payment-approvals/${approvalId}/reject`, { reason }),
+  };
+
+  exchange = {
+    info: () => this.get<ExchangeInfo>('/exchange'),
+    quote: (input: ExchangeInput) => this.post<ExchangeQuote>('/exchange/quote', input),
+    /** Company exchanges of at least the approval limit come back as a PaymentApproval (HTTP 202). */
+    execute: (input: ExchangeInput) => this.post<ExchangeResult | PaymentApproval>('/exchange', input),
   };
 
   files = {
@@ -489,6 +514,12 @@ export class OvlClient {
       this.post<CashOperation | CashApproval>('/admin/cash-operations', input),
     cashApprovals: (status?: 'pending' | 'approved' | 'rejected') =>
       this.get<CashApproval[]>('/admin/cash-approvals', { status }),
+    /** Base currency, fee and rates; a null rate removes a currency. */
+    setExchange: (input: {
+      base?: string;
+      feePercent?: string;
+      rates?: { currency: string; rate: string | null }[];
+    }) => this.put<ExchangeInfo>('/admin/exchange', input),
     approveCash: (id: string) => this.post<CashApproval>(`/admin/cash-approvals/${id}/approve`),
     rejectCash: (id: string, reason: string) =>
       this.post<CashApproval>(`/admin/cash-approvals/${id}/reject`, { reason }),
