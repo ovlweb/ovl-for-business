@@ -99,6 +99,9 @@ const envSchema = z.object({
   /** Webhooks may call private and loopback addresses (development and tests only by default). */
   WEBHOOK_ALLOW_PRIVATE_NETWORKS: flag(false),
 
+  /** Investors accept the risk disclosure before their first investment or trade. */
+  STOCK_REQUIRE_RISK_ACK: flag(true),
+
   /** Background jobs (recurring invoices…). Every instance may run them; they share the work. */
   SCHEDULER_ENABLED: flag(true),
 

@@ -858,6 +858,20 @@ class CompanyReport {
   final DateTime publishedAt;
 }
 
+/// What investors accept once before their first investment or buy order.
+class RiskDisclosure {
+  RiskDisclosure.fromJson(Json j)
+    : version = j['version'] as String,
+      title = j['title'] as String,
+      points = List<String>.from(j['points'] as List),
+      acceptedAt = _dateOrNull(j['acceptedAt']);
+
+  final String version;
+  final String title;
+  final List<String> points;
+  final DateTime? acceptedAt;
+}
+
 class Proposal {
   Proposal.fromJson(Json j)
     : id = j['id'] as String,

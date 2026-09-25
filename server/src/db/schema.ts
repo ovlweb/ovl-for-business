@@ -977,6 +977,19 @@ export const stockTrades = pgTable(
   (t) => [index('stock_trades_listing_idx').on(t.listingId, t.createdAt)],
 );
 
+/** Investors who accepted a version of the risk disclosure. */
+export const riskAcknowledgements = pgTable(
+  'risk_acknowledgements',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    version: varchar('version', { length: 16 }).notNull(),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.version] })],
+);
+
 /** A dividend: the company pays every shareholder the same amount per share. */
 export const dividends = pgTable(
   'dividends',

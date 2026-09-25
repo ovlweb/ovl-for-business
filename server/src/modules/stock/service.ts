@@ -7,6 +7,7 @@ import { iso } from '../../lib/mappers';
 import { emitEvent } from '../../lib/webhooks';
 import { credit, debit, getOrCreateWallet, lockWallet } from '../wallets/service';
 import { addShares } from './market';
+import { assertWithinLimits } from './protection';
 
 export type ListingRow = typeof stockListings.$inferSelect;
 
@@ -127,6 +128,7 @@ export async function invest(db: Db, input: { ticker: string; investorId: string
   const available = listing.totalShares - listing.sharesSold;
   if (shares > available) throw conflict(`Only ${available} shares of ${listing.ticker} are left`);
   const cost = shares * listing.sharePrice;
+  await assertWithinLimits(db, { userId: input.investorId, listing, shares, cost });
   const frozen = percentOf(cost, listing.freezeBps);
   const unlocksAt = new Date(Date.now() + listing.lockDays * 86_400_000);
 

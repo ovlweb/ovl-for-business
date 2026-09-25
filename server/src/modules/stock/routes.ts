@@ -32,6 +32,7 @@ import { apiKeyGuard, publicRouteConfig } from '../../lib/public-api';
 import { currentUser } from '../../plugins/auth';
 import { walletAudience } from '../wallets/routes';
 import { cancelOrder, orderDto, placeOrder, position, tradeDto } from './market';
+import { assertRiskAccepted, assertWithinLimits } from './protection';
 import { invest, listingDtos } from './service';
 
 export async function stockRoutes(fastify: FastifyInstance) {
@@ -123,6 +124,7 @@ export async function stockRoutes(fastify: FastifyInstance) {
         .where(eq(stockListings.ticker, req.params.ticker.toUpperCase()));
       if (!listing) throw notFound('Listing');
       const amount = parseAmount(req.body.amount, listing.currency);
+      await assertRiskAccepted(app.db, app.config, me.id);
       const result = await app.db.transaction((tx) =>
         invest(tx, { ticker: req.params.ticker, investorId: me.id, amount }),
       );
@@ -316,6 +318,7 @@ export async function stockRoutes(fastify: FastifyInstance) {
     async (req, reply) => {
       const me = currentUser(req);
       const { side, shares, price: decimal } = req.body;
+      if (side === 'buy') await assertRiskAccepted(app.db, app.config, me.id);
       const result = await app.db.transaction(async (tx) => {
         const [listing] = await tx
           .select()
@@ -325,6 +328,13 @@ export async function stockRoutes(fastify: FastifyInstance) {
         if (!listing) throw notFound('Listing');
         if (listing.status !== 'active') throw conflict(`Trading of ${listing.ticker} is ${listing.status}`);
         const price = parseAmount(decimal, listing.currency);
+        if (side === 'buy')
+          await assertWithinLimits(tx, {
+            userId: me.id,
+            listing,
+            shares: BigInt(shares),
+            cost: BigInt(shares) * price,
+          });
         const placed = await placeOrder(tx, listing, { userId: me.id, side, shares: BigInt(shares), price });
         return { ...placed, listing };
       });

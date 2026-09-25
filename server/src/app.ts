@@ -51,6 +51,7 @@ import { metaRoutes } from './modules/meta';
 import { organizationRoutes } from './modules/organizations';
 import { registryRoutes } from './modules/registry';
 import { stockRoutes } from './modules/stock/routes';
+import { protectionRoutes } from './modules/stock/protection';
 import { shareholderRoutes } from './modules/stock/shareholders';
 import { storyRoutes } from './modules/stories';
 import { supportRoutes } from './modules/chats/support';
@@ -238,6 +239,7 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
       await api.register(registryRoutes);
       await api.register(stockRoutes);
       await api.register(shareholderRoutes);
+      await api.register(protectionRoutes);
       await api.register(chatRoutes);
       await api.register(supportRoutes);
       await api.register(storyRoutes);

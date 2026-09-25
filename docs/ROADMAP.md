@@ -51,7 +51,8 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
 - ✅ Dividends, shareholder registry, shareholder voting weighted by shares at the start (0.2).
 - ✅ Company reports (quarterly results with revenue, profit and documents) on the listing page
   (0.2).
-- Per-investor limits and risk disclosures.
+- ✅ Per-investor limits (the most of one company a person may hold, and how much they invest per
+  30 days, lower without a verified identity) and a risk disclosure accepted before investing (0.2).
 
 ### Licenses & registry
 

@@ -48,6 +48,7 @@ services:
       REQUIRE_IDENTITY_FOR_COMPANIES: ${REQUIRE_IDENTITY_FOR_COMPANIES:-true}
       STOCK_FREEZE_PERCENT: ${STOCK_FREEZE_PERCENT:-30}
       STOCK_LOCK_DAYS: ${STOCK_LOCK_DAYS:-90}
+      STOCK_REQUIRE_RISK_ACK: ${STOCK_REQUIRE_RISK_ACK:-true}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # Uploaded files: the volume below, or an S3-compatible bucket (STORAGE_DRIVER=s3).
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}

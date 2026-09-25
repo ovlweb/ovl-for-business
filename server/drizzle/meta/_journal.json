@@ -141,6 +141,13 @@
       "when": 1790334951559,
       "tag": "0019_shareholders",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790335810895,
+      "tag": "0020_investor_protection",
+      "breakpoints": true
     }
   ]
 }

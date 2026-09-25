@@ -231,7 +231,13 @@ test.describe.serial('OVL For Business end to end', () => {
     await ivan.getByText('NWS').first().click();
     await ivan.getByLabel('Amount (USD)').fill('100');
     await ivan.getByRole('button', { name: 'Invest', exact: true }).click();
+    // The risk disclosure comes first, once.
+    const disclosure = ivan.getByRole('dialog');
+    await expect(disclosure.getByText('Before you invest')).toBeVisible();
+    await expect(disclosure.getByText(/can lose all their value/)).toBeVisible();
+    await disclosure.getByRole('button', { name: 'I understand, continue' }).click();
     await expect(ivan.getByText('Bought 20 shares')).toBeVisible();
+    await expect(ivan.getByText(/at most 25% of a company/)).toBeVisible();
     await maria.goto('./#/companies/northwind-studio');
     await expect(maria.getByText('30.00 frozen')).toBeVisible();
     await expect(maria.getByText('Available: 70.00 USD')).toBeVisible();
@@ -243,6 +249,7 @@ test.describe.serial('OVL For Business end to end', () => {
     await maria.getByLabel('Limit price (USD)').fill('4.50');
     await expect(maria.getByText('18.00 USD')).toBeVisible();
     await maria.getByRole('button', { name: 'Place buy order' }).click();
+    await maria.getByRole('dialog').getByRole('button', { name: 'I understand, continue' }).click();
     await expect(maria.getByText('Order placed: buy 4 NWS at 4.50 USD')).toBeVisible();
     const bids = maria.getByRole('table', { name: 'Buy orders' });
     await expect(bids.locator('tr', { hasText: '4.50' })).toContainText('4');

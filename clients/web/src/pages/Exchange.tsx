@@ -2,6 +2,7 @@ import {
   formatAmount,
   parseAmount,
   type CompanyReport,
+  type MyStockLimits,
   type OrderSide,
   type Proposal,
   type StockListingDetail,
@@ -12,6 +13,7 @@ import {
   Field,
   Icon,
   formatDate,
+  Modal,
   formatMoney,
   Money,
   PageHeader,
@@ -24,8 +26,9 @@ import {
   useToast,
   VerifiedBadge,
 } from '@ovl/ui';
+import { OvlApiError } from '@ovl/sdk';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 
@@ -105,14 +108,17 @@ export function ListingPage() {
   const queryClient = useQueryClient();
   const listing = useQuery({ queryKey: ['listings', ticker], queryFn: () => api.stock.listing(ticker) });
   const wallets = useQuery({ queryKey: ['wallets'], queryFn: api.wallets.list });
+  const limits = useQuery({ queryKey: ['stock', 'limits'], queryFn: api.stock.limits });
+  const gate = useRiskGate();
   const [amount, setAmount] = useState('');
   const invest = useMutation({
     mutationFn: () => api.stock.invest(ticker, amount),
     onSuccess: () => {
       setAmount('');
-      for (const key of ['listings', 'wallets', 'portfolio'])
+      for (const key of ['listings', 'wallets', 'portfolio', 'stock'])
         queryClient.invalidateQueries({ queryKey: [key] });
     },
+    onError: (error) => gate.onError(error, () => invest.mutate()),
   });
 
   if (listing.isLoading) return <Spinner center />;
@@ -193,7 +199,7 @@ export function ListingPage() {
           className="card stack"
           onSubmit={(e) => {
             e.preventDefault();
-            invest.mutate();
+            gate.guard(() => invest.mutate());
           }}
         >
           <h3>Invest</h3>
@@ -226,7 +232,8 @@ export function ListingPage() {
               <dd>{formatMoney(preview.frozen, l.currency)}</dd>
             </dl>
           )}
-          <ErrorAlert error={invest.error} />
+          {limits.data && <LimitInfo limits={limits.data} />}
+          <ErrorAlert error={gate.isGateError(invest.error) ? null : invest.error} />
           {invest.data && (
             <div className="alert success">
               Bought {invest.data.shares} shares for {formatMoney(invest.data.amount, invest.data.currency)}.
@@ -242,8 +249,83 @@ export function ListingPage() {
       </div>
       <Market listing={l} />
       <ShareholderInfo listing={l} />
+      {gate.modal}
     </div>
   );
+}
+
+/** The investor limits that apply to you, next to the invest form. */
+function LimitInfo({ limits }: { limits: MyStockLimits }) {
+  return (
+    <p className="small muted" style={{ margin: 0 }}>
+      One investor may hold at most {limits.maxHoldingPercent}% of a company.
+      {limits.monthlyLimit && limits.remaining !== null && (
+        <>
+          {' '}
+          You can invest and buy {formatMoney(limits.remaining, limits.base)} more in the next 30 days (limit{' '}
+          {formatMoney(limits.monthlyLimit, limits.base)}
+          {!limits.identityVerified && '; verify your identity for a higher one'}).
+        </>
+      )}
+    </p>
+  );
+}
+
+/**
+ * Investing and buying need the risk disclosure accepted once: guard() shows it first when it
+ * has not been, and onError() catches the server's refusal (then retries after accepting).
+ */
+function useRiskGate() {
+  const queryClient = useQueryClient();
+  const risk = useQuery({ queryKey: ['stock', 'risk'], queryFn: api.stock.risk });
+  const [next, setNext] = useState<{ run: () => void } | null>(null);
+  const accept = useMutation({
+    mutationFn: () => api.stock.acceptRisk(risk.data!.version),
+    onSuccess: (accepted) => {
+      queryClient.setQueryData(['stock', 'risk'], accepted);
+      const pending = next;
+      setNext(null);
+      pending?.run();
+    },
+  });
+  const isGateError = (error: unknown) =>
+    error instanceof OvlApiError && error.code === 'risk_disclosure_required';
+  const guard = (run: () => void) => (risk.data && !risk.data.acceptedAt ? setNext({ run }) : run());
+  const onError = (error: unknown, retry: () => void) => {
+    if (!isGateError(error)) return;
+    void queryClient.invalidateQueries({ queryKey: ['stock', 'risk'] });
+    setNext({ run: retry });
+  };
+  const modal: ReactNode =
+    next && risk.data ? (
+      <Modal title={risk.data.title} onClose={() => setNext(null)}>
+        <div className="stack">
+          <p className="small muted" style={{ margin: 0 }}>
+            Please read this once before your first investment or trade.
+          </p>
+          <ul className="stack-sm small" style={{ margin: 0, paddingLeft: 20 }}>
+            {risk.data.points.map((point) => (
+              <li key={point}>{point}</li>
+            ))}
+          </ul>
+          <ErrorAlert error={accept.error} />
+          <div className="row" style={{ justifyContent: 'flex-end' }}>
+            <button type="button" className="btn ghost" onClick={() => setNext(null)}>
+              Not now
+            </button>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={accept.isPending}
+              onClick={() => accept.mutate()}
+            >
+              I understand, continue
+            </button>
+          </div>
+        </div>
+      </Modal>
+    ) : null;
+  return { guard, onError, isGateError, modal };
 }
 
 type InfoTab = 'reports' | 'votes' | 'dividends';
@@ -449,8 +531,10 @@ function Market({ listing: l }: { listing: StockListingDetail }) {
     for (const key of ['stock', 'portfolio', 'wallets', 'listings'])
       queryClient.invalidateQueries({ queryKey: [key] });
   };
+  const gate = useRiskGate();
   const place = useMutation({
     mutationFn: () => api.stock.placeOrder(l.ticker, { side, shares: Number(shares), price }),
+    onError: (error) => gate.onError(error, () => place.mutate()),
     onSuccess: ({ order, trades }) => {
       refresh();
       const traded = trades.reduce((n, t) => n + Number(t.shares), 0);
@@ -540,7 +624,8 @@ function Market({ listing: l }: { listing: StockListingDetail }) {
         className="card stack"
         onSubmit={(e) => {
           e.preventDefault();
-          place.mutate();
+          if (side === 'buy') gate.guard(() => place.mutate());
+          else place.mutate();
         }}
       >
         <h3>Trade with other investors</h3>
@@ -590,7 +675,7 @@ function Market({ listing: l }: { listing: StockListingDetail }) {
             <b>{formatMoney(total, l.currency)}</b>
           </div>
         )}
-        <ErrorAlert error={place.error ?? cancel.error} />
+        <ErrorAlert error={(gate.isGateError(place.error) ? null : place.error) ?? cancel.error} />
         <button
           className={`btn ${side === 'buy' ? 'primary' : 'danger'}`}
           disabled={place.isPending || l.status !== 'active' || !shares || !price}
@@ -615,6 +700,7 @@ function Market({ listing: l }: { listing: StockListingDetail }) {
           </div>
         )}
       </form>
+      {gate.modal}
     </div>
   );
 }

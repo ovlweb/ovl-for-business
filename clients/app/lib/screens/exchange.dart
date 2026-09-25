@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
+import '../api/client.dart';
 import '../api/models.dart';
 import '../state/query.dart';
 import '../state/session.dart';
@@ -552,12 +553,19 @@ class _Market extends StatelessWidget {
                     error = null;
                   });
                   try {
-                    final r = await session.api.placeOrder(
-                      listing.ticker,
-                      side: side,
-                      shares: int.tryParse(shares.text.trim()) ?? 0,
-                      price: price.text.trim().replaceAll(',', '.'),
+                    final r = await withRiskDisclosure(
+                      sheet,
+                      () => session.api.placeOrder(
+                        listing.ticker,
+                        side: side,
+                        shares: int.tryParse(shares.text.trim()) ?? 0,
+                        price: price.text.trim().replaceAll(',', '.'),
+                      ),
                     );
+                    if (r == null) {
+                      set(() => busy = false);
+                      return;
+                    }
                     for (final k in ['portfolio', 'listings', 'wallets']) {
                       session.queries.invalidate(k);
                     }
@@ -675,7 +683,11 @@ class _InvestCardState extends State<_InvestCard> {
                       _error = null;
                     });
                     try {
-                      final inv = await session.api.invest(l.ticker, _amount.text.trim().replaceAll(',', '.'));
+                      final inv = await withRiskDisclosure(
+                        context,
+                        () => session.api.invest(l.ticker, _amount.text.trim().replaceAll(',', '.')),
+                      );
+                      if (inv == null) return;
                       for (final k in ['wallets', 'entries', 'portfolio', 'listings']) {
                         session.queries.invalidate(k);
                       }
@@ -796,5 +808,52 @@ class PortfolioScreen extends StatelessWidget {
         },
       ),
     );
+  }
+}
+
+/// Runs [action]; when the server wants the risk disclosure accepted first, shows it and runs the
+/// action again after the person accepts. Returns null when they decline.
+Future<T?> withRiskDisclosure<T>(BuildContext context, Future<T> Function() action) async {
+  try {
+    return await action();
+  } on ApiException catch (e) {
+    if (e.code != 'risk_disclosure_required' || !context.mounted) rethrow;
+    final session = context.read<Session>();
+    final risk = await session.api.riskDisclosure();
+    if (!context.mounted) return null;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: Text(risk.title),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Please read this once before your first investment or trade.'),
+              const SizedBox(height: 12),
+              for (final point in risk.points)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('•  '),
+                      Expanded(child: Text(point)),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('Not now')),
+          FilledButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('I understand, continue')),
+        ],
+      ),
+    );
+    if (ok != true) return null;
+    await session.api.acceptRisk(risk.version);
+    return action();
   }
 }

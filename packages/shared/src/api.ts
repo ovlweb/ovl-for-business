@@ -1160,6 +1160,56 @@ export const placeOrderResultSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Investor protection: risk disclosure and limits
+// ---------------------------------------------------------------------------
+
+/** Investors accept this before their first investment or trade (a new version asks again). */
+export const RISK_DISCLOSURE = {
+  version: '2026-09',
+  title: 'Before you invest',
+  points: [
+    'Shares of virtual companies can lose all their value. Only invest money you can afford to lose.',
+    'Prices move with trades between investors and can change quickly; nobody guarantees a buyer.',
+    'Part of every investment is frozen on the company balance and your shares stay locked for the lock period.',
+    'Dividends are paid only when a company decides to, and past results do not predict future ones.',
+    'OVL For Business checks companies before they list, but does not endorse them or give investment advice.',
+  ],
+} as const;
+
+export const riskDisclosureSchema = z.object({
+  version: z.string(),
+  title: z.string(),
+  points: z.array(z.string()),
+  acceptedAt: isoDate.nullable().describe('When you accepted this version (null: not yet)'),
+});
+export type RiskDisclosure = z.infer<typeof riskDisclosureSchema>;
+
+export const stockLimitsSchema = z.object({
+  maxHoldingPercent: z.number().describe('Nobody may hold more of a company than this'),
+  monthlyLimit: z.string().nullable().describe('Investing and buying per 30 days, in the base currency'),
+  unverifiedMonthlyLimit: z.string().nullable().describe('The same for people without a verified identity'),
+  base: z.string(),
+});
+export type StockLimits = z.infer<typeof stockLimitsSchema>;
+export const updateStockLimitsSchema = z.object({
+  maxHoldingPercent: z.number().min(0.01).max(100).optional(),
+  monthlyLimit: z
+    .union([decimalAmountSchema, z.literal('')])
+    .optional()
+    .describe('"" turns it off'),
+  unverifiedMonthlyLimit: z.union([decimalAmountSchema, z.literal('')]).optional(),
+});
+export const myStockLimitsSchema = z.object({
+  maxHoldingPercent: z.number(),
+  monthlyLimit: z.string().nullable().describe('What applies to you (verified or not), in the base currency'),
+  usedThisMonth: z.string().describe('Invested and bought in the last 30 days, in the base currency'),
+  remaining: z.string().nullable(),
+  base: z.string(),
+  identityVerified: z.boolean(),
+});
+export type MyStockLimits = z.infer<typeof myStockLimitsSchema>;
+
+// ---------------------------------------------------------------------------
 // Shareholders: registry, dividends, votes, company reports
 // ---------------------------------------------------------------------------
 

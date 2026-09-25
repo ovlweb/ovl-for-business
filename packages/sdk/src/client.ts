@@ -48,7 +48,9 @@ import type {
   Organization,
   Passkey,
   PaymentApproval,
+  MyStockLimits,
   Proposal,
+  RiskDisclosure,
   Shareholder,
   PayrollInput,
   PayrollRun,
@@ -71,6 +73,7 @@ import type {
   Role,
   StockListing,
   StockListingDetail,
+  StockLimits,
   StockOrder,
   StockTrade,
   Story,
@@ -553,6 +556,12 @@ export class OvlClient {
       this.post<Proposal>(`/stock/proposals/${proposalId}/vote`, { option }),
     reports: (ticker: string) =>
       this.get<CompanyReport[]>(`/stock/listings/${encodeURIComponent(ticker)}/reports`),
+    /** The risk disclosure to accept before investing or buying (error "risk_disclosure_required"). */
+    risk: () => this.get<RiskDisclosure>('/stock/risk'),
+    acceptRisk: (version: string) => this.post<RiskDisclosure>('/stock/risk/accept', { version }),
+    /** Your holding cap and 30-day limit, and how much of it you used. */
+    limits: () => this.get<MyStockLimits>('/stock/limits'),
+    limitSettings: () => this.get<StockLimits>('/stock/limit-settings'),
   };
 
   chats = {
@@ -660,6 +669,12 @@ export class OvlClient {
         lockDays?: number;
       },
     ) => this.patch<StockListing>(`/admin/stock/listings/${id}`, input),
+    /** Per-investor limits; "" turns a monthly limit off. */
+    setStockLimits: (input: {
+      maxHoldingPercent?: number;
+      monthlyLimit?: string;
+      unverifiedMonthlyLimit?: string;
+    }) => this.put<StockLimits>('/admin/stock/limits', input),
     auditLogs: (query?: { action?: string; limit?: number; offset?: number }) =>
       this.get<Page<AuditLog>>('/admin/audit-logs', query),
     apiKeys: (query?: { limit?: number; offset?: number }) =>

@@ -71,6 +71,25 @@ shares, and becomes the listing's price. `GET /stock/listings/:ticker/book` (pub
 levels and the latest trades; `GET /stock/orders?status=open` lists yours. Everyone connected
 receives `stock.updated` with the ticker.
 
+## Investor protection
+
+Before the first investment or buy order, investors read and accept the risk disclosure:
+`GET /stock/risk` returns its `version`, `title` and `points` (and `acceptedAt` for you), and
+`POST /stock/risk/accept {version}` accepts it. Until then those calls fail with 403
+`risk_disclosure_required` (switch off with `STOCK_REQUIRE_RISK_ACK=false`). The disclosure has a
+version; a new one has to be accepted again.
+
+Investments and buy orders also stay within the platform's per-investor limits
+(`GET /stock/limit-settings`, public; `PUT /admin/stock/limits` with `stock.manage`):
+
+- `maxHoldingPercent` (25 by default): nobody holds more of one company, counting open buy orders;
+- `monthlyLimit` and `unverifiedMonthlyLimit`: the most someone invests and buys in 30 days
+  (investments, trades and open buy orders, in the exchange base currency). People without a
+  verified identity get the lower one; `""` turns a limit off.
+
+`GET /stock/limits` shows the limits that apply to you, what you used and what is left. A purchase
+over a limit is refused with 409. Selling is never limited.
+
 ## Shareholders
 
 Company members see who holds the shares at `GET /organizations/:id/shareholders`. The owner or a

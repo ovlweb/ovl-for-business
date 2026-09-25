@@ -254,6 +254,11 @@ async function main() {
     ['chen', 'AURA', '4200'],
     ['ivan', 'HLX', '0'],
   ];
+  for (const name of new Set(invest.map(([name]) => name))) {
+    const client = u(name).client;
+    const risk = await client.stock.risk();
+    if (!risk.acceptedAt) await client.stock.acceptRisk(risk.version);
+  }
   for (const [name, ticker, amount] of invest) {
     if (amount === '0') continue;
     await u(name)

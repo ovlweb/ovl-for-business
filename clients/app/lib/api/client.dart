@@ -396,6 +396,11 @@ class OvlApi {
     await _post('/stock/listings/${Uri.encodeComponent(ticker)}/invest', {'amount': amount}) as Json,
   );
   Future<Portfolio> portfolio() async => Portfolio.fromJson(await _get('/stock/portfolio'));
+
+  /// The risk disclosure; investing and buying fail with `risk_disclosure_required` until it is accepted.
+  Future<RiskDisclosure> riskDisclosure() async => RiskDisclosure.fromJson(await _get('/stock/risk'));
+  Future<RiskDisclosure> acceptRisk(String version) async =>
+      RiskDisclosure.fromJson(await _post('/stock/risk/accept', {'version': version}) as Json);
   Future<OrderBook> orderBook(String ticker) async => OrderBook.fromJson(await _get('/stock/listings/$ticker/book'));
 
   /// A limit order; returns how many shares traded at once.

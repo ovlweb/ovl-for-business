@@ -1,7 +1,17 @@
-import type { StockListing } from '@ovl/shared';
-import { ErrorAlert, Field, formatDate, Modal, Money, PageHeader, Spinner, StatusBadge } from '@ovl/ui';
+import type { StockLimits, StockListing } from '@ovl/shared';
+import {
+  ErrorAlert,
+  Field,
+  formatDate,
+  Modal,
+  Money,
+  PageHeader,
+  Spinner,
+  StatusBadge,
+  useToast,
+} from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { useAdmin } from '../auth';
 
@@ -93,12 +103,108 @@ function EditListing({ listing, onClose }: { listing: StockListing; onClose: () 
   );
 }
 
+/** Per-investor limits: the most of one company a person may hold, and how much they put in per 30 days. */
+function InvestorLimits() {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const { can } = useAdmin();
+  const editable = can('stock.manage');
+  const settings = useQuery({ queryKey: ['stock', 'limit-settings'], queryFn: api.stock.limitSettings });
+  const [form, setForm] = useState({ maxHoldingPercent: '25', monthlyLimit: '', unverifiedMonthlyLimit: '' });
+  const reset = (data: StockLimits) =>
+    setForm({
+      maxHoldingPercent: String(data.maxHoldingPercent),
+      monthlyLimit: data.monthlyLimit ?? '',
+      unverifiedMonthlyLimit: data.unverifiedMonthlyLimit ?? '',
+    });
+  useEffect(() => {
+    if (settings.data) reset(settings.data);
+  }, [settings.data]);
+  const save = useMutation({
+    mutationFn: () =>
+      api.admin.setStockLimits({
+        maxHoldingPercent: Number(form.maxHoldingPercent),
+        monthlyLimit: form.monthlyLimit.trim(),
+        unverifiedMonthlyLimit: form.unverifiedMonthlyLimit.trim(),
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['stock', 'limit-settings'], data);
+      toast.success('Investor limits saved');
+    },
+  });
+  const base = settings.data?.base ?? '';
+  return (
+    <form
+      className="card stack"
+      aria-label="Investor limits"
+      onSubmit={(e) => {
+        e.preventDefault();
+        save.mutate();
+      }}
+    >
+      <div>
+        <h3>Investor limits</h3>
+        <p className="small muted" style={{ margin: 0 }}>
+          Investments and buy orders over a limit are refused. Monthly limits count what someone invested and
+          bought in the last 30 days, plus open buy orders, in {base || 'the base currency'}; leave one empty
+          for no limit. Everyone accepts the risk disclosure once before investing.
+        </p>
+      </div>
+      <div className="grid-3">
+        <Field label="Most of one company (%)">
+          <input
+            className="input"
+            inputMode="decimal"
+            value={form.maxHoldingPercent}
+            disabled={!editable}
+            onChange={(e) => setForm({ ...form, maxHoldingPercent: e.target.value.replace(',', '.') })}
+            required
+          />
+        </Field>
+        <Field label={`Per 30 days, verified (${base})`}>
+          <input
+            className="input"
+            inputMode="decimal"
+            value={form.monthlyLimit}
+            placeholder="No limit"
+            disabled={!editable}
+            onChange={(e) => setForm({ ...form, monthlyLimit: e.target.value.replace(',', '.') })}
+          />
+        </Field>
+        <Field label={`Per 30 days, not verified (${base})`}>
+          <input
+            className="input"
+            inputMode="decimal"
+            value={form.unverifiedMonthlyLimit}
+            placeholder="Same as verified"
+            disabled={!editable}
+            onChange={(e) => setForm({ ...form, unverifiedMonthlyLimit: e.target.value.replace(',', '.') })}
+          />
+        </Field>
+      </div>
+      <ErrorAlert error={settings.error ?? save.error} />
+      {editable && (
+        <div className="row">
+          <button className="btn primary" disabled={save.isPending || !settings.data}>
+            Save limits
+          </button>
+          {settings.data && (
+            <button type="button" className="btn ghost" onClick={() => reset(settings.data!)}>
+              Reset
+            </button>
+          )}
+        </div>
+      )}
+    </form>
+  );
+}
+
 export function StockPage() {
   const { can } = useAdmin();
   const [editing, setEditing] = useState<StockListing | null>(null);
   const listings = useQuery({ queryKey: ['listings'], queryFn: () => api.stock.listings() });
   return (
-    <div className="page">
+    <div className="page stack-lg">
       <PageHeader
         icon="chart"
         title="Stock exchange"
@@ -150,6 +256,7 @@ export function StockPage() {
           </tbody>
         </table>
       </div>
+      <InvestorLimits />
       {editing && <EditListing listing={editing} onClose={() => setEditing(null)} />}
     </div>
   );
