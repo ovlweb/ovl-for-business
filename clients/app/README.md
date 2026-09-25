@@ -50,6 +50,10 @@ Linux, `OVL_WINDOW_SIZE=390x844` sets the initial window size.
 
 ## Build
 
+The easiest way is the builder at the repository root (`./build-clients.sh`, or
+`build-clients.cmd` on Windows). It installs what is missing, builds for your server's address and
+packs the results. By hand:
+
 ```bash
 flutter build apk --release        # Android
 flutter build ios --release        # iOS (on macOS, with signing)
@@ -57,6 +61,10 @@ flutter build macos --release      # macOS
 flutter build windows --release    # Windows
 flutter build linux --release      # Linux (needs clang, cmake, ninja, GTK 3, libsecret)
 ```
+
+Android release builds are signed with the key in `android/key.properties` (`storeFile`,
+`storePassword`, `keyAlias`, `keyPassword`; not in Git; the builder can create one). Without it,
+they use the debug key, which is fine for trying the app but not for Google Play.
 
 CI (`.github/workflows/native.yml`) runs `flutter analyze`, `dart format` and `flutter test`,
 checks that the generated Dart files are up to date, and builds all five platforms.

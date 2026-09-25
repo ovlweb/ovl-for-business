@@ -102,7 +102,64 @@ Android, iOS, macOS and Windows.
   privileged action, developer API keys, OpenAPI docs, a Ctrl/⌘ + K command palette. See
   [docs/ROADMAP.md](docs/ROADMAP.md) for what comes next.
 
+## Install on a server
+
+On a Linux server (Ubuntu, Debian, Fedora, RHEL, Rocky, Alma, openSUSE, Arch and their relatives),
+one command installs Docker if it is missing, downloads the platform into `/opt/ovl-for-business`,
+asks a few questions and starts it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ovlweb/ovl-for-business/main/setup.sh | sudo bash
+```
+
+Or, in a checkout: `sudo ./setup.sh`. It shows windows on a desktop, dialog screens over SSH and
+plain questions anywhere else, and asks for:
+
+- the addresses: your domains (HTTPS certificates are automatic) or this server's IP and ports;
+- the owner account (a strong password is generated if you like);
+- a mail server, and optional settings (S3 storage, staff single sign-on, an admin IP allow-list,
+  a metrics token).
+
+It then writes `.env` (owner-only, with fresh database and token secrets), opens the firewall,
+starts everything and prints where to sign in. Run `sudo ./setup.sh` again for a menu: status, logs,
+update, backup now, change settings, restart, stop, uninstall. For scripts, every answer is an
+option (`--domain`, `--owner-email`, `--smtp`, …) and `--yes` asks nothing; see
+`./setup.sh --help`. On Windows use WSL 2 or a Linux VM; on macOS it works with Docker Desktop.
+
+## Build the apps
+
+The web client and admin panel come with the server. To build the apps for phones and computers
+(and static copies of the two web apps), run the builder on any computer with this repository:
+
+```bash
+./build-clients.sh          # Linux, macOS
+build-clients.cmd           # Windows: double-click it, or run it in a terminal
+```
+
+It asks for your server's address and what to build. It offers to install whatever is missing:
+Node.js (just for the builder, in `~/.ovl`), pnpm, Flutter, Java, the Android SDK, Linux build
+packages and the Visual Studio C++ tools. Then it puts everything into `dist/clients` with a
+`SHA256SUMS.txt`:
+
+| Target    | Builds on        | Result                                                       |
+| --------- | ---------------- | ------------------------------------------------------------ |
+| `web`     | any system       | `.zip` of static files for any web host                      |
+| `admin`   | any system       | `.zip` of static files                                       |
+| `android` | any system       | `.apk` to install, and an `.aab` for Google Play when signed |
+| `ios`     | macOS with Xcode | `.ipa` (signed for the App Store, or unsigned to sign later) |
+| `macos`   | macOS with Xcode | `.dmg` and `.zip`                                            |
+| `windows` | Windows          | `.zip` with `ovl_business.exe`                               |
+| `linux`   | Linux            | `.tar.gz` with `ovl_business`                                |
+
+For Android it can create your release key: it goes into `~/.ovl/android`, and
+`clients/app/android/key.properties` points to it (not in Git). Back up that folder, because
+Google Play and app updates need the same key every time. Unattended:
+`./build-clients.sh web android --api-url https://business.example.com --yes`; see `--help`. The
+"Native apps" GitHub workflow builds all five native apps too (set the `OVL_API_URL` variable).
+
 ## Quick start (Docker)
+
+To run it by hand instead of with `setup.sh`:
 
 ```bash
 cp .env.example .env        # set POSTGRES_PASSWORD, JWT_SECRET, OWNER_PASSWORD

@@ -1,0 +1,5 @@
+# Shell scripts keep LF line endings, so they run in WSL and on servers even from a Windows checkout.
+*.sh text eol=lf
+# Windows scripts keep CRLF line endings, which cmd.exe expects.
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
