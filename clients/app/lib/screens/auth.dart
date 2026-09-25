@@ -12,6 +12,7 @@ import '../theme/theme.dart';
 import '../ui/chart.dart';
 import '../ui/format.dart';
 import '../ui/widgets.dart';
+import '../i18n/i18n.dart';
 
 enum _Mode { signIn, register }
 
@@ -38,17 +39,17 @@ class _LoginScreenState extends State<LoginScreen> {
     final session = context.watch<Session>();
     final wide = MediaQuery.sizeOf(context).width >= 980;
     final title = _choosing
-        ? 'Choose an account'
+        ? tr('Choose an account')
         : session.addingAccount
-        ? 'Add another account'
+        ? tr('Add another account')
         : _mode == _Mode.signIn
-        ? 'Welcome back'
-        : 'Create your account';
+        ? tr('Welcome back')
+        : tr('Create your account');
     final subtitle = _choosing
-        ? 'Accounts signed in on this device.'
+        ? tr('Accounts signed in on this device.')
         : _mode == _Mode.signIn
-        ? 'Sign in to continue to your workspace.'
-        : 'Start with a personal account — it takes a minute.';
+        ? tr('Sign in to continue to your workspace.')
+        : tr('Start with a personal account — it takes a minute.');
 
     final form = Center(
       child: SingleChildScrollView(
@@ -70,7 +71,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: TextButton.icon(
                       onPressed: session.cancelAddAccount,
                       icon: const Icon(LucideIcons.arrowLeft, size: 16),
-                      label: Text('Back to ${session.me?.firstName ?? 'the app'}'),
+                      label: Text(tr('Back to {0}', [session.me?.firstName ?? 'the app'])),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -111,6 +112,14 @@ class _LoginScreenState extends State<LoginScreen> {
                           key: const ValueKey('forms'),
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: LanguageMenu(
+                                value: session.locales.code,
+                                onChanged: (code) => session.setLocale(code),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
                             Segmented<_Mode>(
                               value: _mode,
                               options: const [(_Mode.signIn, 'Sign in'), (_Mode.register, 'Create account')],
@@ -138,7 +147,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               TextButton.icon(
                                 onPressed: () => setState(() => _choosing = true),
                                 icon: const Icon(LucideIcons.users, size: 16),
-                                label: Text('Saved accounts (${session.accounts.accounts.length})'),
+                                label: Text(tr('Saved accounts ({0})', [session.accounts.accounts.length])),
                               ),
                             ],
                           ],
@@ -234,12 +243,12 @@ class _SignInFormState extends State<_SignInForm> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Two-step verification', style: context.text.titleMedium),
+                  Text(tr('Two-step verification'), style: context.text.titleMedium),
                   const SizedBox(height: 2),
                   Text(
                     _recovery
-                        ? 'Enter one of the recovery codes you saved. Each code works once.'
-                        : 'Open your authenticator app and enter the 6-digit code for OVL For Business.',
+                        ? tr('Enter one of the recovery codes you saved. Each code works once.')
+                        : tr('Open your authenticator app and enter the 6-digit code for OVL For Business.'),
                     style: context.text.bodyMedium,
                   ),
                 ],
@@ -262,13 +271,13 @@ class _SignInFormState extends State<_SignInForm> {
           style: font(display, 24, FontWeight.w800, letterSpacing: _recovery ? 2 : 8, color: c.text),
           decoration: InputDecoration(
             counterText: '',
-            hintText: _recovery ? 'xxxxx-xxxxx' : '123456',
-            labelText: _recovery ? 'Recovery code' : 'Authentication code',
+            hintText: _recovery ? tr('xxxxx-xxxxx') : '123456',
+            labelText: _recovery ? tr('Recovery code') : tr('Authentication code'),
           ),
         ),
         const SizedBox(height: 18),
         GradientButton(
-          label: 'Verify',
+          label: tr('Verify'),
           icon: LucideIcons.check,
           busy: _busy,
           onPressed: _recovery || _code.text.trim().length == 6 ? _submit : null,
@@ -283,7 +292,7 @@ class _SignInFormState extends State<_SignInForm> {
                 _code.clear();
               }),
               icon: const Icon(LucideIcons.arrowLeft, size: 16),
-              label: const Text('Back'),
+              label: Text(tr('Back')),
             ),
             const Spacer(),
             TextButton(
@@ -291,7 +300,7 @@ class _SignInFormState extends State<_SignInForm> {
                 _recovery = !_recovery;
                 _code.clear();
               }),
-              child: Text(_recovery ? 'Use the authenticator app' : 'Use a recovery code'),
+              child: Text(_recovery ? tr('Use the authenticator app') : tr('Use a recovery code')),
             ),
           ],
         ),
@@ -319,21 +328,21 @@ class _SignInFormState extends State<_SignInForm> {
                 children: [
                   if (_error != null) ...[ErrorBox(_error), const SizedBox(height: 14)],
                   LabeledField(
-                    label: 'Username or email',
+                    label: tr('Username or email'),
                     controller: _login,
                     icon: LucideIcons.user,
                     autofill: const [AutofillHints.username],
                   ),
                   const SizedBox(height: 16),
                   LabeledField(
-                    label: 'Password',
+                    label: tr('Password'),
                     controller: _password,
                     icon: LucideIcons.keyRound,
                     obscure: !_show,
                     autofill: const [AutofillHints.password],
                     onSubmitted: (_) => _submit(),
                     suffix: IconButton(
-                      tooltip: _show ? 'Hide characters' : 'Show characters',
+                      tooltip: _show ? tr('Hide characters') : tr('Show characters'),
                       onPressed: () => setState(() => _show = !_show),
                       icon: Icon(_show ? LucideIcons.eyeOff : LucideIcons.eye, size: 18),
                     ),
@@ -342,11 +351,11 @@ class _SignInFormState extends State<_SignInForm> {
                     alignment: Alignment.centerRight,
                     child: TextButton(
                       onPressed: () => showForgotPassword(context, initial: _login.text.trim()),
-                      child: const Text('Forgot password?'),
+                      child: Text(tr('Forgot password?')),
                     ),
                   ),
                   const SizedBox(height: 8),
-                  GradientButton(label: 'Sign in', icon: LucideIcons.arrowRight, busy: _busy, onPressed: _submit),
+                  GradientButton(label: tr('Sign in'), icon: LucideIcons.arrowRight, busy: _busy, onPressed: _submit),
                 ],
               ),
             ),
@@ -405,7 +414,7 @@ class _RegisterFormState extends State<_RegisterForm> {
       children: [
         if (_error != null) ...[ErrorBox(_error), const SizedBox(height: 14)],
         LabeledField(
-          label: 'Display name',
+          label: tr('Display name'),
           controller: _name,
           icon: LucideIcons.user,
           autofill: const [AutofillHints.name],
@@ -414,12 +423,12 @@ class _RegisterFormState extends State<_RegisterForm> {
         Row(
           children: [
             Expanded(
-              child: LabeledField(label: 'Username', controller: _username, icon: LucideIcons.atSign),
+              child: LabeledField(label: tr('Username'), controller: _username, icon: LucideIcons.atSign),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: LabeledField(
-                label: 'Email',
+                label: tr('Email'),
                 controller: _email,
                 icon: LucideIcons.mail,
                 keyboard: TextInputType.emailAddress,
@@ -430,7 +439,7 @@ class _RegisterFormState extends State<_RegisterForm> {
         ),
         const SizedBox(height: 14),
         LabeledField(
-          label: 'Password',
+          label: tr('Password'),
           controller: _password,
           icon: LucideIcons.keyRound,
           obscure: true,
@@ -453,11 +462,11 @@ class _RegisterFormState extends State<_RegisterForm> {
                 ),
               ),
             const SizedBox(width: 10),
-            SizedBox(width: 64, child: Text(labels[_strength], style: context.text.bodySmall)),
+            SizedBox(width: 64, child: Text(tr(labels[_strength]), style: context.text.bodySmall)),
           ],
         ),
         const SizedBox(height: 22),
-        GradientButton(label: 'Create account', icon: LucideIcons.arrowRight, busy: _busy, onPressed: _submit),
+        GradientButton(label: tr('Create account'), icon: LucideIcons.arrowRight, busy: _busy, onPressed: _submit),
       ],
     );
   }
@@ -503,7 +512,7 @@ class _SavedAccounts extends StatelessWidget {
         OutlinedButton.icon(
           onPressed: onOther,
           icon: const Icon(LucideIcons.userPlus, size: 17),
-          label: const Text('Use another account'),
+          label: Text(tr('Use another account')),
         ),
       ],
     );
@@ -532,24 +541,24 @@ class _ServerSettingsState extends State<_ServerSettings> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 LabeledField(
-                  label: 'Server address',
+                  label: tr('Server address'),
                   controller: _url,
                   icon: LucideIcons.globe,
                   keyboard: TextInputType.url,
-                  helper: 'For self-hosted deployments, e.g. https://ovl.example.com',
+                  helper: tr('For self-hosted deployments, e.g. https://ovl.example.com'),
                 ),
                 const SizedBox(height: 10),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    TextButton(onPressed: () => setState(() => _open = false), child: const Text('Cancel')),
+                    TextButton(onPressed: () => setState(() => _open = false), child: Text(tr('Cancel'))),
                     const SizedBox(width: 8),
                     FilledButton(
                       onPressed: () async {
                         await session.setServer(_url.text);
                         if (mounted) setState(() => _open = false);
                       },
-                      child: const Text('Save'),
+                      child: Text(tr('Save')),
                     ),
                   ],
                 ),
@@ -646,14 +655,14 @@ class _BrandPanel extends StatelessWidget {
                   children: [
                     const Logo(size: 44, animated: true),
                     const SizedBox(width: 12),
-                    Text('OVL For Business', style: font(display, 19, FontWeight.w800, color: Colors.white)),
+                    Text(tr('OVL For Business'), style: font(display, 19, FontWeight.w800, color: Colors.white)),
                   ],
                 ),
                 const Spacer(),
                 FadeSlideIn(
                   delay: const Duration(milliseconds: 150),
                   child: Text(
-                    'Your company, its money\nand its licenses — in one place.',
+                    tr('Your company, its money\nand its licenses — in one place.'),
                     style: font(display, 38, FontWeight.w800, height: 1.12, letterSpacing: -1, color: Colors.white),
                   ),
                 ),
@@ -663,7 +672,7 @@ class _BrandPanel extends StatelessWidget {
                 const SizedBox(height: 250, child: _FloatingCards()),
                 const Spacer(),
                 Text(
-                  'Balances in every world currency · public registry · stock exchange',
+                  tr('Balances in every world currency · public registry · stock exchange'),
                   style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 13),
                 ),
               ],
@@ -741,7 +750,7 @@ class _RotatingFeatureState extends State<_RotatingFeature> {
           children: [
             const Icon(LucideIcons.sparkles, size: 16, color: Color(0xFF93C5FD)),
             const SizedBox(width: 8),
-            Text(_features[_i], style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 16)),
+            Text(tr(_features[_i]), style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 16)),
           ],
         ),
       ),
@@ -807,7 +816,10 @@ class _FloatingCardsState extends State<_FloatingCards> with SingleTickerProvide
                           children: [
                             const Icon(LucideIcons.wallet, size: 14, color: Colors.white70),
                             const SizedBox(width: 6),
-                            Text('EUR BALANCE', style: muted.copyWith(letterSpacing: 0.8, fontWeight: FontWeight.w700)),
+                            Text(
+                              tr('EUR BALANCE'),
+                              style: muted.copyWith(letterSpacing: 0.8, fontWeight: FontWeight.w700),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 8),
@@ -817,7 +829,7 @@ class _FloatingCardsState extends State<_FloatingCards> with SingleTickerProvide
                           style: font(display, 24, FontWeight.w800, color: Colors.white),
                         ),
                         const SizedBox(height: 4),
-                        Text('+2,400.00 today', style: muted.copyWith(color: const Color(0xFF6EE7B7))),
+                        Text(tr('+2,400.00 today'), style: muted.copyWith(color: const Color(0xFF6EE7B7))),
                       ],
                     ),
                   ),
@@ -875,8 +887,8 @@ class _FloatingCardsState extends State<_FloatingCards> with SingleTickerProvide
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('Council · Elena', style: muted),
-                              const Text('Company approved — welcome aboard!', style: TextStyle(fontSize: 13)),
+                              Text(tr('Council · Elena'), style: muted),
+                              Text(tr('Company approved — welcome aboard!'), style: TextStyle(fontSize: 13)),
                             ],
                           ),
                         ),
@@ -904,10 +916,10 @@ class _FloatingCardsState extends State<_FloatingCards> with SingleTickerProvide
                       child: Column(
                         children: [
                           Text(
-                            'APPROVED',
+                            tr('APPROVED'),
                             style: font(display, 16, FontWeight.w800, letterSpacing: 2, color: const Color(0xFF6EE7B7)),
                           ),
-                          Text('OVL-LIC-000042', style: muted.copyWith(fontSize: 10.5)),
+                          Text(tr('OVL-LIC-000042'), style: muted.copyWith(fontSize: 10.5)),
                         ],
                       ),
                     ),
@@ -940,19 +952,22 @@ void showForgotPassword(BuildContext context, {String initial = ''}) {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(sent ? 'Check your inbox' : 'Reset your password', style: sheet.text.headlineSmall),
+            Text(sent ? tr('Check your inbox') : tr('Reset your password'), style: sheet.text.headlineSmall),
             const SizedBox(height: 6),
             Text(
               sent
-                  ? 'If an account uses ${email.text.trim()}, we sent it a link to choose a new password. The link works for one hour.'
-                  : 'Enter the email address of your account and we will send you a link to choose a new password.',
+                  ? tr(
+                      'If an account uses {0}, we sent it a link to choose a new password. The link works for one hour.',
+                      [email.text.trim()],
+                    )
+                  : tr('Enter the email address of your account and we will send you a link to choose a new password.'),
               style: sheet.text.bodyMedium,
             ),
             const SizedBox(height: 16),
             if (error != null) ...[ErrorBox(error), const SizedBox(height: 12)],
             if (!sent) ...[
               LabeledField(
-                label: 'Email',
+                label: tr('Email'),
                 controller: email,
                 icon: LucideIcons.mail,
                 keyboard: TextInputType.emailAddress,
@@ -961,7 +976,7 @@ void showForgotPassword(BuildContext context, {String initial = ''}) {
               ),
               const SizedBox(height: 18),
               GradientButton(
-                label: 'Send reset link',
+                label: tr('Send reset link'),
                 icon: LucideIcons.send,
                 busy: busy,
                 onPressed: () async {
@@ -980,7 +995,7 @@ void showForgotPassword(BuildContext context, {String initial = ''}) {
                 },
               ),
             ] else
-              FilledButton(onPressed: () => Navigator.pop(sheet), child: const Text('Back to sign in')),
+              FilledButton(onPressed: () => Navigator.pop(sheet), child: Text(tr('Back to sign in'))),
           ],
         ),
       ),

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -24,6 +25,7 @@ import 'screens/notifications.dart';
 import 'screens/wallet.dart';
 import 'state/session.dart';
 import 'theme/theme_controller.dart';
+import 'i18n/i18n.dart';
 
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -76,9 +78,9 @@ GoRouter buildRouter(Session session, String? initialRoute) {
 class Section {
   const Section(
     this.path,
-    this.label,
+    this._label,
     this.icon,
-    this.group,
+    this._group,
     this.route, {
     this.primary = false,
     this.permission,
@@ -86,9 +88,13 @@ class Section {
   });
 
   final String path;
-  final String label;
+  final String _label;
   final IconData icon;
-  final String group;
+  final String _group;
+
+  /// The name in the current language.
+  String get label => tr(_label);
+  String get group => tr(_group);
   final GoRoute route;
   final bool primary;
   final String? permission;
@@ -274,13 +280,37 @@ class OvlApp extends StatefulWidget {
 
 class _OvlAppState extends State<OvlApp> {
   late final GoRouter _router = buildRouter(widget.session, widget.initialRoute);
+  String? _shownLocale;
+
+  /// Every screen reads its text through tr(): after a language switch all of them build again
+  /// (keeping their state), not only the ones that depend on Localizations.
+  void _rebuildAll() {
+    void visit(Element e) {
+      e.markNeedsBuild();
+      e.visitChildren(visit);
+    }
+
+    if (mounted) (context as Element).visitChildren(visit);
+  }
 
   @override
   Widget build(BuildContext context) {
     final themes = context.watch<ThemeController>();
+    final locales = context.watch<LocaleController>();
+    if (_shownLocale != null && _shownLocale != locales.code) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _rebuildAll());
+    }
+    _shownLocale = locales.code;
     return MaterialApp.router(
       title: 'OVL For Business',
       debugShowCheckedModeBanner: false,
+      locale: locales.locale,
+      supportedLocales: [for (final code in appLocales) Locale(code)],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       theme: themes.theme,
       themeAnimationDuration: Duration.zero,
       scrollBehavior: const DesktopScrollBehavior(),

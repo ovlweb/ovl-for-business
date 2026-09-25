@@ -1,4 +1,4 @@
-import { Logo } from '@ovl/ui';
+import { Logo, useLocale } from '@ovl/ui';
 import { AnimatePresence, motion } from 'motion/react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { MeProvider, useAuth } from './auth';
@@ -40,6 +40,7 @@ function Splash() {
 export function App() {
   const { me, loading, addingAccount } = useAuth();
   const { pathname } = useLocation();
+  const locale = useLocale();
 
   let content;
   // Links from emails work whether or not someone is signed in on this device.
@@ -104,5 +105,10 @@ export function App() {
       </MeProvider>
     );
 
-  return <AnimatePresence mode="wait">{content}</AnimatePresence>;
+  // A new language re-renders every screen (the key remounts them; cached data stays).
+  return (
+    <AnimatePresence mode="wait" key={locale}>
+      {content}
+    </AnimatePresence>
+  );
 }

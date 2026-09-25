@@ -25,6 +25,9 @@ import {
   StatusBadge,
   useToast,
   VerifiedBadge,
+  plural,
+  intlLocale,
+  t,
 } from '@ovl/ui';
 import { OvlApiError } from '@ovl/sdk';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -39,11 +42,13 @@ export function ExchangePage() {
     <div className="page stack-lg">
       <PageHeader
         icon="chart"
-        title="Stock exchange"
-        subtitle="Invest in approved companies. Part of every investment is frozen on the company balance for 3–6 months."
+        title={t('Stock exchange')}
+        subtitle={t(
+          'Invest in approved companies. Part of every investment is frozen on the company balance for 3–6 months.',
+        )}
         actions={
           <Link className="btn" to="/exchange/portfolio">
-            My portfolio
+            {t('My portfolio')}
           </Link>
         }
       />
@@ -53,14 +58,14 @@ export function ExchangePage() {
         <table className="table">
           <thead>
             <tr>
-              <th>Ticker</th>
-              <th>Company</th>
-              <th className="right">Share price</th>
-              <th className="right">Available</th>
-              <th className="right">Raised</th>
-              <th className="right">Investors</th>
-              <th>Freeze</th>
-              <th>Status</th>
+              <th>{t('Ticker')}</th>
+              <th>{t('Company')}</th>
+              <th className="right">{t('Share price')}</th>
+              <th className="right">{t('Available')}</th>
+              <th className="right">{t('Raised')}</th>
+              <th className="right">{t('Investors')}</th>
+              <th>{t('Freeze')}</th>
+              <th>{t('Status')}</th>
             </tr>
           </thead>
           <tbody>
@@ -77,15 +82,14 @@ export function ExchangePage() {
                   <Money amount={l.sharePrice} currency={l.currency} />
                 </td>
                 <td className="right num">
-                  {Number(l.sharesAvailable).toLocaleString()} / {Number(l.totalShares).toLocaleString()}
+                  {Number(l.sharesAvailable).toLocaleString(intlLocale())} /{' '}
+                  {Number(l.totalShares).toLocaleString(intlLocale())}
                 </td>
                 <td className="right">
                   <Money amount={l.raised} currency={l.currency} />
                 </td>
                 <td className="right num">{l.investorsCount}</td>
-                <td className="small nowrap">
-                  {l.freezePercent}% · {l.lockDays} d
-                </td>
+                <td className="small nowrap">{t('{0}% · {1} d', l.freezePercent, l.lockDays)}</td>
                 <td>
                   <StatusBadge status={l.status} />
                 </td>
@@ -93,11 +97,12 @@ export function ExchangePage() {
             ))}
           </tbody>
         </table>
-        {listings.data?.length === 0 && <Empty title="No companies are listed yet" />}
+        {listings.data?.length === 0 && <Empty title={t('No companies are listed yet')} />}
       </div>
       <p className="small muted">
-        Services can read this data through the public API: <code>GET /api/v1/stock/listings</code> (see the
-        developer section of your profile for API keys).
+        {t('Services can read this data through the public API:')}{' '}
+        <code>{t('GET /api/v1/stock/listings')}</code>{' '}
+        {t('(see the developer section of your profile for API keys).')}
       </p>
     </div>
   );
@@ -156,24 +161,24 @@ export function ListingPage() {
                 <VerifiedBadge />{' '}
               </>
             )}
-            Registry number <code>{l.organization.registryNumber}</code> · listed{' '}
-            {formatDate(l.listedAt, false)} ·{' '}
-            <Link to={`/companies/${l.organization.slug}`}>company profile</Link>
+            {t('Registry number')} <code>{l.organization.registryNumber}</code>{' '}
+            {t('· listed {0} ·', formatDate(l.listedAt, false))}{' '}
+            <Link to={`/companies/${l.organization.slug}`}>{t('company profile')}</Link>
           </>
         }
         actions={<StatusBadge status={l.status} />}
       />
       <div className="grid-3">
         <div className="card kpi">
-          <span className="kpi-label">Share price</span>
+          <span className="kpi-label">{t('Share price')}</span>
           <span className="kpi-value">{formatMoney(l.sharePrice, l.currency)}</span>
         </div>
         <div className="card kpi">
-          <span className="kpi-label">Market cap</span>
+          <span className="kpi-label">{t('Market cap')}</span>
           <span className="kpi-value">{formatMoney(l.marketCap, l.currency)}</span>
         </div>
         <div className="card kpi">
-          <span className="kpi-label">Raised · investors</span>
+          <span className="kpi-label">{t('Raised · investors')}</span>
           <span className="kpi-value">
             {formatMoney(l.raised, l.currency)} · {l.investorsCount}
           </span>
@@ -182,7 +187,7 @@ export function ListingPage() {
       <div className="grid-2">
         <div className="card stack">
           <div className="spread">
-            <h3>Price history</h3>
+            <h3>{t('Price history')}</h3>
             <PriceChange history={l.priceHistory.map((p) => Number(p.price))} />
           </div>
           <AreaChart
@@ -202,17 +207,23 @@ export function ListingPage() {
             gate.guard(() => invest.mutate());
           }}
         >
-          <h3>Invest</h3>
+          <h3>{t('Invest')}</h3>
           <div className="small muted">
-            {Number(l.sharesAvailable).toLocaleString()} shares available. {l.freezePercent}% of your
-            investment is frozen on the company balance for {l.lockDays} days, the rest is available to the
-            company immediately.
+            {t(
+              '{0} shares available. {1}% of your investment is frozen on the company balance for {2} days, the rest is available to the company immediately.',
+              Number(l.sharesAvailable).toLocaleString(intlLocale()),
+              l.freezePercent,
+              l.lockDays,
+            )}
           </div>
           <div className="alert info small">
-            Your {l.currency} balance:{' '}
-            {wallet ? formatMoney(wallet.available, l.currency) : `no ${l.currency} wallet`}
+            {t(
+              'Your {0} balance: {1}',
+              l.currency,
+              wallet ? formatMoney(wallet.available, l.currency) : `no ${l.currency} wallet`,
+            )}
           </div>
-          <Field label={`Amount (${l.currency})`}>
+          <Field label={t('Amount ({0})', l.currency)}>
             <input
               className="input"
               inputMode="decimal"
@@ -224,11 +235,11 @@ export function ListingPage() {
           </Field>
           {preview && (
             <dl className="dl small">
-              <dt>Shares</dt>
+              <dt>{t('Shares')}</dt>
               <dd>{preview.shares.toString()}</dd>
-              <dt>You pay</dt>
+              <dt>{t('You pay')}</dt>
               <dd>{formatMoney(preview.cost, l.currency)}</dd>
-              <dt>Frozen for {l.lockDays} days</dt>
+              <dt>{t('Frozen for {0} days', l.lockDays)}</dt>
               <dd>{formatMoney(preview.frozen, l.currency)}</dd>
             </dl>
           )}
@@ -236,14 +247,18 @@ export function ListingPage() {
           <ErrorAlert error={gate.isGateError(invest.error) ? null : invest.error} />
           {invest.data && (
             <div className="alert success">
-              Bought {invest.data.shares} shares for {formatMoney(invest.data.amount, invest.data.currency)}.
+              {t(
+                'Bought {0} shares for {1}.',
+                invest.data.shares,
+                formatMoney(invest.data.amount, invest.data.currency),
+              )}
             </div>
           )}
           <button
             className="btn primary"
             disabled={!preview || preview.shares < 1n || invest.isPending || l.status !== 'active'}
           >
-            Invest
+            {t('Invest')}
           </button>
         </form>
       </div>
@@ -258,13 +273,14 @@ export function ListingPage() {
 function LimitInfo({ limits }: { limits: MyStockLimits }) {
   return (
     <p className="small muted" style={{ margin: 0 }}>
-      One investor may hold at most {limits.maxHoldingPercent}% of a company.
+      {t('One investor may hold at most')} {limits.maxHoldingPercent}
+      {t('% of a company.')}
       {limits.monthlyLimit && limits.remaining !== null && (
         <>
           {' '}
-          You can invest and buy {formatMoney(limits.remaining, limits.base)} more in the next 30 days (limit{' '}
-          {formatMoney(limits.monthlyLimit, limits.base)}
-          {!limits.identityVerified && '; verify your identity for a higher one'}).
+          {t('You can invest and buy')} {formatMoney(limits.remaining, limits.base)}{' '}
+          {t('more in the next 30 days (limit')} {formatMoney(limits.monthlyLimit, limits.base)}
+          {!limits.identityVerified && t('; verify your identity for a higher one')}).
         </>
       )}
     </p>
@@ -301,7 +317,7 @@ function useRiskGate() {
       <Modal title={risk.data.title} onClose={() => setNext(null)}>
         <div className="stack">
           <p className="small muted" style={{ margin: 0 }}>
-            Please read this once before your first investment or trade.
+            {t('Please read this once before your first investment or trade.')}
           </p>
           <ul className="stack-sm small" style={{ margin: 0, paddingLeft: 20 }}>
             {risk.data.points.map((point) => (
@@ -311,7 +327,7 @@ function useRiskGate() {
           <ErrorAlert error={accept.error} />
           <div className="row" style={{ justifyContent: 'flex-end' }}>
             <button type="button" className="btn ghost" onClick={() => setNext(null)}>
-              Not now
+              {t('Not now')}
             </button>
             <button
               type="button"
@@ -319,7 +335,7 @@ function useRiskGate() {
               disabled={accept.isPending}
               onClick={() => accept.mutate()}
             >
-              I understand, continue
+              {t('I understand, continue')}
             </button>
           </div>
         </div>
@@ -349,14 +365,14 @@ function ShareholderInfo({ listing: l }: { listing: StockListingDetail }) {
   return (
     <div className="card stack">
       <div className="spread" style={{ flexWrap: 'wrap', gap: 10 }}>
-        <h3>For shareholders</h3>
+        <h3>{t('For shareholders')}</h3>
         <Segmented<InfoTab>
           value={tab}
           onChange={setTab}
           options={[
             { value: 'reports', label: `Reports${reports.data?.length ? ` · ${reports.data.length}` : ''}` },
             { value: 'votes', label: `Votes${openVotes ? ` · ${openVotes} open` : ''}` },
-            { value: 'dividends', label: 'Dividends' },
+            { value: 'dividends', label: t('Dividends') },
           ]}
         />
       </div>
@@ -364,24 +380,24 @@ function ShareholderInfo({ listing: l }: { listing: StockListingDetail }) {
         (reports.data?.length ? (
           reports.data.map((r) => <ReportCard key={r.id} report={r} />)
         ) : (
-          <p className="small muted">The company has not published results yet.</p>
+          <p className="small muted">{t('The company has not published results yet.')}</p>
         ))}
       {tab === 'votes' &&
         (votes.data?.length ? (
           votes.data.map((p) => <ProposalCard key={p.id} proposal={p} />)
         ) : (
-          <p className="small muted">No shareholder votes yet.</p>
+          <p className="small muted">{t('No shareholder votes yet.')}</p>
         ))}
       {tab === 'dividends' &&
         (dividends.data?.length ? (
           <table className="table">
             <thead>
               <tr>
-                <th>Declared</th>
-                <th className="right">Per share</th>
-                <th className="right">Total</th>
-                <th className="right">Shareholders</th>
-                <th>Status</th>
+                <th>{t('Declared')}</th>
+                <th className="right">{t('Per share')}</th>
+                <th className="right">{t('Total')}</th>
+                <th className="right">{t('Shareholders')}</th>
+                <th>{t('Status')}</th>
               </tr>
             </thead>
             <tbody>
@@ -406,7 +422,7 @@ function ShareholderInfo({ listing: l }: { listing: StockListingDetail }) {
             </tbody>
           </table>
         ) : (
-          <p className="small muted">No dividends so far.</p>
+          <p className="small muted">{t('No dividends so far.')}</p>
         ))}
     </div>
   );
@@ -425,12 +441,12 @@ function ReportCard({ report: r }: { report: CompanyReport }) {
         <div className="row-wrap small">
           {r.revenue && (
             <span>
-              Revenue <b>{formatMoney(r.revenue, r.currency)}</b>
+              {t('Revenue')} <b>{formatMoney(r.revenue, r.currency)}</b>
             </span>
           )}
           {r.profit && (
             <span>
-              {r.profit.startsWith('-') ? 'Loss' : 'Profit'}{' '}
+              {r.profit.startsWith('-') ? t('Loss') : t('Profit')}{' '}
               <b className={r.profit.startsWith('-') ? 'neg' : 'pos'}>
                 {formatMoney(r.profit.replace(/^-/, ''), r.currency)}
               </b>
@@ -454,7 +470,11 @@ function ProposalCard({ proposal: p }: { proposal: Proposal }) {
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ['stock', 'proposals'] });
       toast.success(
-        `Voted “${updated.options.find((o) => o.key === updated.myVote)?.label}” with ${updated.myShares} shares`,
+        t(
+          'Voted “{0}” with {1}',
+          updated.options.find((o) => o.key === updated.myVote)?.label ?? '',
+          plural(Number(updated.myShares), 'share'),
+        ),
       );
     },
   });
@@ -480,17 +500,22 @@ function ProposalCard({ proposal: p }: { proposal: Proposal }) {
         {p.options.map((o) => (
           <span key={o.key}>
             {o.label}: <b>{voted ? Math.round((Number(o.shares) / voted) * 100) : 0}%</b>{' '}
-            <span className="muted">({o.shares} shares)</span>
+            <span className="muted">{t('({0} shares)', o.shares)}</span>
             {p.winner === o.key && ' ✓'}
           </span>
         ))}
       </div>
       <div className="small muted">
-        Turnout {p.turnoutPercent}% of {p.totalShares} shares ·{' '}
-        {p.status === 'open' ? `closes ${formatDate(p.closesAt)}` : `closed ${formatDate(p.closesAt)}`}
+        {t('Turnout')} {p.turnoutPercent}
+        {t('% of')} {p.totalShares} {t('shares ·')}{' '}
+        {p.status === 'open'
+          ? t('closes {0}', formatDate(p.closesAt))
+          : t('closed {0}', formatDate(p.closesAt))}
         {p.myVote &&
           ` · you voted “${p.options.find((o) => o.key === p.myVote)?.label}” with ${p.myShares} shares`}
-        {p.status === 'open' && Number(p.myShares) === 0 && ' · only shareholders at the start can vote'}
+        {p.status === 'open' &&
+          Number(p.myShares) === 0 &&
+          ` ${t('· only shareholders at the start can vote')}`}
       </div>
       <ErrorAlert error={vote.error} />
       {canVote && (
@@ -502,7 +527,7 @@ function ProposalCard({ proposal: p }: { proposal: Proposal }) {
               disabled={vote.isPending}
               onClick={() => vote.mutate(o.key)}
             >
-              Vote {o.label}
+              {t('Vote {0}', o.label)}
             </button>
           ))}
         </div>
@@ -540,8 +565,21 @@ function Market({ listing: l }: { listing: StockListingDetail }) {
       const traded = trades.reduce((n, t) => n + Number(t.shares), 0);
       toast.success(
         traded
-          ? `${side === 'buy' ? 'Bought' : 'Sold'} ${traded} ${l.ticker}${order.status === 'open' ? `; ${order.remaining} left in the book` : ''}`
-          : `Order placed: ${side} ${order.shares} ${l.ticker} at ${formatMoney(order.price, l.currency)}`,
+          ? (side === 'buy' ? t('Bought {0} {1}', traded, l.ticker) : t('Sold {0} {1}', traded, l.ticker)) +
+              (order.status === 'open' ? t('; {0} left in the book', order.remaining) : '')
+          : side === 'buy'
+            ? t(
+                'Buy order placed: {0} {1} at {2}',
+                order.shares,
+                l.ticker,
+                formatMoney(order.price, l.currency),
+              )
+            : t(
+                'Sell order placed: {0} {1} at {2}',
+                order.shares,
+                l.ticker,
+                formatMoney(order.price, l.currency),
+              ),
       );
       setShares('');
     },
@@ -562,14 +600,14 @@ function Market({ listing: l }: { listing: StockListingDetail }) {
           <td className={kind === 'bid' ? 'pos bold' : 'neg bold'}>
             {formatMoney(r.price, l.currency, false)}
           </td>
-          <td className="right num">{Number(r.shares).toLocaleString()}</td>
+          <td className="right num">{Number(r.shares).toLocaleString(intlLocale())}</td>
           <td className="right small muted">{r.orders}</td>
         </tr>
       ))
     ) : (
       <tr>
         <td colSpan={3} className="small muted">
-          No {kind === 'bid' ? 'buy' : 'sell'} orders
+          {t('No {0} orders', kind === 'bid' ? 'buy' : 'sell')}
         </td>
       </tr>
     );
@@ -577,47 +615,53 @@ function Market({ listing: l }: { listing: StockListingDetail }) {
     <div className="grid-2">
       <div className="card stack">
         <div className="spread">
-          <h3>Order book</h3>
-          <span className="small muted">Last trade {b ? formatMoney(b.lastPrice, l.currency) : '—'}</span>
+          <h3>{t('Order book')}</h3>
+          <span className="small muted">
+            {t('Last trade {0}', b ? formatMoney(b.lastPrice, l.currency) : '—')}
+          </span>
         </div>
         <ErrorAlert error={book.error} />
         <div className="grid-2" style={{ gap: 12 }}>
-          <table className="table" aria-label="Buy orders">
+          <table className="table" aria-label={t('Buy orders')}>
             <thead>
               <tr>
-                <th>Bid</th>
-                <th className="right">Shares</th>
-                <th className="right">Orders</th>
+                <th>{t('Bid')}</th>
+                <th className="right">{t('Shares')}</th>
+                <th className="right">{t('Orders')}</th>
               </tr>
             </thead>
             <tbody>{b && levels(b.bids, 'bid')}</tbody>
           </table>
-          <table className="table" aria-label="Sell orders">
+          <table className="table" aria-label={t('Sell orders')}>
             <thead>
               <tr>
-                <th>Ask</th>
-                <th className="right">Shares</th>
-                <th className="right">Orders</th>
+                <th>{t('Ask')}</th>
+                <th className="right">{t('Shares')}</th>
+                <th className="right">{t('Orders')}</th>
               </tr>
             </thead>
             <tbody>{b && levels(b.asks, 'ask')}</tbody>
           </table>
         </div>
-        <h3>Latest trades</h3>
+        <h3>{t('Latest trades')}</h3>
         {b?.trades.length ? (
           <table className="table">
             <tbody>
-              {b.trades.slice(0, 8).map((t) => (
-                <tr key={t.id}>
-                  <td className="small nowrap">{formatDate(t.at)}</td>
-                  <td className={t.side === 'buy' ? 'pos' : 'neg'}>{formatMoney(t.price, l.currency)}</td>
-                  <td className="right num">{t.shares}</td>
+              {b.trades.slice(0, 8).map((trade) => (
+                <tr key={trade.id}>
+                  <td className="small nowrap">{formatDate(trade.at)}</td>
+                  <td className={trade.side === 'buy' ? 'pos' : 'neg'}>
+                    {formatMoney(trade.price, l.currency)}
+                  </td>
+                  <td className="right num">{trade.shares}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         ) : (
-          <p className="small muted">No trades yet: shares change hands once a buy and a sell order meet.</p>
+          <p className="small muted">
+            {t('No trades yet: shares change hands once a buy and a sell order meet.')}
+          </p>
         )}
       </div>
       <form
@@ -628,28 +672,30 @@ function Market({ listing: l }: { listing: StockListingDetail }) {
           else place.mutate();
         }}
       >
-        <h3>Trade with other investors</h3>
+        <h3>{t('Trade with other investors')}</h3>
         <p className="small muted" style={{ margin: 0 }}>
-          A limit order trades at once with the best matching orders, at their price; the rest waits in the
-          book until you cancel it. Shares from an investment can be sold after its {l.lockDays}-day lock.
+          {t(
+            'A limit order trades at once with the best matching orders, at their price; the rest waits in the book until you cancel it. Shares from an investment can be sold after its {0}-day lock.',
+            l.lockDays,
+          )}
         </p>
         <Segmented<OrderSide>
           value={side}
           onChange={setSide}
           options={[
-            { value: 'buy', label: 'Buy' },
-            { value: 'sell', label: 'Sell' },
+            { value: 'buy', label: t('Buy') },
+            { value: 'sell', label: t('Sell') },
           ]}
         />
         {holding && (
           <div className="alert info small">
-            You hold {holding.shares} {l.ticker}: {holding.sellable} can be sold
-            {Number(holding.locked) > 0 && `, ${holding.locked} still locked`}
-            {Number(holding.onSale) > 0 && `, ${holding.onSale} already offered`}.
+            {t('You hold')} {holding.shares} {l.ticker}: {holding.sellable} {t('can be sold')}
+            {Number(holding.locked) > 0 && t(', {0} still locked', holding.locked)}
+            {Number(holding.onSale) > 0 && t(', {0} already offered', holding.onSale)}.
           </div>
         )}
         <div className="grid-2" style={{ gap: 12 }}>
-          <Field label="Shares">
+          <Field label={t('Shares')}>
             <input
               className="input"
               inputMode="numeric"
@@ -658,7 +704,7 @@ function Market({ listing: l }: { listing: StockListingDetail }) {
               required
             />
           </Field>
-          <Field label={`Limit price (${l.currency})`}>
+          <Field label={t('Limit price ({0})', l.currency)}>
             <input
               className="input"
               inputMode="decimal"
@@ -671,7 +717,7 @@ function Market({ listing: l }: { listing: StockListingDetail }) {
         </div>
         {total && (
           <div className="spread small">
-            <span className="muted">{side === 'buy' ? 'At most' : 'At least'}</span>
+            <span className="muted">{side === 'buy' ? t('At most') : t('At least')}</span>
             <b>{formatMoney(total, l.currency)}</b>
           </div>
         )}
@@ -680,20 +726,23 @@ function Market({ listing: l }: { listing: StockListingDetail }) {
           className={`btn ${side === 'buy' ? 'primary' : 'danger'}`}
           disabled={place.isPending || l.status !== 'active' || !shares || !price}
         >
-          {side === 'buy' ? 'Place buy order' : 'Place sell order'}
+          {side === 'buy' ? t('Place buy order') : t('Place sell order')}
         </button>
         {mine.length > 0 && (
           <div className="stack-sm">
-            <h3>Your open orders</h3>
+            <h3>{t('Your open orders')}</h3>
             {mine.map((o) => (
               <div key={o.id} className="spread small">
                 <span>
-                  <b className={o.side === 'buy' ? 'pos' : 'neg'}>{o.side === 'buy' ? 'Buy' : 'Sell'}</b>{' '}
+                  <b className={o.side === 'buy' ? 'pos' : 'neg'}>
+                    {o.side === 'buy' ? t('Buy') : t('Sell')}
+                  </b>{' '}
                   {o.remaining}
-                  {o.remaining !== o.shares && ` of ${o.shares}`} at {formatMoney(o.price, l.currency)}
+                  {o.remaining !== o.shares && ` ${t('of {0}', o.shares)}`} {t('at')}{' '}
+                  {formatMoney(o.price, l.currency)}
                 </span>
                 <button type="button" className="btn ghost sm" onClick={() => cancel.mutate(o.id)}>
-                  Cancel
+                  {t('Cancel')}
                 </button>
               </div>
             ))}
@@ -711,10 +760,10 @@ export function PortfolioPage() {
     <div className="page stack-lg">
       <PageHeader
         icon="pie"
-        title="My portfolio"
+        title={t('My portfolio')}
         actions={
           <Link className="btn" to="/exchange">
-            Back to the exchange
+            {t('Back to the exchange')}
           </Link>
         }
       />
@@ -724,12 +773,12 @@ export function PortfolioPage() {
         <table className="table">
           <thead>
             <tr>
-              <th>Ticker</th>
-              <th>Company</th>
-              <th className="right">Shares</th>
-              <th className="right">Can sell</th>
-              <th className="right">Invested</th>
-              <th className="right">Current value</th>
+              <th>{t('Ticker')}</th>
+              <th>{t('Company')}</th>
+              <th className="right">{t('Shares')}</th>
+              <th className="right">{t('Can sell')}</th>
+              <th className="right">{t('Invested')}</th>
+              <th className="right">{t('Current value')}</th>
             </tr>
           </thead>
           <tbody>
@@ -742,7 +791,7 @@ export function PortfolioPage() {
                 <td className="right num">{h.shares}</td>
                 <td className="right num">
                   {h.sellable}
-                  {Number(h.locked) > 0 && <div className="tiny muted">{h.locked} locked</div>}
+                  {Number(h.locked) > 0 && <div className="tiny muted">{t('{0} locked', h.locked)}</div>}
                 </td>
                 <td className="right">
                   <Money amount={h.invested} currency={h.currency} />
@@ -754,18 +803,18 @@ export function PortfolioPage() {
             ))}
           </tbody>
         </table>
-        {portfolio.data?.holdings.length === 0 && <Empty title="You have no investments yet" />}
+        {portfolio.data?.holdings.length === 0 && <Empty title={t('You have no investments yet')} />}
       </div>
       {!!portfolio.data?.investments.length && (
         <div className="card pad-0 table-wrap">
           <table className="table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Ticker</th>
-                <th className="right">Shares</th>
-                <th className="right">Amount</th>
-                <th>Frozen part unlocks</th>
+                <th>{t('Date')}</th>
+                <th>{t('Ticker')}</th>
+                <th className="right">{t('Shares')}</th>
+                <th className="right">{t('Amount')}</th>
+                <th>{t('Frozen part unlocks')}</th>
               </tr>
             </thead>
             <tbody>

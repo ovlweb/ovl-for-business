@@ -257,7 +257,7 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(maria.getByText('18.00 USD')).toBeVisible();
     await maria.getByRole('button', { name: 'Place buy order' }).click();
     await maria.getByRole('dialog').getByRole('button', { name: 'I understand, continue' }).click();
-    await expect(maria.getByText('Order placed: buy 4 NWS at 4.50 USD')).toBeVisible();
+    await expect(maria.getByText('Buy order placed: 4 NWS at 4.50 USD')).toBeVisible();
     const bids = maria.getByRole('table', { name: 'Buy orders' });
     await expect(bids.locator('tr', { hasText: '4.50' })).toContainText('4');
     // Ivan sees the bid live, and his shares are still in their lock period.
@@ -706,7 +706,7 @@ test.describe.serial('OVL For Business end to end', () => {
     await dividend.getByLabel('Per share (USD)').fill('0.10');
     await expect(dividend.getByText('2.00 USD')).toBeVisible();
     await dividend.getByRole('button', { name: 'Pay dividend' }).click();
-    await expect(maria.getByText('Paid 2.00 USD to 1 shareholders')).toBeVisible();
+    await expect(maria.getByText('Paid 2.00 USD to 1 shareholder')).toBeVisible();
 
     // Ivan reads the results, votes and sees the dividend.
     await ivan.goto('./#/exchange/NWS');
@@ -769,6 +769,36 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(maria.locator('html')).toHaveAttribute('data-theme', 'midnight');
     await maria.getByRole('radio', { name: 'Daylight' }).click();
     await expect(maria.locator('html')).toHaveAttribute('data-theme', 'daylight');
+  });
+
+  test('language: Russian from settings, kept by the account on every device', async ({ browser }) => {
+    const lena = await newPage(browser, errors, 'lena');
+    await register(lena, 'Lena Petrova', 'lena');
+    await lena.goto('./#/settings?section=appearance');
+    await lena.getByRole('combobox', { name: 'Language / Язык' }).selectOption('ru');
+    await expect(lena.getByRole('link', { name: 'Чаты' })).toBeVisible();
+    await expect(lena.getByRole('heading', { name: 'Настройки' })).toBeVisible();
+    await expect(lena.locator('html')).toHaveAttribute('lang', 'ru');
+
+    // A Russian browser shows the sign-in page in Russian, and the server answers in Russian too.
+    const ruContext = await browser.newContext({ locale: 'ru-RU' });
+    const phone = await ruContext.newPage();
+    await phone.goto('./');
+    await phone.getByLabel('Логин или почта').fill('lena');
+    await phone.getByLabel('Пароль').fill('not-the-password');
+    await phone.getByRole('button', { name: 'Войти', exact: true }).click();
+    await expect(phone.getByText('Неверное имя пользователя / почта или пароль')).toBeVisible();
+    await ruContext.close();
+
+    // An English browser switches once Lena signs in: the language is saved with the account.
+    const laptop = await newPage(browser, [], 'lena-laptop');
+    await login(laptop, 'lena');
+    await expect(laptop.getByRole('link', { name: 'Чаты' })).toBeVisible();
+    await laptop.context().close();
+
+    await lena.getByRole('combobox', { name: 'Language / Язык' }).selectOption('en');
+    await expect(lena.getByRole('link', { name: 'Chats' })).toBeVisible();
+    await lena.context().close();
   });
 
   test('multi-account: add a second account and switch between them', async () => {

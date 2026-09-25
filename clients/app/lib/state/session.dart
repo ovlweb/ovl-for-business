@@ -11,6 +11,7 @@ import '../api/realtime.dart';
 import '../theme/theme_controller.dart';
 import 'accounts.dart';
 import 'query.dart';
+import '../i18n/i18n.dart';
 
 /// Default server: the Android emulator reaches the host machine at 10.0.2.2.
 String defaultServer() {
@@ -29,7 +30,7 @@ class IncomingMessage {
 
 /// Everything about "who is signed in": accounts, the API client, realtime and caches.
 class Session extends ChangeNotifier with WidgetsBindingObserver {
-  Session._(this.prefs, this.accounts, this.themes) {
+  Session._(this.prefs, this.accounts, this.themes, this.locales) {
     api = OvlApi(baseUrl: prefs.getString(_serverKey) ?? defaultServer(), tokens: accounts, onSignedOut: _signedOut);
     WidgetsBinding.instance.addObserver(this);
   }
@@ -39,6 +40,7 @@ class Session extends ChangeNotifier with WidgetsBindingObserver {
   final SharedPreferences prefs;
   final AccountStore accounts;
   final ThemeController themes;
+  final LocaleController locales;
   late final OvlApi api;
   final QueryClient queries = QueryClient();
   final StreamController<IncomingMessage> _incoming = StreamController.broadcast();
@@ -53,9 +55,9 @@ class Session extends ChangeNotifier with WidgetsBindingObserver {
   /// The chat currently open on screen (its messages are not announced).
   String? openChatId;
 
-  static Future<Session> start(SharedPreferences prefs, ThemeController themes) async {
+  static Future<Session> start(SharedPreferences prefs, ThemeController themes, LocaleController locales) async {
     final accounts = await AccountStore.load(prefs);
-    final session = Session._(prefs, accounts, themes);
+    final session = Session._(prefs, accounts, themes, locales);
     await session._loadMe();
     return session;
   }
@@ -96,6 +98,7 @@ class Session extends ChangeNotifier with WidgetsBindingObserver {
         final user = await api.me();
         await accounts.updateProfile(user);
         _syncTheme(user.preferences.theme);
+        _syncLocale(user.preferences.locale);
         me = user;
       } on ApiException catch (e) {
         // Offline: keep the account and show the sign-in screen's saved accounts.
@@ -120,10 +123,16 @@ class Session extends ChangeNotifier with WidgetsBindingObserver {
     if (theme != null && theme != themes.preference) themes.set(theme);
   }
 
+  /// The account keeps the language for every device.
+  void _syncLocale(String? locale) {
+    if (locale != null && locale != locales.code) unawaited(locales.set(locale));
+  }
+
   Future<void> _finishSignIn(AuthResult r) async {
     await accounts.signIn(r.user, Tokens(r.accessToken, r.refreshToken));
     queries.clear();
     _syncTheme(r.user.preferences.theme);
+    _syncLocale(r.user.preferences.locale);
     addingAccount = false;
     me = r.user;
     _connectRealtime();
@@ -191,6 +200,12 @@ class Session extends ChangeNotifier with WidgetsBindingObserver {
     );
     await accounts.updateProfile(me!);
     notifyListeners();
+  }
+
+  /// Switch the language here and remember it for the account everywhere.
+  Future<void> setLocale(String code) async {
+    await locales.set(code);
+    if (me != null) await updatePreferences({'locale': code});
   }
 
   /// Apply a theme on this device and remember it for the account everywhere.

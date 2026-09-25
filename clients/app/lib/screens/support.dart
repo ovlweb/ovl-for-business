@@ -10,6 +10,7 @@ import '../theme/theme.dart';
 import '../ui/format.dart';
 import '../ui/widgets.dart';
 import 'chats.dart';
+import '../i18n/i18n.dart';
 
 /// Tech support: people open tickets; moderators, admins and the owner answer them from the desk.
 class SupportScreen extends StatefulWidget {
@@ -42,7 +43,7 @@ class _SupportScreenState extends State<SupportScreen> {
             chatId: widget.selectedId!,
             embedded: wide,
             backTo: '/support',
-            composerHint: staff ? 'Answer as support…' : 'Write to support…',
+            composerHint: staff ? tr('Answer as support…') : tr('Write to support…'),
             headerActions: staff
                 ? (chat, refresh) => [
                     if (chat.support != null)
@@ -59,7 +60,7 @@ class _SupportScreenState extends State<SupportScreen> {
                           chat.support!.status == 'open' ? LucideIcons.circleCheck : LucideIcons.rotateCcw,
                           size: 16,
                         ),
-                        label: Text(chat.support!.status == 'open' ? 'Close ticket' : 'Reopen'),
+                        label: Text(chat.support!.status == 'open' ? tr('Close ticket') : tr('Reopen')),
                       ),
                   ]
                 : null,
@@ -78,8 +79,10 @@ class _SupportScreenState extends State<SupportScreen> {
                   conversation ??
                   EmptyState(
                     icon: LucideIcons.lifeBuoy,
-                    title: 'We are here to help',
-                    text: staff ? 'Pick a ticket to answer it.' : 'Moderators and administrators answer tickets here.',
+                    title: tr('We are here to help'),
+                    text: staff
+                        ? tr('Pick a ticket to answer it.')
+                        : tr('Moderators and administrators answer tickets here.'),
                   ),
             ),
           ],
@@ -107,11 +110,13 @@ class _TicketList extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(18, 16, 12, 8),
           child: Row(
             children: [
-              Expanded(child: Text(staff ? 'Support desk' : 'Tech support', style: context.text.headlineMedium)),
+              Expanded(
+                child: Text(staff ? tr('Support desk') : tr('Tech support'), style: context.text.headlineMedium),
+              ),
               FilledButton.icon(
                 onPressed: () => showNewTicket(context),
                 icon: const Icon(LucideIcons.plus, size: 17),
-                label: const Text('Ticket'),
+                label: Text(tr('Ticket')),
                 style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
               ),
             ],
@@ -136,9 +141,9 @@ class _TicketList extends StatelessWidget {
               if (s.data!.isEmpty) {
                 return EmptyState(
                   icon: LucideIcons.lifeBuoy,
-                  title: view == 'mine' ? 'No tickets yet' : 'Nothing here',
+                  title: view == 'mine' ? tr('No tickets yet') : tr('Nothing here'),
                   text: view == 'mine'
-                      ? 'Questions about deposits, applications or your account? Open a ticket.'
+                      ? tr('Questions about deposits, applications or your account? Open a ticket.')
                       : null,
                 );
               }
@@ -246,17 +251,17 @@ void showNewTicket(BuildContext context) {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('New support ticket', style: sheet.text.headlineSmall),
+            Text(tr('New support ticket'), style: sheet.text.headlineSmall),
             const SizedBox(height: 4),
-            Text('Moderators usually answer within a few hours.', style: sheet.text.bodyMedium),
+            Text(tr('Moderators usually answer within a few hours.'), style: sheet.text.bodyMedium),
             const SizedBox(height: 16),
             if (error != null) ...[ErrorBox(error), const SizedBox(height: 12)],
-            LabeledField(label: 'Subject', controller: subject, icon: LucideIcons.tag),
+            LabeledField(label: tr('Subject'), controller: subject, icon: LucideIcons.tag),
             const SizedBox(height: 12),
-            LabeledField(label: 'How can we help?', controller: body, maxLines: 4),
+            LabeledField(label: tr('How can we help?'), controller: body, maxLines: 4),
             const SizedBox(height: 18),
             GradientButton(
-              label: 'Open ticket',
+              label: tr('Open ticket'),
               busy: busy,
               onPressed: () async {
                 set(() => busy = true);

@@ -1,5 +1,5 @@
 import type { Chat, Message } from '@ovl/shared';
-import { ErrorAlert, Modal, Spinner } from '@ovl/ui';
+import { ErrorAlert, Modal, Spinner, t } from '@ovl/ui';
 import { useInfiniteQuery, useMutation } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { api } from '../api';
@@ -47,7 +47,7 @@ export function CommentsModal({ chat, post, onClose }: { chat: Chat; post: Messa
   const actions: MessageActions = {
     onDelete: (m) => {
       setActiveId(null);
-      if (confirm('Delete this comment?')) remove.mutate(m);
+      if (confirm(t('Delete this comment?'))) remove.mutate(m);
     },
     onReact: (m, emoji, mine) => {
       setActiveId(null);
@@ -57,19 +57,19 @@ export function CommentsModal({ chat, post, onClose }: { chat: Chat; post: Messa
   const ready = (draft.trim() || uploads.files.length) && !uploads.busy;
 
   return (
-    <Modal title="Comments" onClose={onClose} wide>
+    <Modal title={t('Comments')} onClose={onClose} wide>
       <div className="stack">
         <div className="card flat small" style={{ whiteSpace: 'pre-wrap' }}>
-          {post.body || 'Post with attachments'}
+          {post.body || t('Post with attachments')}
         </div>
-        <div className="messages comments" aria-label="Comments">
+        <div className="messages comments" aria-label={t('Comments')}>
           {comments.hasNextPage && (
             <button
               className="btn sm"
               style={{ alignSelf: 'center' }}
               onClick={() => comments.fetchNextPage()}
             >
-              {comments.isFetchingNextPage ? 'Loading…' : 'Earlier comments'}
+              {comments.isFetchingNextPage ? t('Loading…') : t('Earlier comments')}
             </button>
           )}
           {comments.isLoading && <Spinner center />}
@@ -87,7 +87,9 @@ export function CommentsModal({ chat, post, onClose }: { chat: Chat; post: Messa
               actions={actions}
             />
           ))}
-          {!comments.isLoading && !ordered.length && <div className="system-message">No comments yet</div>}
+          {!comments.isLoading && !ordered.length && (
+            <div className="system-message">{t('No comments yet')}</div>
+          )}
         </div>
         <ErrorAlert error={comments.error ?? send.error ?? remove.error ?? react.error} />
         {canWrite ? (
@@ -104,15 +106,15 @@ export function CommentsModal({ chat, post, onClose }: { chat: Chat; post: Messa
               <button
                 type="button"
                 className="btn ghost icon"
-                aria-label="Attach files"
+                aria-label={t('Attach files')}
                 onClick={uploads.pick}
               >
                 {uploads.busy ? <span className="spinner" /> : <Icon name="paperclip" size={18} />}
               </button>
               <textarea
                 className="textarea"
-                aria-label="Comment"
-                placeholder="Write a comment…"
+                aria-label={t('Comment')}
+                placeholder={t('Write a comment…')}
                 value={draft}
                 maxLength={4000}
                 onChange={(e) => setDraft(e.target.value)}
@@ -125,7 +127,7 @@ export function CommentsModal({ chat, post, onClose }: { chat: Chat; post: Messa
               />
               <button
                 className="btn primary icon"
-                aria-label="Send comment"
+                aria-label={t('Send comment')}
                 disabled={!ready || send.isPending}
               >
                 <Icon name="send" size={18} />
@@ -135,8 +137,8 @@ export function CommentsModal({ chat, post, onClose }: { chat: Chat; post: Messa
         ) : (
           <p className="small muted" style={{ margin: 0, textAlign: 'center' }}>
             {chat.myRole === null
-              ? 'Subscribe to the channel to comment.'
-              : 'Comments are turned off in this channel.'}
+              ? t('Subscribe to the channel to comment.')
+              : t('Comments are turned off in this channel.')}
           </p>
         )}
       </div>

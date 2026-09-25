@@ -1,5 +1,16 @@
 import type { Chat, Message, UserSummary } from '@ovl/shared';
-import { Avatar, Badge, Badges, ErrorAlert, plural, shortTime, Spinner, StatusBadge } from '@ovl/ui';
+import {
+  Avatar,
+  Badge,
+  Badges,
+  ErrorAlert,
+  messageBody,
+  plural,
+  shortTime,
+  Spinner,
+  StatusBadge,
+  t,
+} from '@ovl/ui';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -28,15 +39,15 @@ export function chatSubtitle(chat: Chat): string {
     case 'direct':
       return chat.peer ? `@${chat.peer.username}` : '';
     case 'group':
-      return `Group · ${plural(chat.memberCount, 'member')}`;
+      return t('Group · {0}', plural(chat.memberCount, 'member'));
     case 'channel':
-      return `News channel · @${chat.handle} · ${plural(chat.memberCount, 'subscriber')}`;
+      return t('News channel · @{0} · {1}', chat.handle ?? '', plural(chat.memberCount, 'subscriber'));
     case 'council':
-      return `Council · ${plural(chat.memberCount, 'member')}`;
+      return t('Council · {0}', plural(chat.memberCount, 'member'));
     case 'moderation':
-      return `Moderation team · ${plural(chat.memberCount, 'member')}`;
+      return t('Moderation team · {0}', plural(chat.memberCount, 'member'));
     case 'support':
-      return chat.support ? `Tech support · ${chat.support.requester.displayName}` : 'Tech support';
+      return chat.support ? t('Tech support · {0}', chat.support.requester.displayName) : t('Tech support');
   }
 }
 
@@ -54,11 +65,14 @@ export function snippet(text: string, length = 80): string {
 }
 
 /** What a message says in one line (for replies, previews and search results). */
-export function messageSummary(m: Pick<Message, 'body' | 'attachments' | 'deleted'>, length = 80): string {
-  if (m.deleted) return 'Message deleted';
-  if (m.body) return snippet(m.body, length);
+export function messageSummary(
+  m: Pick<Message, 'body' | 'attachments' | 'deleted' | 'meta'>,
+  length = 80,
+): string {
+  if (m.deleted) return t('Message deleted');
+  if (m.body) return snippet(messageBody(m), length);
   const images = m.attachments.filter((f) => f.contentType.startsWith('image/')).length;
-  return images === m.attachments.length ? (images > 1 ? `${images} photos` : 'Photo') : 'File';
+  return images === m.attachments.length ? (images > 1 ? plural(images, 'photo') : t('Photo')) : t('File');
 }
 
 export function MessageItem({
@@ -96,15 +110,15 @@ export function MessageItem({
     if (applicationId) {
       return (
         <div className="system-card stack-sm">
-          <span className="small muted">Application update · {shortTime(message.createdAt)}</span>
-          <span>{message.body}</span>
+          <span className="small muted">{t('Application update · {0}', shortTime(message.createdAt))}</span>
+          <span>{messageBody(message)}</span>
           <Link to={`/review/${applicationId}`} className="small bold">
-            Open in review queue →
+            {t('Open in review queue →')}
           </Link>
         </div>
       );
     }
-    return <div className="system-message">{message.body}</div>;
+    return <div className="system-message">{messageBody(message)}</div>;
   }
   const staffBadge = message.meta.staffBadge as 'owner' | 'admin' | 'support' | undefined;
   const sender = message.sender;
@@ -152,12 +166,12 @@ export function MessageItem({
                   ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
               }}
             >
-              <b>{replyTo?.sender?.displayName ?? 'Message'}</b>
-              <span>{replyTo ? messageSummary(replyTo) : 'Earlier message'}</span>
+              <b>{replyTo?.sender?.displayName ?? t('Message')}</b>
+              <span>{replyTo ? messageSummary(replyTo) : t('Earlier message')}</span>
             </button>
           )}
           {message.deleted ? (
-            <i className="muted">Message deleted</i>
+            <i className="muted">{t('Message deleted')}</i>
           ) : (
             <>
               <MessageFiles files={message.attachments} />
@@ -165,10 +179,10 @@ export function MessageItem({
             </>
           )}
           <div className="bubble-meta">
-            {message.editedAt && !message.deleted && 'edited · '}
+            {message.editedAt && !message.deleted && `${t('edited ·')} `}
             {shortTime(message.createdAt)}
             {receipt && (
-              <span className={`receipt ${receipt}`} aria-label={receipt === 'read' ? 'Read' : 'Sent'}>
+              <span className={`receipt ${receipt}`} aria-label={receipt === 'read' ? t('Read') : t('Sent')}>
                 <Icon name={receipt === 'read' ? 'checkCheck' : 'check'} size={13} />
               </span>
             )}
@@ -178,16 +192,16 @@ export function MessageItem({
         {actions.onComments && !message.deleted && (message.commentCount > 0 || canReact) && (
           <button type="button" className="comments-link" onClick={() => actions.onComments!(message)}>
             <Icon name="comment" size={14} />
-            {message.commentCount > 0 ? plural(message.commentCount, 'comment') : 'Comment'}
+            {message.commentCount > 0 ? plural(message.commentCount, 'comment') : t('Comment')}
           </button>
         )}
-        {seenBy !== undefined && seenBy > 0 && <span className="tiny muted">Seen by {seenBy}</span>}
+        {seenBy !== undefined && seenBy > 0 && <span className="tiny muted">{t('Seen by {0}', seenBy)}</span>}
         {active && canAct && (
-          <div className="msg-actions" role="toolbar" aria-label="Message actions">
+          <div className="msg-actions" role="toolbar" aria-label={t('Message actions')}>
             {canReact && <QuickReactions message={message} onToggle={react} />}
             {actions.onReply && (
               <button className="btn sm ghost" onClick={() => actions.onReply!(message)}>
-                <Icon name="reply" size={14} /> Reply
+                <Icon name="reply" size={14} /> {t('Reply')}
               </button>
             )}
             {message.body && (
@@ -195,17 +209,17 @@ export function MessageItem({
                 className="btn sm ghost"
                 onClick={() => void navigator.clipboard?.writeText(message.body)}
               >
-                <Icon name="copy" size={14} /> Copy
+                <Icon name="copy" size={14} /> {t('Copy')}
               </button>
             )}
             {mine && actions.onEdit && message.body && (
               <button className="btn sm ghost" onClick={() => actions.onEdit!(message)}>
-                <Icon name="edit" size={14} /> Edit
+                <Icon name="edit" size={14} /> {t('Edit')}
               </button>
             )}
             {(mine || canModerate) && (
               <button className="btn sm ghost danger-text" onClick={() => actions.onDelete(message)}>
-                <Icon name="trash" size={14} /> Delete
+                <Icon name="trash" size={14} /> {t('Delete')}
               </button>
             )}
           </div>
@@ -371,7 +385,7 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
     },
     onDelete: (message) => {
       setActiveId(null);
-      if (confirm('Delete this message for everyone?')) remove.mutate(message.id);
+      if (confirm(t('Delete this message for everyone?'))) remove.mutate(message.id);
     },
   };
   const join = useMutation({
@@ -462,7 +476,7 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
   return (
     <div className="conversation">
       <div className="conversation-header">
-        <Link to={backTo} className="btn ghost icon mobile-only" aria-label="Back">
+        <Link to={backTo} className="btn ghost icon mobile-only" aria-label={t('Back')}>
           <Icon name="back" />
         </Link>
         {c.type === 'support' ? (
@@ -486,11 +500,11 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
             className="btn sm"
             onClick={() => setStatus.mutate(c.support?.status === 'closed' ? 'open' : 'closed')}
           >
-            {c.support?.status === 'closed' ? 'Reopen' : 'Close ticket'}
+            {c.support?.status === 'closed' ? t('Reopen') : t('Close ticket')}
           </button>
         )}
         {c.type !== 'support' && (
-          <button className="btn ghost icon" onClick={() => setShowInfo(true)} aria-label="Chat details">
+          <button className="btn ghost icon" onClick={() => setShowInfo(true)} aria-label={t('Chat details')}>
             <Icon name="info" />
           </button>
         )}
@@ -499,7 +513,7 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
       <div className="messages" ref={scroller}>
         {messages.hasNextPage && (
           <button className="btn sm" style={{ alignSelf: 'center' }} onClick={() => messages.fetchNextPage()}>
-            {messages.isFetchingNextPage ? 'Loading…' : 'Load older messages'}
+            {messages.isFetchingNextPage ? t('Loading…') : t('Load older messages')}
           </button>
         )}
         {messages.isLoading && <Spinner center />}
@@ -531,12 +545,14 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
             />
           );
         })}
-        {!messages.isLoading && ordered.length === 0 && <div className="system-message">No messages yet</div>}
+        {!messages.isLoading && ordered.length === 0 && (
+          <div className="system-message">{t('No messages yet')}</div>
+        )}
       </div>
 
       <div className="typing">
         {typingNames.length > 0 &&
-          (c.type === 'direct' && c.peer ? `${c.peer.displayName} is typing…` : 'Someone is typing…')}
+          (c.type === 'direct' && c.peer ? t('{0} is typing…', c.peer.displayName) : t('Someone is typing…'))}
       </div>
 
       {(send.error || remove.error || react.error) && (
@@ -550,12 +566,12 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
           <div className="grow">
             <div className="small bold">
               {context.mode === 'reply'
-                ? `Reply to ${context.message.sender?.displayName ?? 'message'}`
-                : 'Edit message'}
+                ? t('Reply to {0}', context.message.sender?.displayName ?? t('message'))
+                : t('Edit message')}
             </div>
             <div className="small muted ellipsis">{messageSummary(context.message, 120)}</div>
           </div>
-          <button className="btn ghost icon sm" onClick={resetComposer} aria-label="Cancel">
+          <button className="btn ghost icon sm" onClick={resetComposer} aria-label={t('Cancel')}>
             <Icon name="x" size={16} />
           </button>
         </div>
@@ -579,7 +595,7 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
             <button
               type="button"
               className="btn ghost icon"
-              aria-label="Attach files"
+              aria-label={t('Attach files')}
               disabled={uploads.busy}
               onClick={uploads.pick}
             >
@@ -591,11 +607,11 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
             <textarea
               ref={composer}
               className="textarea"
-              aria-label="Message"
+              aria-label={t('Message')}
               placeholder={
                 c.type === 'support' && can('support.answer') && !c.myRole
-                  ? 'Answer as support…'
-                  : 'Write a message…'
+                  ? t('Answer as support…')
+                  : t('Write a message…')
               }
               value={draft}
               onChange={(e) => onChange(e.target.value, e.target.selectionStart)}
@@ -614,7 +630,7 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
           <button
             className="btn primary icon"
             disabled={!ready || send.isPending || uploads.busy}
-            aria-label={context?.mode === 'edit' ? 'Save' : 'Send'}
+            aria-label={context?.mode === 'edit' ? t('Save') : t('Send')}
           >
             <Icon name={context?.mode === 'edit' ? 'review' : 'send'} size={18} />
           </button>
@@ -622,12 +638,12 @@ export function Conversation({ chatId, backTo }: { chatId: string; backTo: strin
       ) : isChannel && !c.myRole ? (
         <div className="composer">
           <button className="btn primary block" onClick={() => join.mutate()}>
-            Subscribe to channel
+            {t('Subscribe to channel')}
           </button>
         </div>
       ) : (
         <div className="composer small muted" style={{ justifyContent: 'center' }}>
-          {isChannel ? 'Only channel admins can post here.' : 'You cannot write in this chat.'}
+          {isChannel ? t('Only channel admins can post here.') : t('You cannot write in this chat.')}
         </div>
       )}
       {showInfo && <ChatInfoModal chat={c} onClose={() => setShowInfo(false)} />}

@@ -9,6 +9,8 @@ import {
   SkeletonList,
   timeAgo,
   useToast,
+  plural,
+  t,
 } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
@@ -53,7 +55,7 @@ export function RatesPage() {
     onSuccess: (data) => {
       queryClient.setQueryData(['exchange'], data);
       reset(data);
-      toast.success('Exchange rates saved');
+      toast.success(t('Exchange rates saved'));
     },
   });
 
@@ -72,8 +74,10 @@ export function RatesPage() {
     <div className="stack-lg">
       <PageHeader
         icon="refresh"
-        title="Exchange rates"
-        subtitle="People and companies convert between their balances at these rates. The fee is taken from the amount before converting."
+        title={t('Exchange rates')}
+        subtitle={t(
+          'People and companies convert between their balances at these rates. The fee is taken from the amount before converting.',
+        )}
       />
       <ErrorAlert error={info.error} />
       {info.isLoading && <SkeletonList rows={4} avatar={false} />}
@@ -87,7 +91,10 @@ export function RatesPage() {
         >
           <div className="card stack">
             <div className="grid-3">
-              <Field label="Base currency" hint="Every rate says what one unit is worth in this currency.">
+              <Field
+                label={t('Base currency')}
+                hint={t('Every rate says what one unit is worth in this currency.')}
+              >
                 <select
                   className="select"
                   value={base}
@@ -104,7 +111,7 @@ export function RatesPage() {
                   ))}
                 </select>
               </Field>
-              <Field label="Fee (%)" hint="Up to two decimals, e.g. 0.5">
+              <Field label={t('Fee (%)')} hint={t('Up to two decimals, e.g. 0.5')}>
                 <input
                   className="input"
                   inputMode="decimal"
@@ -118,31 +125,36 @@ export function RatesPage() {
             </div>
             {base !== info.data.base && (
               <div className="alert warning small">
-                <Icon name="info" size={16} /> Changing the base currency does not convert the rates: enter
-                every rate again in {base}.
+                <Icon name="info" size={16} />{' '}
+                {t(
+                  'Changing the base currency does not convert the rates: enter every rate again in {0}.',
+                  base,
+                )}
               </div>
             )}
           </div>
 
           <div className="card pad-0">
             <div className="card-header" style={{ padding: '16px 18px 0' }}>
-              <h3>Rates</h3>
+              <h3>{t('Rates')}</h3>
               <span className="small muted">
-                {rows.length} {rows.length === 1 ? 'currency' : 'currencies'} besides {base}
+                {t('{0} besides {1}', plural(rows.length, 'currency', 'currencies'), base)}
               </span>
             </div>
             {rows.length === 0 && (
-              <Empty title="No rates yet">Add a currency below; until then nobody can convert money.</Empty>
+              <Empty title={t('No rates yet')}>
+                {t('Add a currency below; until then nobody can convert money.')}
+              </Empty>
             )}
             {rows.length > 0 && (
               <div className="table-wrap">
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>Currency</th>
-                      <th>1 unit in {base}</th>
-                      <th>1 {base} buys</th>
-                      <th>Updated</th>
+                      <th>{t('Currency')}</th>
+                      <th>{t('1 unit in {0}', base)}</th>
+                      <th>{t('1 {0} buys', base)}</th>
+                      <th>{t('Updated')}</th>
                       <th />
                     </tr>
                   </thead>
@@ -162,7 +174,7 @@ export function RatesPage() {
                             <input
                               className="input"
                               inputMode="decimal"
-                              aria-label={`${r.currency} rate`}
+                              aria-label={t('{0} rate', r.currency)}
                               value={r.rate}
                               disabled={!editable}
                               pattern="\d{1,12}(\.\d{1,12})?"
@@ -182,14 +194,14 @@ export function RatesPage() {
                               : '—'}
                           </td>
                           <td className="small muted" title={s ? formatDate(s.updatedAt) : undefined}>
-                            {s ? timeAgo(s.updatedAt) : 'New'}
+                            {s ? timeAgo(s.updatedAt) : t('New')}
                           </td>
                           <td className="right">
                             {editable && (
                               <button
                                 type="button"
                                 className="btn ghost sm"
-                                aria-label={`Remove ${r.currency}`}
+                                aria-label={t('Remove {0}', r.currency)}
                                 onClick={() => {
                                   setRows(rows.filter((x) => x.currency !== r.currency));
                                   if (saved.has(r.currency)) setRemoved([...removed, r.currency]);
@@ -211,7 +223,7 @@ export function RatesPage() {
                 <select
                   className="select"
                   style={{ width: 280 }}
-                  aria-label="Currency to add"
+                  aria-label={t('Currency to add')}
                   value={available.some((c) => c.code === adding) ? adding : available[0]?.code}
                   onChange={(e) => setAdding(e.target.value)}
                 >
@@ -231,7 +243,7 @@ export function RatesPage() {
                     setRemoved(removed.filter((c) => c !== code));
                   }}
                 >
-                  <Icon name="plus" size={15} /> Add currency
+                  <Icon name="plus" size={15} /> {t('Add currency')}
                 </button>
               </div>
             )}
@@ -240,11 +252,11 @@ export function RatesPage() {
           {editable && (
             <div className="row">
               <button className="btn primary" disabled={!dirty || save.isPending}>
-                Save rates
+                {t('Save rates')}
               </button>
               {dirty && (
                 <button type="button" className="btn ghost" onClick={() => reset(info.data!)}>
-                  Discard changes
+                  {t('Discard changes')}
                 </button>
               )}
             </div>

@@ -21,6 +21,8 @@ const serverEnv = {
   REQUIRE_2FA_FOR_COMPANY_FINANCE: 'false',
   REQUIRE_VERIFIED_EMAIL: 'false',
   REQUIRE_IDENTITY_FOR_COMPANIES: 'false',
+  // Every browser of the story shares 127.0.0.1; together they pass the per-IP default at peaks.
+  GLOBAL_RATE_LIMIT: '5000',
 };
 
 export default defineConfig({

@@ -1,4 +1,4 @@
-import { Avatar, Empty, ErrorAlert, PageHeader, Spinner, useDebounced, UserName } from '@ovl/ui';
+import { Avatar, Empty, ErrorAlert, PageHeader, Spinner, useDebounced, UserName, t } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -29,14 +29,16 @@ export function ContactsPage() {
     <div className="page stack-lg">
       <PageHeader
         icon="users"
-        title="Contacts"
-        subtitle="People you can invite to groups. Staff show their badge — council members get a unique council badge."
+        title={t('Contacts')}
+        subtitle={t(
+          'People you can invite to groups. Staff show their badge — council members get a unique council badge.',
+        )}
       />
       <div className="card stack">
-        <h3>Find people</h3>
+        <h3>{t('Find people')}</h3>
         <input
           className="input"
-          placeholder="Search by name or username"
+          placeholder={t('Search by name or username')}
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
@@ -50,22 +52,22 @@ export function ContactsPage() {
                   <UserName user={u} showHandle />
                 </div>
                 {known.has(u.id) ? (
-                  <span className="badge ok">In contacts</span>
+                  <span className="badge ok">{t('In contacts')}</span>
                 ) : (
                   <button className="btn sm primary" onClick={() => add.mutate(u.username)}>
-                    Add
+                    {t('Add')}
                   </button>
                 )}
               </div>
             ))}
-            {results.data?.length === 0 && <Empty title="Nobody found" />}
+            {results.data?.length === 0 && <Empty title={t('Nobody found')} />}
           </div>
         )}
       </div>
 
       <div className="card pad-0">
         <div className="card-header" style={{ padding: '16px 18px 0' }}>
-          <h3>Your contacts</h3>
+          <h3>{t('Your contacts')}</h3>
           <span className="muted small">{contacts.data?.length ?? 0}</span>
         </div>
         {contacts.isLoading && <Spinner center />}
@@ -77,16 +79,16 @@ export function ContactsPage() {
                 <UserName user={c} showHandle />
               </Link>
               <button className="btn sm" onClick={() => message.mutate(c.id)}>
-                Message
+                {t('Message')}
               </button>
               <button className="btn sm ghost" onClick={() => remove.mutate(c.id)}>
-                Remove
+                {t('Remove')}
               </button>
             </div>
           ))}
         </div>
         {contacts.data?.length === 0 && (
-          <Empty title="No contacts yet">Search for people above to add them.</Empty>
+          <Empty title={t('No contacts yet')}>{t('Search for people above to add them.')}</Empty>
         )}
       </div>
     </div>

@@ -1,5 +1,5 @@
 import type { Chat } from '@ovl/shared';
-import { Avatar, Empty, ErrorAlert, Field, humanize, Modal, Spinner, UserName } from '@ovl/ui';
+import { Avatar, Empty, ErrorAlert, Field, humanize, Modal, Spinner, UserName, t } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -31,7 +31,7 @@ function EditDetails({ chat }: { chat: Chat }) {
         save.mutate();
       }}
     >
-      <Field label="Title">
+      <Field label={t('Title')}>
         <input
           className="input"
           value={form.title}
@@ -40,7 +40,7 @@ function EditDetails({ chat }: { chat: Chat }) {
           onChange={(e) => setForm({ ...form, title: e.target.value })}
         />
       </Field>
-      <Field label="Description">
+      <Field label={t('Description')}>
         <textarea
           className="textarea"
           value={form.description}
@@ -55,13 +55,13 @@ function EditDetails({ chat }: { chat: Chat }) {
             checked={!!form.commentsEnabled}
             onChange={(e) => setForm({ ...form, commentsEnabled: e.target.checked })}
           />
-          Subscribers can comment on posts
+          {t('Subscribers can comment on posts')}
         </label>
       )}
       <ErrorAlert error={save.error} />
-      {save.isSuccess && <div className="alert success small">Saved</div>}
+      {save.isSuccess && <div className="alert success small">{t('Saved')}</div>}
       <button className="btn" disabled={save.isPending}>
-        Save details
+        {t('Save details')}
       </button>
     </form>
   );
@@ -83,13 +83,13 @@ function InviteContacts({ chat, memberIds }: { chat: Chat; memberIds: Set<string
   if (!candidates.length) {
     return (
       <p className="small muted">
-        Everyone from your contacts is already here. Add more people on the Contacts page.
+        {t('Everyone from your contacts is already here. Add more people on the Contacts page.')}
       </p>
     );
   }
   return (
     <div className="stack-sm">
-      <div className="label">Invite from your contacts</div>
+      <div className="label">{t('Invite from your contacts')}</div>
       <div className="list card flat pad-0" style={{ maxHeight: 200, overflow: 'auto' }}>
         {candidates.map((c) => (
           <label key={c.id} className="list-item">
@@ -111,7 +111,7 @@ function InviteContacts({ chat, memberIds }: { chat: Chat; memberIds: Set<string
         disabled={!selected.length || invite.isPending}
         onClick={() => invite.mutate()}
       >
-        Invite {selected.length || ''}
+        {t('Invite {0}', selected.length || '')}
       </button>
     </div>
   );
@@ -155,7 +155,7 @@ export function ChatInfoModal({ chat, onClose }: { chat: Chat; onClose: () => vo
     <Modal
       title={
         chat.type === 'direct'
-          ? 'Conversation'
+          ? t('Conversation')
           : humanize(chat.type === 'channel' ? 'news channel' : chat.type)
       }
       onClose={onClose}
@@ -178,12 +178,12 @@ export function ChatInfoModal({ chat, onClose }: { chat: Chat; onClose: () => vo
         <div className="row-wrap">
           {chat.myRole && (
             <button className="btn sm" onClick={() => pin.mutate()} disabled={pin.isPending}>
-              <Icon name="pin" size={15} /> {chat.pinned ? 'Unpin' : 'Pin to top'}
+              <Icon name="pin" size={15} /> {chat.pinned ? t('Unpin') : t('Pin to top')}
             </button>
           )}
           {chat.peer && (
             <Link className="btn sm" to={`/u/${chat.peer.username}`} onClick={onClose}>
-              View profile
+              {t('View profile')}
             </Link>
           )}
           {canLeave && (
@@ -191,11 +191,15 @@ export function ChatInfoModal({ chat, onClose }: { chat: Chat; onClose: () => vo
               className="btn sm danger"
               disabled={leave.isPending}
               onClick={() => {
-                if (confirm(chat.type === 'channel' ? 'Unsubscribe from this channel?' : 'Leave this group?'))
+                if (
+                  confirm(
+                    chat.type === 'channel' ? t('Unsubscribe from this channel?') : t('Leave this group?'),
+                  )
+                )
                   leave.mutate();
               }}
             >
-              {chat.type === 'channel' ? 'Unsubscribe' : 'Leave group'}
+              {chat.type === 'channel' ? t('Unsubscribe') : t('Leave group')}
             </button>
           )}
         </div>
@@ -208,7 +212,7 @@ export function ChatInfoModal({ chat, onClose }: { chat: Chat; onClose: () => vo
 
         {showMembers && (
           <div className="stack-sm">
-            <div className="label">{chat.type === 'channel' ? 'Subscribers' : 'Members'}</div>
+            <div className="label">{chat.type === 'channel' ? t('Subscribers') : t('Members')}</div>
             {members.isLoading && <Spinner />}
             <div className="list card flat pad-0" style={{ maxHeight: 300, overflow: 'auto' }}>
               {members.data?.map((m) => (
@@ -227,15 +231,15 @@ export function ChatInfoModal({ chat, onClose }: { chat: Chat; onClose: () => vo
                     <button
                       className="btn sm ghost"
                       onClick={() => remove.mutate(m.user.id)}
-                      aria-label={`Remove ${m.user.displayName}`}
+                      aria-label={t('Remove {0}', m.user.displayName)}
                     >
-                      Remove
+                      {t('Remove')}
                     </button>
                   )}
                 </div>
               ))}
             </div>
-            {members.data?.length === 0 && <Empty title="No members" />}
+            {members.data?.length === 0 && <Empty title={t('No members')} />}
           </div>
         )}
       </div>

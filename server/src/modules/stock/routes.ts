@@ -34,6 +34,7 @@ import { walletAudience } from '../wallets/routes';
 import { cancelOrder, orderDto, placeOrder, position, tradeDto } from './market';
 import { assertRiskAccepted, assertWithinLimits } from './protection';
 import { invest, listingDtos } from './service';
+import { text } from '../../lib/i18n';
 
 export async function stockRoutes(fastify: FastifyInstance) {
   const app = fastify.withTypeProvider<ZodTypeProvider>();
@@ -326,7 +327,8 @@ export async function stockRoutes(fastify: FastifyInstance) {
           .where(eq(stockListings.ticker, req.params.ticker.toUpperCase()))
           .for('update');
         if (!listing) throw notFound('Listing');
-        if (listing.status !== 'active') throw conflict(`Trading of ${listing.ticker} is ${listing.status}`);
+        if (listing.status !== 'active')
+          throw conflict(text`Trading of ${listing.ticker} is ${listing.status}`);
         const price = parseAmount(decimal, listing.currency);
         if (side === 'buy')
           await assertWithinLimits(tx, {

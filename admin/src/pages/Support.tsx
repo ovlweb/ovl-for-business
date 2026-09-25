@@ -1,4 +1,4 @@
-import { Avatar, Empty, ErrorAlert, formatDate, PageHeader, Spinner, StatusBadge, Tabs } from '@ovl/ui';
+import { Avatar, Empty, ErrorAlert, formatDate, PageHeader, Spinner, StatusBadge, Tabs, t } from '@ovl/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../api';
@@ -14,15 +14,17 @@ export function SupportPage() {
     <div className="page">
       <PageHeader
         icon="support"
-        title="Tech support"
-        subtitle="Overview of tickets. Moderators, admins and the owner answer them from the regular client (Support section) with their staff badge."
+        title={t('Tech support')}
+        subtitle={t(
+          'Overview of tickets. Moderators, admins and the owner answer them from the regular client (Support section) with their staff badge.',
+        )}
       />
       <Tabs
         value={status}
         onChange={setStatus}
         tabs={[
-          { value: 'open', label: 'Open' },
-          { value: 'closed', label: 'Closed' },
+          { value: 'open', label: t('Open') },
+          { value: 'closed', label: t('Closed') },
         ]}
       />
       <ErrorAlert error={tickets.error} />
@@ -31,40 +33,40 @@ export function SupportPage() {
         <table className="table">
           <thead>
             <tr>
-              <th>Subject</th>
-              <th>Requester</th>
-              <th>Last message</th>
-              <th>Opened</th>
-              <th>Status</th>
+              <th>{t('Subject')}</th>
+              <th>{t('Requester')}</th>
+              <th>{t('Last message')}</th>
+              <th>{t('Opened')}</th>
+              <th>{t('Status')}</th>
             </tr>
           </thead>
           <tbody>
-            {tickets.data?.map((t) => (
-              <tr key={t.id}>
-                <td className="bold">{t.title}</td>
+            {tickets.data?.map((ticket) => (
+              <tr key={ticket.id}>
+                <td className="bold">{ticket.title}</td>
                 <td>
-                  {t.support && (
+                  {ticket.support && (
                     <span className="row">
-                      <Avatar name={t.support.requester.displayName} size={24} />@
-                      {t.support.requester.username}
+                      <Avatar name={ticket.support.requester.displayName} size={24} />@
+                      {ticket.support.requester.username}
                     </span>
                   )}
                 </td>
                 <td className="small">
-                  {t.lastMessage && (
+                  {ticket.lastMessage && (
                     <>
-                      <span className="muted">{formatDate(t.lastMessage.createdAt)}</span> —{' '}
-                      {t.lastMessage.body.slice(0, 80)}
+                      <span className="muted">{formatDate(ticket.lastMessage.createdAt)}</span> —{' '}
+                      {ticket.lastMessage.body.slice(0, 80)}
                     </>
                   )}
                 </td>
-                <td className="small">{formatDate(t.createdAt)}</td>
-                <td>{t.support && <StatusBadge status={t.support.status} />}</td>
+                <td className="small">{formatDate(ticket.createdAt)}</td>
+                <td>{ticket.support && <StatusBadge status={ticket.support.status} />}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        {tickets.data?.length === 0 && <Empty title="No tickets" />}
+        {tickets.data?.length === 0 && <Empty title={t('No tickets')} />}
       </div>
     </div>
   );

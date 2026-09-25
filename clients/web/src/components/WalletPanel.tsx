@@ -19,6 +19,9 @@ import {
   Stagger,
   StaggerItem,
   useToast,
+  t,
+  msg,
+  intlLocale,
 } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDeferredValue, useState } from 'react';
@@ -71,7 +74,7 @@ export function WalletCards({
                 <span className="bc-currency">{w.currency}</span>
                 {frozen > 0 && (
                   <span className="small row" style={{ gap: 4, opacity: 0.9 }}>
-                    <Icon name="lock" size={13} /> {formatMoney(w.frozen, w.currency, false)} frozen
+                    <Icon name="lock" size={13} /> {t('{0} frozen', formatMoney(w.frozen, w.currency, false))}
                   </span>
                 )}
               </div>
@@ -81,13 +84,13 @@ export function WalletCards({
               {frozen > 0 && (
                 <ShareBar
                   parts={[
-                    { label: 'Available', value: Number(w.available), color: 'rgba(255,255,255,0.9)' },
-                    { label: 'Frozen', value: frozen, color: 'rgba(255,255,255,0.35)' },
+                    { label: t('Available'), value: Number(w.available), color: 'rgba(255,255,255,0.9)' },
+                    { label: t('Frozen'), value: frozen, color: 'rgba(255,255,255,0.35)' },
                   ]}
                 />
               )}
               <span className="bc-meta">
-                <span>Available: {formatMoney(w.available, w.currency)}</span>
+                <span>{t('Available: {0}', formatMoney(w.available, w.currency))}</span>
                 <Icon name="card" size={16} />
               </span>
             </button>
@@ -126,7 +129,7 @@ export function OpenWalletForm({ onOpen }: { onOpen: (currency: string) => Promi
           </option>
         ))}
       </select>
-      <button className="btn">Open balance</button>
+      <button className="btn">{t('Open balance')}</button>
       <ErrorAlert error={error} />
     </form>
   );
@@ -134,8 +137,8 @@ export function OpenWalletForm({ onOpen }: { onOpen: (currency: string) => Promi
 
 /** Holds that end with a decision rather than on a date. */
 function lockRelease(reason: string): string | null {
-  if (reason === 'withdrawal_request' || reason === 'withdrawal_approval') return 'When paid out';
-  if (reason === 'payment_approval') return 'When approved or declined';
+  if (reason === 'withdrawal_request' || reason === 'withdrawal_approval') return t('When paid out');
+  if (reason === 'payment_approval') return t('When approved or declined');
   return null;
 }
 
@@ -160,17 +163,18 @@ export function Statement({ wallet }: { wallet: Wallet }) {
     <div className="stack">
       {!!locks.data?.length && (
         <div className="card flat stack-sm">
-          <h3>Frozen funds</h3>
+          <h3>{t('Frozen funds')}</h3>
           <p className="small muted">
-            Money set aside for payouts you asked for, company payments waiting for a second signature, and
-            the part of every stock investment that stays frozen on a business balance until its unlock date.
+            {t(
+              'Money set aside for payouts you asked for, company payments waiting for a second signature, and the part of every stock investment that stays frozen on a business balance until its unlock date.',
+            )}
           </p>
           <table className="table">
             <thead>
               <tr>
-                <th>Amount</th>
-                <th>Reason</th>
-                <th>Unlocks</th>
+                <th>{t('Amount')}</th>
+                <th>{t('Reason')}</th>
+                <th>{t('Unlocks')}</th>
               </tr>
             </thead>
             <tbody>
@@ -189,11 +193,11 @@ export function Statement({ wallet }: { wallet: Wallet }) {
       )}
       <div className="card pad-0">
         <div className="card-header" style={{ padding: '16px 18px 0' }}>
-          <h3>Statement · {wallet.currency}</h3>
+          <h3>{t('Statement · {0}', wallet.currency)}</h3>
           <div className="row" style={{ gap: 10 }}>
             <span className="small muted">{plural(entries.data?.total ?? 0, 'operation')}</span>
             <button className="btn sm" onClick={() => setExporting(true)} disabled={!entries.data?.total}>
-              <Icon name="download" size={15} /> Export
+              <Icon name="download" size={15} /> {t('Export')}
             </button>
           </div>
         </div>
@@ -202,10 +206,10 @@ export function Statement({ wallet }: { wallet: Wallet }) {
           <table className="table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Operation</th>
-                <th className="right">Amount</th>
-                <th className="right">Balance</th>
+                <th>{t('Date')}</th>
+                <th>{t('Operation')}</th>
+                <th className="right">{t('Amount')}</th>
+                <th className="right">{t('Balance')}</th>
               </tr>
             </thead>
             <tbody>
@@ -227,7 +231,7 @@ export function Statement({ wallet }: { wallet: Wallet }) {
             </tbody>
           </table>
         </div>
-        {entries.data?.items.length === 0 && <Empty title="No operations yet" />}
+        {entries.data?.items.length === 0 && <Empty title={t('No operations yet')} />}
         {entries.data && entries.data.total > limit && (
           <div className="spread" style={{ padding: 12 }}>
             <button
@@ -235,17 +239,22 @@ export function Statement({ wallet }: { wallet: Wallet }) {
               disabled={offset === 0}
               onClick={() => setOffset(Math.max(0, offset - limit))}
             >
-              Newer
+              {t('Newer')}
             </button>
             <span className="small muted">
-              {offset + 1}–{Math.min(offset + limit, entries.data.total)} of {entries.data.total}
+              {t(
+                '{0}–{1} of {2}',
+                offset + 1,
+                Math.min(offset + limit, entries.data.total),
+                entries.data.total,
+              )}
             </span>
             <button
               className="btn sm"
               disabled={offset + limit >= entries.data.total}
               onClick={() => setOffset(offset + limit)}
             >
-              Older
+              {t('Older')}
             </button>
           </div>
         )}
@@ -286,40 +295,44 @@ function ExportModal({ wallet, onClose }: { wallet: Wallet; onClose: () => void 
         : api.wallets.statementCsv(wallet.id, periodRange(period)),
     onSuccess: ({ blob, filename }) => {
       saveBlob(blob, filename ?? `ovl-statement-${wallet.currency.toLowerCase()}.${format}`);
-      toast.success('Statement downloaded');
+      toast.success(t('Statement downloaded'));
       onClose();
     },
   });
   return (
-    <Modal title={`Export ${wallet.currency} statement`} onClose={onClose}>
+    <Modal title={t('Export {0} statement', wallet.currency)} onClose={onClose}>
       <div className="stack">
         <Segmented<'csv' | 'pdf'>
           value={format}
           onChange={setFormat}
           options={[
-            { value: 'csv', label: 'CSV' },
-            { value: 'pdf', label: 'PDF' },
+            { value: 'csv', label: t('CSV') },
+            { value: 'pdf', label: t('PDF') },
           ]}
         />
         <p className="small muted" style={{ margin: 0 }}>
           {format === 'csv'
-            ? 'A CSV file for spreadsheets and accounting software: date, operation, description, amount and the balance after each operation.'
-            : 'A printable statement: opening and closing balance, money in and out, and every operation with the balance after it.'}
+            ? t(
+                'A CSV file for spreadsheets and accounting software: date, operation, description, amount and the balance after each operation.',
+              )
+            : t(
+                'A printable statement: opening and closing balance, money in and out, and every operation with the balance after it.',
+              )}
         </p>
         <Segmented<Period>
           value={period}
           onChange={setPeriod}
           options={[
-            { value: 'month', label: 'This month' },
-            { value: 'last_month', label: 'Last month' },
-            { value: 'year', label: 'This year' },
-            { value: 'all', label: 'All time' },
+            { value: 'month', label: t('This month') },
+            { value: 'last_month', label: t('Last month') },
+            { value: 'year', label: t('This year') },
+            { value: 'all', label: t('All time') },
           ]}
         />
         <ErrorAlert error={download.error} />
         <button className="btn primary" onClick={() => download.mutate()} disabled={download.isPending}>
           {download.isPending ? <span className="spinner light" /> : <Icon name="download" size={16} />}
-          Download {format.toUpperCase()}
+          {t('Download')} {format.toUpperCase()}
         </button>
       </div>
     </Modal>
@@ -327,7 +340,7 @@ function ExportModal({ wallet, onClose }: { wallet: Wallet; onClose: () => void 
 }
 
 const monthLabel = (month: string) =>
-  new Date(`${month}-15T12:00:00Z`).toLocaleString(undefined, { month: 'long', year: 'numeric' });
+  new Date(`${month}-15T12:00:00Z`).toLocaleString(intlLocale(), { month: 'long', year: 'numeric' });
 
 /** One statement per calendar month, each a PDF download. */
 export function MonthlyStatements({ wallet }: { wallet: Wallet }) {
@@ -345,17 +358,17 @@ export function MonthlyStatements({ wallet }: { wallet: Wallet }) {
   return (
     <div className="card pad-0">
       <div className="card-header" style={{ padding: '16px 18px 0' }}>
-        <h3>Monthly statements</h3>
-        <span className="small muted">PDF, one per month</span>
+        <h3>{t('Monthly statements')}</h3>
+        <span className="small muted">{t('PDF, one per month')}</span>
       </div>
       <div className="table-wrap">
         <table className="table">
           <thead>
             <tr>
-              <th>Month</th>
-              <th className="right">Money in</th>
-              <th className="right">Money out</th>
-              <th className="right">Closing balance</th>
+              <th>{t('Month')}</th>
+              <th className="right">{t('Money in')}</th>
+              <th className="right">{t('Money out')}</th>
+              <th className="right">{t('Closing balance')}</th>
               <th />
             </tr>
           </thead>
@@ -378,11 +391,11 @@ export function MonthlyStatements({ wallet }: { wallet: Wallet }) {
                 <td className="right">
                   <button
                     className="btn ghost sm"
-                    aria-label={`Download the ${monthLabel(m.month)} statement`}
+                    aria-label={t('Download the {0} statement', monthLabel(m.month))}
                     disabled={download.isPending}
                     onClick={() => download.mutate(m)}
                   >
-                    <Icon name="download" size={14} /> PDF
+                    <Icon name="download" size={14} /> {t('PDF')}
                   </button>
                 </td>
               </tr>
@@ -394,7 +407,7 @@ export function MonthlyStatements({ wallet }: { wallet: Wallet }) {
   );
 }
 
-const METHOD_LABEL = { manager_transfer: 'Bank transfer', physical_cash: 'Cash desk' } as const;
+const METHOD_LABEL = { manager_transfer: msg('Bank transfer'), physical_cash: msg('Cash desk') } as const;
 
 /** Ask a finance manager for a deposit or a payout. */
 export function CashRequestModal({
@@ -425,12 +438,15 @@ export function CashRequestModal({
     onSuccess: () => {
       for (const key of ['cashRequests', 'wallets', 'orgWallets', 'wallet'])
         queryClient.invalidateQueries({ queryKey: [key] });
-      toast.success(deposit ? 'Deposit requested' : 'Payout requested — the amount is held meanwhile');
+      toast.success(deposit ? t('Deposit requested') : t('Payout requested — the amount is held meanwhile'));
       onClose();
     },
   });
   return (
-    <Modal title={deposit ? `Deposit ${wallet.currency}` : `Withdraw ${wallet.currency}`} onClose={onClose}>
+    <Modal
+      title={deposit ? t('Deposit {0}', wallet.currency) : t('Withdraw {0}', wallet.currency)}
+      onClose={onClose}
+    >
       <form
         className="stack"
         onSubmit={(e) => {
@@ -440,11 +456,17 @@ export function CashRequestModal({
       >
         <p className="small muted" style={{ margin: 0 }}>
           {deposit
-            ? 'A finance manager confirms the deposit once the money arrives by bank transfer or is handed in at the cash desk.'
-            : 'A finance manager pays the money out by bank transfer or at the cash desk. The amount is held on your balance until then; you can cancel while the request is pending.'}
+            ? t(
+                'A finance manager confirms the deposit once the money arrives by bank transfer or is handed in at the cash desk.',
+              )
+            : t(
+                'A finance manager pays the money out by bank transfer or at the cash desk. The amount is held on your balance until then; you can cancel while the request is pending.',
+              )}
         </p>
         {!deposit && (
-          <div className="alert info">Available: {formatMoney(wallet.available, wallet.currency)}</div>
+          <div className="alert info">
+            {t('Available: {0}', formatMoney(wallet.available, wallet.currency))}
+          </div>
         )}
         <div className="row">
           {(Object.keys(METHOD_LABEL) as (keyof typeof METHOD_LABEL)[]).map((m) => (
@@ -454,11 +476,11 @@ export function CashRequestModal({
               className={`chip${form.method === m ? ' active' : ''}`}
               onClick={() => setForm({ ...form, method: m })}
             >
-              {METHOD_LABEL[m]}
+              {t(METHOD_LABEL[m])}
             </button>
           ))}
         </div>
-        <Field label={`Amount (${wallet.currency})`}>
+        <Field label={t('Amount ({0})', wallet.currency)}>
           <input
             className="input"
             inputMode="decimal"
@@ -470,10 +492,10 @@ export function CashRequestModal({
           />
         </Field>
         <Field
-          label="Note for the finance manager (optional)"
+          label={t('Note for the finance manager (optional)')}
           hint={
             form.method === 'manager_transfer' && !deposit
-              ? 'For example, the bank account to pay into.'
+              ? t('For example, the bank account to pay into.')
               : undefined
           }
         >
@@ -487,7 +509,7 @@ export function CashRequestModal({
         </Field>
         <ErrorAlert error={send.error} />
         <button className="btn primary" disabled={send.isPending}>
-          {deposit ? 'Request deposit' : 'Request payout'}
+          {deposit ? t('Request deposit') : t('Request payout')}
         </button>
       </form>
     </Modal>
@@ -496,13 +518,13 @@ export function CashRequestModal({
 
 function requestDetail(r: CashRequest): string {
   if (r.status === 'completed')
-    return `Done by ${r.handledBy?.displayName ?? 'finance'} · ref. ${r.reference}`;
+    return t('Done by {0} · ref. {1}', r.handledBy?.displayName ?? t('finance'), r.reference);
   if (r.status === 'declined') return `Declined: ${r.declineReason}`;
   if (r.status === 'cancelled') return 'Cancelled';
-  if (r.awaitingApproval) return 'Being handled · a second finance manager confirms large amounts';
+  if (r.awaitingApproval) return t('Being handled · a second finance manager confirms large amounts');
   return r.type === 'withdrawal'
-    ? 'Waiting for a finance manager · amount held'
-    : 'Waiting for a finance manager';
+    ? t('Waiting for a finance manager · amount held')
+    : t('Waiting for a finance manager');
 }
 
 /** Deposit and payout requests for one balance, newest first. Hidden until there is one. */
@@ -518,14 +540,14 @@ export function CashRequests({ wallet }: { wallet: Wallet }) {
     onSuccess: () => {
       for (const key of ['cashRequests', 'wallets', 'orgWallets', 'wallet'])
         queryClient.invalidateQueries({ queryKey: [key] });
-      toast.success('Request cancelled');
+      toast.success(t('Request cancelled'));
     },
   });
   if (!requests.data?.length) return null;
   return (
     <div className="card stack-sm">
       <div className="card-header">
-        <h3>Deposit and payout requests</h3>
+        <h3>{t('Deposit and payout requests')}</h3>
         <span className="small muted">
           {plural(requests.data.filter((r) => r.status === 'pending').length, 'pending request')}
         </span>
@@ -539,9 +561,9 @@ export function CashRequests({ wallet }: { wallet: Wallet }) {
             </span>
             <div style={{ minWidth: 0, flex: 1 }}>
               <div className="row" style={{ gap: 8 }}>
-                <b>{r.type === 'deposit' ? 'Deposit' : 'Payout'}</b>
+                <b>{r.type === 'deposit' ? t('Deposit') : t('Payout')}</b>
                 <span className="small muted">
-                  {METHOD_LABEL[r.method]} · {formatDate(r.createdAt)}
+                  {t(METHOD_LABEL[r.method])} · {formatDate(r.createdAt)}
                 </span>
               </div>
               <div className="small muted ellipsis">{requestDetail(r)}</div>
@@ -559,9 +581,9 @@ export function CashRequests({ wallet }: { wallet: Wallet }) {
                 className="btn ghost sm"
                 onClick={() => cancel.mutate(r.id)}
                 disabled={cancel.isPending}
-                aria-label="Cancel request"
+                aria-label={t('Cancel request')}
               >
-                Cancel
+                {t('Cancel')}
               </button>
             )}
           </div>
@@ -590,13 +612,13 @@ export function TransferModal({ wallet, onClose }: { wallet: Wallet; onClose: ()
       for (const key of ['wallets', 'orgWallets', 'entries', 'wallet', 'paymentApprovals'])
         queryClient.invalidateQueries({ queryKey: [key] });
       if (isPendingApproval(result))
-        toast.info('Above the approval limit: another finance member has to approve this payment');
-      else toast.success(`Sent ${formatMoney(form.amount, wallet.currency)}`);
+        toast.info(t('Above the approval limit: another finance member has to approve this payment'));
+      else toast.success(t('Sent {0}', formatMoney(form.amount, wallet.currency)));
       onClose();
     },
   });
   return (
-    <Modal title={`Send ${wallet.currency}`} onClose={onClose}>
+    <Modal title={t('Send {0}', wallet.currency)} onClose={onClose}>
       <form
         className="stack"
         onSubmit={(e) => {
@@ -604,24 +626,26 @@ export function TransferModal({ wallet, onClose }: { wallet: Wallet; onClose: ()
           transfer.mutate();
         }}
       >
-        <div className="alert info">Available: {formatMoney(wallet.available, wallet.currency)}</div>
+        <div className="alert info">
+          {t('Available: {0}', formatMoney(wallet.available, wallet.currency))}
+        </div>
         <div className="row">
           <button
             type="button"
             className={`chip${form.type === 'user' ? ' active' : ''}`}
             onClick={() => setForm({ ...form, type: 'user' })}
           >
-            To a person
+            {t('To a person')}
           </button>
           <button
             type="button"
             className={`chip${form.type === 'organization' ? ' active' : ''}`}
             onClick={() => setForm({ ...form, type: 'organization' })}
           >
-            To a company
+            {t('To a company')}
           </button>
         </div>
-        <Field label={form.type === 'user' ? 'Username' : 'Company handle (slug)'}>
+        <Field label={form.type === 'user' ? t('Username') : t('Company handle (slug)')}>
           <input
             className="input"
             value={form.to}
@@ -629,7 +653,7 @@ export function TransferModal({ wallet, onClose }: { wallet: Wallet; onClose: ()
             required
           />
         </Field>
-        <Field label={`Amount (${wallet.currency})`}>
+        <Field label={t('Amount ({0})', wallet.currency)}>
           <input
             className="input"
             inputMode="decimal"
@@ -639,7 +663,7 @@ export function TransferModal({ wallet, onClose }: { wallet: Wallet; onClose: ()
             required
           />
         </Field>
-        <Field label="Note (optional)">
+        <Field label={t('Note (optional)')}>
           <input
             className="input"
             value={form.note}
@@ -649,7 +673,7 @@ export function TransferModal({ wallet, onClose }: { wallet: Wallet; onClose: ()
         </Field>
         <ErrorAlert error={transfer.error} />
         <button className="btn primary" disabled={transfer.isPending}>
-          Send
+          {t('Send')}
         </button>
       </form>
     </Modal>
@@ -682,21 +706,23 @@ export function ConvertModal({ wallet, onClose }: { wallet: Wallet; onClose: () 
       for (const key of ['wallets', 'orgWallets', 'entries', 'wallet', 'paymentApprovals'])
         queryClient.invalidateQueries({ queryKey: [key] });
       if (isPendingApproval(result))
-        toast.info('Above the approval limit: another finance member has to approve this exchange');
-      else toast.success(`Converted to ${formatMoney(result.receive, result.toCurrency)}`);
+        toast.info(t('Above the approval limit: another finance member has to approve this exchange'));
+      else toast.success(t('Converted to {0}', formatMoney(result.receive, result.toCurrency)));
       onClose();
     },
   });
   const q = valid ? quote.data : undefined;
 
   return (
-    <Modal title={`Convert ${wallet.currency}`} onClose={onClose}>
+    <Modal title={t('Convert {0}', wallet.currency)} onClose={onClose}>
       {info.isLoading && <SkeletonList rows={2} avatar={false} />}
       <ErrorAlert error={info.error} />
       {info.data && targets.length === 0 && (
-        <Empty title="No exchange rates yet">
-          Finance managers publish rates in the admin panel; conversion opens once there is one for{' '}
-          {wallet.currency}.
+        <Empty title={t('No exchange rates yet')}>
+          {t(
+            'Finance managers publish rates in the admin panel; conversion opens once there is one for {0}.',
+            wallet.currency,
+          )}
         </Empty>
       )}
       {info.data && targets.length > 0 && (
@@ -707,9 +733,11 @@ export function ConvertModal({ wallet, onClose }: { wallet: Wallet; onClose: () 
             convert.mutate();
           }}
         >
-          <div className="alert info">Available: {formatMoney(wallet.available, wallet.currency)}</div>
+          <div className="alert info">
+            {t('Available: {0}', formatMoney(wallet.available, wallet.currency))}
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
-            <Field label={`Amount (${wallet.currency})`}>
+            <Field label={t('Amount ({0})', wallet.currency)}>
               <input
                 className="input"
                 inputMode="decimal"
@@ -720,7 +748,7 @@ export function ConvertModal({ wallet, onClose }: { wallet: Wallet; onClose: () 
                 required
               />
             </Field>
-            <Field label="Into">
+            <Field label={t('Into')}>
               <select className="select" value={target} onChange={(e) => setTo(e.target.value)}>
                 {targets.map((c) => (
                   <option key={c} value={c}>
@@ -732,22 +760,22 @@ export function ConvertModal({ wallet, onClose }: { wallet: Wallet; onClose: () 
           </div>
           <div className="card flat stack-sm" aria-live="polite">
             <div className="spread">
-              <span className="muted">You get</span>
+              <span className="muted">{t('You get')}</span>
               <b style={{ fontSize: 20 }}>{q ? formatMoney(q.receive, q.toCurrency) : '—'}</b>
             </div>
             <div className="spread small muted">
-              <span>Rate</span>
+              <span>{t('Rate')}</span>
               <span>{q ? `1 ${q.fromCurrency} = ${q.rate} ${q.toCurrency}` : '—'}</span>
             </div>
             <div className="spread small muted">
-              <span>Fee ({info.data.feePercent}%)</span>
+              <span>{t('Fee ({0}%)', info.data.feePercent)}</span>
               <span>{q ? formatMoney(q.fee, q.fromCurrency) : '—'}</span>
             </div>
           </div>
           {valid && <ErrorAlert error={quote.error} />}
           <ErrorAlert error={convert.error} />
           <button className="btn primary" disabled={convert.isPending || !q}>
-            Convert
+            {t('Convert')}
           </button>
         </form>
       )}

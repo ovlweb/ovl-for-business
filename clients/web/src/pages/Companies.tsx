@@ -26,6 +26,8 @@ import {
   useToast,
   UserName,
   VerifiedBadge,
+  intlLocale,
+  t,
 } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -48,11 +50,13 @@ export function CompaniesPage() {
     <div className="page stack-lg">
       <PageHeader
         icon="building"
-        title="Companies"
-        subtitle="Your business accounts. New companies are registered through an application reviewed by moderation and the council."
+        title={t('Companies')}
+        subtitle={t(
+          'Your business accounts. New companies are registered through an application reviewed by moderation and the council.',
+        )}
         actions={
           <Link className="btn primary" to="/applications?new=company">
-            Register a company
+            {t('Register a company')}
           </Link>
         }
       />
@@ -60,9 +64,10 @@ export function CompaniesPage() {
       <ErrorAlert error={orgs.error} />
       {orgs.data?.length === 0 && (
         <div className="card">
-          <Empty title="You are not part of any company yet">
-            Submit a company application — once approved, your company, its business license and (optionally)
-            its stock listing are created automatically.
+          <Empty title={t('You are not part of any company yet')}>
+            {t(
+              'Submit a company application — once approved, your company, its business license and (optionally) its stock listing are created automatically.',
+            )}
           </Empty>
         </div>
       )}
@@ -83,7 +88,7 @@ export function CompaniesPage() {
             <div className="row-wrap small">
               <span className="badge">{humanize(o.myRole ?? 'member')}</span>
               {o.ticker && <span className="badge info">{o.ticker}</span>}
-              <span className="muted">{o.memberCount} members</span>
+              <span className="muted">{t('{0} members', o.memberCount)}</span>
             </div>
           </Link>
         ))}
@@ -117,7 +122,7 @@ function Members({ orgId, canManage }: { orgId: string; canManage: boolean }) {
 
   return (
     <div className="card stack">
-      <h3>Team</h3>
+      <h3>{t('Team')}</h3>
       <div className="list">
         {members.data?.map((m) => (
           <div key={m.user.id} className="list-item" style={{ cursor: 'default' }}>
@@ -128,7 +133,7 @@ function Members({ orgId, canManage }: { orgId: string; canManage: boolean }) {
             <span className="badge">{humanize(m.role)}</span>
             {canManage && m.role !== 'owner' && (
               <button className="btn sm ghost" onClick={() => remove.mutate(m.user.id)}>
-                Remove
+                {t('Remove')}
               </button>
             )}
           </div>
@@ -145,8 +150,8 @@ function Members({ orgId, canManage }: { orgId: string; canManage: boolean }) {
           <input
             className="input"
             style={{ maxWidth: 240 }}
-            placeholder="username"
-            aria-label="Username to add"
+            placeholder={t('username')}
+            aria-label={t('Username to add')}
             value={form.username}
             onChange={(e) => setForm({ ...form, username: e.target.value })}
             required
@@ -154,7 +159,7 @@ function Members({ orgId, canManage }: { orgId: string; canManage: boolean }) {
           <select
             className="select"
             style={{ maxWidth: 160 }}
-            aria-label="Role"
+            aria-label={t('Role')}
             value={form.role}
             onChange={(e) => setForm({ ...form, role: e.target.value as Exclude<OrgRole, 'owner'> })}
           >
@@ -164,11 +169,13 @@ function Members({ orgId, canManage }: { orgId: string; canManage: boolean }) {
               </option>
             ))}
           </select>
-          <button className="btn">Add / change role</button>
+          <button className="btn">{t('Add / change role')}</button>
         </form>
       )}
       <ErrorAlert error={add.error ?? remove.error} />
-      <p className="tiny muted">Owners, directors and accountants can see and move the business balance.</p>
+      <p className="tiny muted">
+        {t('Owners, directors and accountants can see and move the business balance.')}
+      </p>
     </div>
   );
 }
@@ -188,20 +195,20 @@ function Balances({ orgId }: { orgId: string }) {
   return (
     <div className="stack">
       <div className="spread">
-        <h2>Business balance</h2>
+        <h2>{t('Business balance')}</h2>
         {selected && (
           <div className="row-wrap">
             <button className="btn" onClick={() => setCash('deposit')}>
-              <Icon name="incoming" size={16} /> Deposit
+              <Icon name="incoming" size={16} /> {t('Deposit')}
             </button>
             <button className="btn" onClick={() => setCash('withdrawal')}>
-              <Icon name="outgoing" size={16} /> Withdraw
+              <Icon name="outgoing" size={16} /> {t('Withdraw')}
             </button>
             <button className="btn" onClick={() => setConverting(true)}>
-              <Icon name="refresh" size={16} /> Convert
+              <Icon name="refresh" size={16} /> {t('Convert')}
             </button>
             <button className="btn primary" onClick={() => setSending(true)}>
-              <Icon name="send" size={16} /> Send money
+              <Icon name="send" size={16} /> {t('Send money')}
             </button>
           </div>
         )}
@@ -210,7 +217,7 @@ function Balances({ orgId }: { orgId: string }) {
         <WalletCards wallets={wallets.data} selected={selected?.id} onSelect={setSelectedId} />
       )}
       <div className="card stack-sm">
-        <h3>Open a balance in another currency</h3>
+        <h3>{t('Open a balance in another currency')}</h3>
         <OpenWalletForm
           onOpen={async (currency) => {
             const w = await api.organizations.openWallet(orgId, currency);
@@ -255,7 +262,7 @@ function PaymentApprovals({ org, myId }: { org: Organization; myId: string }) {
     mutationFn: (a: PaymentApproval) => api.organizations.approvePayment(org.id, a.id),
     onSuccess: (a) => {
       refresh();
-      toast.success(`Approved: ${a.description}`);
+      toast.success(t('Approved: {0}', a.description));
     },
   });
   const decline = useMutation({
@@ -264,7 +271,7 @@ function PaymentApprovals({ org, myId }: { org: Organization; myId: string }) {
       refresh();
       setDeclining(null);
       setReason('');
-      toast.success(a.requestedBy.id === myId ? 'Payment withdrawn' : 'Payment declined');
+      toast.success(a.requestedBy.id === myId ? t('Payment withdrawn') : t('Payment declined'));
     },
   });
   const pending = (approvals.data ?? []).filter((a) => a.status === 'pending').length;
@@ -274,21 +281,24 @@ function PaymentApprovals({ org, myId }: { org: Organization; myId: string }) {
     <div className="card stack-sm">
       <div className="card-header">
         <div>
-          <h3>Payments waiting for approval</h3>
+          <h3>{t('Payments waiting for approval')}</h3>
           <p className="small muted">
             {org.approvalLimit
-              ? `Payments of ${formatMoney(org.approvalLimit, org.baseCurrency)} or more need a second owner, director or accountant. The money is set aside meanwhile.`
-              : 'The approval limit is off: payments go through at once.'}
+              ? t(
+                  'Payments of {0} or more need a second owner, director or accountant. The money is set aside meanwhile.',
+                  formatMoney(org.approvalLimit, org.baseCurrency),
+                )
+              : t('The approval limit is off: payments go through at once.')}
           </p>
         </div>
         <button className="btn ghost sm" onClick={() => setShowAll(!showAll)}>
-          {showAll ? 'Only waiting' : 'History'}
+          {showAll ? t('Only waiting') : t('History')}
         </button>
       </div>
       <ErrorAlert error={approve.error ?? approvals.error} />
       {approvals.data?.length === 0 && (
         <p className="small muted">
-          {showAll ? 'No payments needed a second signature yet.' : 'Nothing is waiting.'}
+          {showAll ? t('No payments needed a second signature yet.') : t('Nothing is waiting.')}
         </p>
       )}
       <div className="list">
@@ -302,8 +312,8 @@ function PaymentApprovals({ org, myId }: { org: Organization; myId: string }) {
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div className="bold ellipsis">{a.description}</div>
                 <div className="small muted">
-                  {mine ? 'You' : a.requestedBy.displayName} · {formatDate(a.createdAt)}
-                  {a.decidedBy && ` · ${humanize(a.status)} by ${a.decidedBy.displayName}`}
+                  {mine ? t('You') : a.requestedBy.displayName} · {formatDate(a.createdAt)}
+                  {a.decidedBy && ` ${t('· {0} by {1}', humanize(a.status), a.decidedBy.displayName)}`}
                   {!a.decidedBy && a.status !== 'pending' && ` · ${humanize(a.status)}`}
                 </div>
                 {a.reason && <div className="small ellipsis">“{a.reason}”</div>}
@@ -322,11 +332,11 @@ function PaymentApprovals({ org, myId }: { org: Organization; myId: string }) {
                       onClick={() => approve.mutate(a)}
                       disabled={approve.isPending}
                     >
-                      Approve
+                      {t('Approve')}
                     </button>
                   )}
                   <button className="btn ghost sm" onClick={() => setDeclining(a)}>
-                    {mine ? 'Withdraw' : 'Decline'}
+                    {mine ? t('Withdraw') : t('Decline')}
                   </button>
                 </div>
               )}
@@ -335,11 +345,11 @@ function PaymentApprovals({ org, myId }: { org: Organization; myId: string }) {
         })}
       </div>
       {pending > 0 && !approvals.data?.some((a) => a.status === 'pending' && a.requestedBy.id !== myId) && (
-        <p className="tiny muted">Another finance member approves the payments you started.</p>
+        <p className="tiny muted">{t('Another finance member approves the payments you started.')}</p>
       )}
       {declining && (
         <Modal
-          title={declining.requestedBy.id === myId ? 'Withdraw payment' : 'Decline payment'}
+          title={declining.requestedBy.id === myId ? t('Withdraw payment') : t('Decline payment')}
           onClose={() => setDeclining(null)}
         >
           <form
@@ -350,7 +360,7 @@ function PaymentApprovals({ org, myId }: { org: Organization; myId: string }) {
             }}
           >
             <p>{declining.description}</p>
-            <Field label="Reason">
+            <Field label={t('Reason')}>
               <input
                 className="input"
                 value={reason}
@@ -363,7 +373,7 @@ function PaymentApprovals({ org, myId }: { org: Organization; myId: string }) {
             </Field>
             <ErrorAlert error={decline.error} />
             <button className="btn danger" disabled={decline.isPending}>
-              {declining.requestedBy.id === myId ? 'Withdraw' : 'Decline'}
+              {declining.requestedBy.id === myId ? t('Withdraw') : t('Decline')}
             </button>
           </form>
         </Modal>
@@ -388,15 +398,17 @@ function Payroll({ org }: { org: Organization }) {
     <div className="card stack-sm">
       <div className="card-header">
         <div>
-          <h3>Payroll</h3>
-          <p className="small muted">Pay salaries and fees to many people at once from a business balance.</p>
+          <h3>{t('Payroll')}</h3>
+          <p className="small muted">
+            {t('Pay salaries and fees to many people at once from a business balance.')}
+          </p>
         </div>
         <button className="btn sm" onClick={() => setCreating(true)}>
-          <Icon name="users" size={15} /> New payroll run
+          <Icon name="users" size={15} /> {t('New payroll run')}
         </button>
       </div>
       <ErrorAlert error={runs.error} />
-      {runs.data?.length === 0 && <p className="small muted">No payroll runs yet.</p>}
+      {runs.data?.length === 0 && <p className="small muted">{t('No payroll runs yet.')}</p>}
       <div className="list">
         {runs.data?.map((r) => (
           <div key={r.id} className="stack-sm">
@@ -412,8 +424,12 @@ function Payroll({ org }: { org: Organization }) {
               <div className="grow">
                 <b>{r.title}</b>
                 <div className="small muted">
-                  {plural(r.items.length, 'person', 'people')} · {formatDate(r.createdAt)} · by{' '}
-                  {r.createdBy.displayName}
+                  {t(
+                    '{0} · {1} · by {2}',
+                    plural(r.items.length, 'person', 'people'),
+                    formatDate(r.createdAt),
+                    r.createdBy.displayName,
+                  )}
                 </div>
               </div>
               <div className="cr-amount">
@@ -458,7 +474,7 @@ function PayrollModal({ org, last, onClose }: { org: Organization; last?: Payrol
   const [walletId, setWalletId] = useState<string>();
   const wallet = wallets.data?.find((w) => w.id === walletId) ?? wallets.data?.[0];
   const [title, setTitle] = useState(
-    `Salaries — ${new Date().toLocaleString(undefined, { month: 'long', year: 'numeric' })}`,
+    t('Salaries — {0}', new Date().toLocaleString(intlLocale(), { month: 'long', year: 'numeric' })),
   );
   const [lines, setLines] = useState<PayLine[]>([emptyLine()]);
   const setLine = (n: number, patch: Partial<PayLine>) =>
@@ -492,14 +508,18 @@ function PayrollModal({ org, last, onClose }: { org: Organization; last?: Payrol
         queryClient.invalidateQueries({ queryKey: [key] });
       toast.success(
         r.status === 'pending'
-          ? 'Above the approval limit: another finance member has to approve this payroll'
-          : `Paid ${formatMoney(r.total, r.currency)} to ${plural(r.items.length, 'person', 'people')}`,
+          ? t('Above the approval limit: another finance member has to approve this payroll')
+          : t(
+              'Paid {0} to {1}',
+              formatMoney(r.total, r.currency),
+              plural(r.items.length, 'person', 'people'),
+            ),
       );
       onClose();
     },
   });
   return (
-    <Modal title="New payroll run" onClose={onClose} wide>
+    <Modal title={t('New payroll run')} onClose={onClose} wide>
       <form
         className="stack"
         onSubmit={(e) => {
@@ -508,7 +528,7 @@ function PayrollModal({ org, last, onClose }: { org: Organization; last?: Payrol
         }}
       >
         <div className="grid-2">
-          <Field label="Title">
+          <Field label={t('Title')}>
             <input
               className="input"
               value={title}
@@ -517,11 +537,11 @@ function PayrollModal({ org, last, onClose }: { org: Organization; last?: Payrol
               onChange={(e) => setTitle(e.target.value)}
             />
           </Field>
-          <Field label="Pay from">
+          <Field label={t('Pay from')}>
             <select className="select" value={wallet?.id} onChange={(e) => setWalletId(e.target.value)}>
               {wallets.data?.map((w) => (
                 <option key={w.id} value={w.id}>
-                  {w.currency} · available {formatMoney(w.available, w.currency)}
+                  {t('{0} · available {1}', w.currency, formatMoney(w.available, w.currency))}
                 </option>
               ))}
             </select>
@@ -532,8 +552,8 @@ function PayrollModal({ org, last, onClose }: { org: Organization; last?: Payrol
             <div key={n} className="invoice-line">
               <input
                 className="input"
-                placeholder="username"
-                aria-label={`Person ${n + 1}`}
+                placeholder={t('username')}
+                aria-label={t('Person {0}', n + 1)}
                 value={l.username}
                 onChange={(e) => setLine(n, { username: e.target.value })}
                 required
@@ -542,15 +562,15 @@ function PayrollModal({ org, last, onClose }: { org: Organization; last?: Payrol
                 className="input"
                 inputMode="decimal"
                 placeholder="0.00"
-                aria-label={`Person ${n + 1} amount`}
+                aria-label={t('Person {0} amount', n + 1)}
                 value={l.amount}
                 onChange={(e) => setLine(n, { amount: e.target.value.replace(',', '.') })}
                 required
               />
               <input
                 className="input"
-                placeholder="Note (optional)"
-                aria-label={`Person ${n + 1} note`}
+                placeholder={t('Note (optional)')}
+                aria-label={t('Person {0} note', n + 1)}
                 value={l.note}
                 maxLength={200}
                 onChange={(e) => setLine(n, { note: e.target.value })}
@@ -558,7 +578,7 @@ function PayrollModal({ org, last, onClose }: { org: Organization; last?: Payrol
               <button
                 type="button"
                 className="btn ghost icon sm"
-                aria-label={`Remove person ${n + 1}`}
+                aria-label={t('Remove person {0}', n + 1)}
                 disabled={lines.length === 1}
                 onClick={() => setLines(lines.filter((_, i) => i !== n))}
               >
@@ -574,7 +594,7 @@ function PayrollModal({ org, last, onClose }: { org: Organization; last?: Payrol
                 disabled={lines.length >= 200}
                 onClick={() => setLines([...lines, emptyLine()])}
               >
-                <Icon name="plus" size={14} /> Add person
+                <Icon name="plus" size={14} /> {t('Add person')}
               </button>
               {last && (
                 <button
@@ -586,18 +606,18 @@ function PayrollModal({ org, last, onClose }: { org: Organization; last?: Payrol
                     )
                   }
                 >
-                  Same as “{last.title}”
+                  {t('Same as “{0}”', last.title)}
                 </button>
               )}
             </div>
             <span>
-              Total <b className="invoice-total">{total}</b>
+              {t('Total')} <b className="invoice-total">{total}</b>
             </span>
           </div>
         </div>
         <ErrorAlert error={run.error} />
         <button className="btn primary" disabled={run.isPending || !wallet}>
-          <Icon name="send" size={16} /> Pay {plural(lines.length, 'person', 'people')}
+          <Icon name="send" size={16} /> {t('Pay {0}', plural(lines.length, 'person', 'people'))}
         </button>
       </form>
     </Modal>
@@ -617,23 +637,27 @@ function Shareholders({ org }: { org: Organization }) {
     <div className="card stack-sm">
       <div className="card-header">
         <div>
-          <h3>Shareholders</h3>
+          <h3>{t('Shareholders')}</h3>
           <p className="small muted">
-            {holders.data?.length ?? 0}{' '}
-            {holders.data?.length === 1 ? 'shareholder holds' : 'shareholders hold'} {total.toLocaleString()}{' '}
-            {org.ticker} shares. <Link to={`/exchange/${org.ticker}`}>Listing page</Link>
+            {t(
+              'Shareholders: {0}. They hold {1} {2} shares.',
+              holders.data?.length ?? 0,
+              total.toLocaleString(intlLocale()),
+              org.ticker,
+            )}{' '}
+            <Link to={`/exchange/${org.ticker}`}>{t('Listing page')}</Link>
           </p>
         </div>
         {canManage && (
           <div className="row-wrap">
             <button className="btn sm" onClick={() => setModal('report')}>
-              <Icon name="file" size={15} /> Publish results
+              <Icon name="file" size={15} /> {t('Publish results')}
             </button>
             <button className="btn sm" onClick={() => setModal('vote')}>
-              <Icon name="check" size={15} /> Ask shareholders
+              <Icon name="check" size={15} /> {t('Ask shareholders')}
             </button>
             <button className="btn sm primary" onClick={() => setModal('dividend')}>
-              <Icon name="pie" size={15} /> Pay a dividend
+              <Icon name="pie" size={15} /> {t('Pay a dividend')}
             </button>
           </div>
         )}
@@ -643,9 +667,9 @@ function Shareholders({ org }: { org: Organization }) {
         <table className="table">
           <thead>
             <tr>
-              <th>Shareholder</th>
-              <th className="right">Shares</th>
-              <th className="right">Share of all</th>
+              <th>{t('Shareholder')}</th>
+              <th className="right">{t('Shares')}</th>
+              <th className="right">{t('Share of all')}</th>
             </tr>
           </thead>
           <tbody>
@@ -655,7 +679,7 @@ function Shareholders({ org }: { org: Organization }) {
                   <Link to={`/u/${h.user.username}`}>{h.user.displayName}</Link>{' '}
                   <span className="small muted">@{h.user.username}</span>
                 </td>
-                <td className="right num">{Number(h.shares).toLocaleString()}</td>
+                <td className="right num">{Number(h.shares).toLocaleString(intlLocale())}</td>
                 <td className="right">{h.percent}%</td>
               </tr>
             ))}
@@ -692,8 +716,8 @@ function DividendModal({ org, shares, onClose }: { org: Organization; shares: nu
         queryClient.invalidateQueries({ queryKey: [key] });
       toast.success(
         d.status === 'pending'
-          ? 'Above the approval limit: another finance member has to approve this dividend'
-          : `Paid ${formatMoney(d.total, d.currency)} to ${d.holders} shareholders`,
+          ? t('Above the approval limit: another finance member has to approve this dividend')
+          : t('Paid {0} to {1}', formatMoney(d.total, d.currency), plural(d.holders, 'shareholder')),
       );
       onClose();
     },
@@ -706,7 +730,7 @@ function DividendModal({ org, shares, onClose }: { org: Organization; shares: nu
     total = '—';
   }
   return (
-    <Modal title={`Pay a dividend to ${org.ticker} shareholders`} onClose={onClose}>
+    <Modal title={t('Pay a dividend to {0} shareholders', org.ticker ?? '')} onClose={onClose}>
       <form
         className="stack"
         onSubmit={(e) => {
@@ -715,13 +739,17 @@ function DividendModal({ org, shares, onClose }: { org: Organization; shares: nu
         }}
       >
         <p className="small muted" style={{ margin: 0 }}>
-          Everyone holding shares right now gets the same amount per share on their personal {currency}{' '}
-          balance.
+          {t(
+            'Everyone holding shares right now gets the same amount per share on their personal {0} balance.',
+            currency,
+          )}
         </p>
         {wallet && (
-          <div className="alert info small">Available: {formatMoney(wallet.available, currency)}</div>
+          <div className="alert info small">
+            {t('Available: {0}', formatMoney(wallet.available, currency))}
+          </div>
         )}
-        <Field label={`Per share (${currency})`}>
+        <Field label={t('Per share ({0})', currency)}>
           <input
             className="input"
             inputMode="decimal"
@@ -730,18 +758,18 @@ function DividendModal({ org, shares, onClose }: { org: Organization; shares: nu
             onChange={(e) => setPerShare(e.target.value.replace(',', '.'))}
           />
         </Field>
-        <Field label="Note (optional)">
+        <Field label={t('Note (optional)')}>
           <input className="input" value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} />
         </Field>
         <div className="spread">
           <span className="muted">
-            {shares.toLocaleString()} shares × {perShare || '0'}
+            {t('{0} shares × {1}', shares.toLocaleString(intlLocale()), perShare || '0')}
           </span>
           <b className="invoice-total">{total}</b>
         </div>
         <ErrorAlert error={pay.error} />
         <button className="btn primary" disabled={pay.isPending || !wallet || !perShare}>
-          Pay dividend
+          {t('Pay dividend')}
         </button>
       </form>
     </Modal>
@@ -767,12 +795,12 @@ function ProposalModal({ org, onClose }: { org: Organization; onClose: () => voi
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stock'] });
-      toast.success('Shareholders can vote now');
+      toast.success(t('Shareholders can vote now'));
       onClose();
     },
   });
   return (
-    <Modal title="Ask the shareholders" onClose={onClose}>
+    <Modal title={t('Ask the shareholders')} onClose={onClose}>
       <form
         className="stack"
         onSubmit={(e) => {
@@ -781,9 +809,9 @@ function ProposalModal({ org, onClose }: { org: Organization; onClose: () => voi
         }}
       >
         <p className="small muted" style={{ margin: 0 }}>
-          Each shareholder votes once, weighted by the shares they hold now.
+          {t('Each shareholder votes once, weighted by the shares they hold now.')}
         </p>
-        <Field label="Question">
+        <Field label={t('Question')}>
           <input
             className="input"
             value={form.title}
@@ -793,7 +821,7 @@ function ProposalModal({ org, onClose }: { org: Organization; onClose: () => voi
             onChange={(e) => setForm({ ...form, title: e.target.value })}
           />
         </Field>
-        <Field label="Details">
+        <Field label={t('Details')}>
           <textarea
             className="textarea"
             value={form.description}
@@ -803,7 +831,7 @@ function ProposalModal({ org, onClose }: { org: Organization; onClose: () => voi
           />
         </Field>
         <div className="grid-2">
-          <Field label="Voting runs for">
+          <Field label={t('Voting runs for')}>
             <select
               className="select"
               value={form.days}
@@ -811,12 +839,15 @@ function ProposalModal({ org, onClose }: { org: Organization; onClose: () => voi
             >
               {[1, 3, 7, 14, 30].map((d) => (
                 <option key={d} value={d}>
-                  {d} {d === 1 ? 'day' : 'days'}
+                  {plural(d, 'day')}
                 </option>
               ))}
             </select>
           </Field>
-          <Field label="Options (optional)" hint="Comma-separated; For, Against, Abstain by default">
+          <Field
+            label={t('Options (optional)')}
+            hint={t('Comma-separated; For, Against, Abstain by default')}
+          >
             <input
               className="input"
               value={form.options}
@@ -826,7 +857,7 @@ function ProposalModal({ org, onClose }: { org: Organization; onClose: () => voi
         </div>
         <ErrorAlert error={create.error} />
         <button className="btn primary" disabled={create.isPending}>
-          Open the vote
+          {t('Open the vote')}
         </button>
       </form>
     </Modal>
@@ -857,12 +888,12 @@ function ReportModal({ org, onClose }: { org: Organization; onClose: () => void 
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stock'] });
-      toast.success('Results published on the listing page');
+      toast.success(t('Results published on the listing page'));
       onClose();
     },
   });
   return (
-    <Modal title="Publish results" onClose={onClose} wide>
+    <Modal title={t('Publish results')} onClose={onClose} wide>
       <form
         className="stack"
         onSubmit={(e) => {
@@ -871,7 +902,7 @@ function ReportModal({ org, onClose }: { org: Organization; onClose: () => void 
         }}
       >
         <div className="grid-2">
-          <Field label="Period" hint="2026-Q3, 2026-H1 or 2026">
+          <Field label={t('Period')} hint={t('2026-Q3, 2026-H1 or 2026')}>
             <input
               className="input"
               value={form.period}
@@ -879,18 +910,18 @@ function ReportModal({ org, onClose }: { org: Organization; onClose: () => void 
               onChange={(e) => setForm({ ...form, period: e.target.value })}
             />
           </Field>
-          <Field label="Title">
+          <Field label={t('Title')}>
             <input
               className="input"
               value={form.title}
               minLength={3}
               maxLength={200}
               required
-              placeholder="Third quarter results"
+              placeholder={t('Third quarter results')}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
             />
           </Field>
-          <Field label="Revenue (optional)">
+          <Field label={t('Revenue (optional)')}>
             <input
               className="input"
               inputMode="decimal"
@@ -898,7 +929,7 @@ function ReportModal({ org, onClose }: { org: Organization; onClose: () => void 
               onChange={(e) => setForm({ ...form, revenue: e.target.value.replace(',', '.') })}
             />
           </Field>
-          <Field label="Profit (optional)" hint="Negative for a loss">
+          <Field label={t('Profit (optional)')} hint={t('Negative for a loss')}>
             <input
               className="input"
               inputMode="decimal"
@@ -907,7 +938,7 @@ function ReportModal({ org, onClose }: { org: Organization; onClose: () => void 
             />
           </Field>
         </div>
-        <Field label="What happened">
+        <Field label={t('What happened')}>
           <textarea
             className="textarea"
             style={{ minHeight: 140 }}
@@ -917,7 +948,7 @@ function ReportModal({ org, onClose }: { org: Organization; onClose: () => void 
             onChange={(e) => setForm({ ...form, body: e.target.value })}
           />
         </Field>
-        <Field label="Documents (optional)">
+        <Field label={t('Documents (optional)')}>
           <AttachmentPicker
             value={files}
             onChange={setFiles}
@@ -929,7 +960,7 @@ function ReportModal({ org, onClose }: { org: Organization; onClose: () => void 
         </Field>
         <ErrorAlert error={publish.error} />
         <button className="btn primary" disabled={publish.isPending}>
-          Publish
+          {t('Publish')}
         </button>
       </form>
     </Modal>
@@ -956,7 +987,7 @@ function EditCompanyModal({ org, onClose }: { org: Organization; onClose: () => 
     },
   });
   return (
-    <Modal title={`Edit ${org.name}`} onClose={onClose}>
+    <Modal title={t('Edit {0}', org.name)} onClose={onClose}>
       <form
         className="stack"
         onSubmit={(e) => {
@@ -964,7 +995,10 @@ function EditCompanyModal({ org, onClose }: { org: Organization; onClose: () => 
           save.mutate();
         }}
       >
-        <Field label="Description" hint="Shown on the public company profile and the stock exchange.">
+        <Field
+          label={t('Description')}
+          hint={t('Shown on the public company profile and the stock exchange.')}
+        >
           <textarea
             className="textarea"
             style={{ minHeight: 140 }}
@@ -975,7 +1009,7 @@ function EditCompanyModal({ org, onClose }: { org: Organization; onClose: () => 
             onChange={(e) => setForm({ ...form, description: e.target.value })}
           />
         </Field>
-        <Field label="Website">
+        <Field label={t('Website')}>
           <input
             className="input"
             type="url"
@@ -984,20 +1018,22 @@ function EditCompanyModal({ org, onClose }: { org: Organization; onClose: () => 
           />
         </Field>
         <Field
-          label={`Approval limit (${org.baseCurrency})`}
-          hint="Payments, exchanges and invoice payments of at least this much need a second owner, director or accountant. Leave empty to turn it off."
+          label={t('Approval limit ({0})', org.baseCurrency)}
+          hint={t(
+            'Payments, exchanges and invoice payments of at least this much need a second owner, director or accountant. Leave empty to turn it off.',
+          )}
         >
           <input
             className="input"
             inputMode="decimal"
-            placeholder="Off"
+            placeholder={t('Off')}
             value={form.approvalLimit}
             onChange={(e) => setForm({ ...form, approvalLimit: e.target.value.replace(',', '.') })}
           />
         </Field>
         <ErrorAlert error={save.error} />
         <button className="btn primary" disabled={save.isPending}>
-          Save
+          {t('Save')}
         </button>
       </form>
     </Modal>
@@ -1032,18 +1068,18 @@ export function CompanyPage() {
               {o.verified && <VerifiedBadge />}
               {o.ticker && (
                 <Link to={`/exchange/${o.ticker}`} className="badge info">
-                  {o.ticker} on the exchange
+                  {t('{0} on the exchange', o.ticker)}
                 </Link>
               )}
             </div>
             <div className="muted small">
-              Registry number <code>{o.registryNumber ?? '—'}</code> · registered{' '}
+              {t('Registry number')} <code>{o.registryNumber ?? '—'}</code> {t('· registered')}{' '}
               {formatDate(o.createdAt, false)}
               {o.registryNumber && (
                 <>
                   {' · '}
                   <a href={api.registry.certificateUrl(o.registryNumber)} target="_blank" rel="noreferrer">
-                    Registration certificate
+                    {t('Registration certificate')}
                   </a>
                 </>
               )}
@@ -1051,27 +1087,27 @@ export function CompanyPage() {
           </div>
           {canManage && (
             <button className="btn sm" onClick={() => setEditing(true)}>
-              Edit profile
+              {t('Edit profile')}
             </button>
           )}
         </div>
         <p style={{ whiteSpace: 'pre-wrap' }}>{o.description}</p>
         <dl className="dl">
-          <dt>Owner</dt>
+          <dt>{t('Owner')}</dt>
           <dd>
             <Link to={`/u/${o.owner.username}`}>{o.owner.displayName}</Link>
           </dd>
-          <dt>Base currency</dt>
+          <dt>{t('Base currency')}</dt>
           <dd>{o.baseCurrency}</dd>
           {o.country && (
             <>
-              <dt>Country</dt>
+              <dt>{t('Country')}</dt>
               <dd>{o.country}</dd>
             </>
           )}
           {o.website && (
             <>
-              <dt>Website</dt>
+              <dt>{t('Website')}</dt>
               <dd>
                 <a href={o.website} target="_blank" rel="noreferrer">
                   {o.website}

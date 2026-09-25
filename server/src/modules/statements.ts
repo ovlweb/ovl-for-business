@@ -1,5 +1,6 @@
 import {
   formatAmount,
+  intlTag,
   monthlyStatementSchema,
   ORG_FINANCE_ROLES,
   statementLinkInputSchema,
@@ -29,6 +30,7 @@ import { groupAmount, statementPdf } from '../lib/pdf';
 import { openLink, signLink } from '../lib/signed-links';
 import { currentUser } from '../plugins/auth';
 import { assertWalletAccess, type WalletRow } from './wallets/service';
+import { label, say, text, userLocale } from '../lib/i18n';
 
 /** Links for the system browser; emailed monthly statements stay valid for a week. */
 const LINK_TTL_MS = 5 * 60_000;
@@ -170,7 +172,7 @@ export async function sendMonthlyStatements(app: FastifyInstance, now = new Date
   const period = previousMonth(now);
   const base = app.config.PUBLIC_WEB_URL.replace(/\/+$/, '');
   const people = await app.db
-    .select({ id: users.id, email: users.email, name: users.displayName })
+    .select({ id: users.id, email: users.email, name: users.displayName, preferences: users.preferences })
     .from(users)
     .where(
       and(
@@ -182,6 +184,12 @@ export async function sendMonthlyStatements(app: FastifyInstance, now = new Date
     .limit(1000);
   let sent = 0;
   for (const person of people) {
+    const locale = userLocale(person.preferences);
+    const month = new Date(`${period.from}T00:00:00Z`).toLocaleString(intlTag(locale) ?? 'en-GB', {
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC',
+    });
     const [claimed] = await app.db
       .insert(statementNotices)
       .values({ userId: person.id, month: period.month })
@@ -245,7 +253,10 @@ export async function sendMonthlyStatements(app: FastifyInstance, now = new Date
       };
       const link = signLink(payload, app.config.JWT_SECRET, EMAIL_LINK_TTL_MS);
       links.push({
-        label: `${owner.type === 'organization' ? owner.name : 'Personal'} · ${wallet.currency} — closing balance ${groupAmount(last?.balance ?? 0n, wallet.currency)} ${wallet.currency} (PDF)`,
+        label: say(
+          locale,
+          text`${owner.type === 'organization' ? owner.name : label('Personal')} · ${wallet.currency} — closing balance ${groupAmount(last?.balance ?? 0n, wallet.currency)} ${wallet.currency} (PDF)`,
+        ),
         url: `${base}/api/v1/wallets/${wallet.id}/statement.pdf?link=${link}`,
       });
     }
@@ -253,10 +264,13 @@ export async function sendMonthlyStatements(app: FastifyInstance, now = new Date
       .send(
         actionEmail({
           to: person.email,
-          subject: `Your statements for ${period.label}`,
-          greeting: `Hello ${person.name},`,
+          locale,
+          subject: text`Your statements for ${month}`,
+          greeting: text`Hello ${person.name},`,
           lines: [
-            `Your ${period.label} statements are ready: ${links.length === 1 ? 'one balance' : `${links.length} balances`} moved last month.`,
+            links.length === 1
+              ? text`Your ${month} statements are ready: one balance moved last month.`
+              : text`Your ${month} statements are ready: ${links.length} balances moved last month.`,
             'The download links work for 7 days. You can also download any month from the wallet page.',
           ],
           links,

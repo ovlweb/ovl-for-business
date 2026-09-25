@@ -11,6 +11,7 @@ import '../state/session.dart';
 import '../theme/theme.dart';
 import '../ui/format.dart';
 import '../ui/widgets.dart';
+import '../i18n/i18n.dart';
 
 Future<void> openDirectChat(BuildContext context, String userId) async {
   final session = context.read<Session>();
@@ -68,17 +69,17 @@ class _ContactsScreenState extends State<ContactsScreen> {
         child: PageBody(
           maxWidth: 820,
           children: [
-            const _Header(
+            _Header(
               icon: LucideIcons.users,
-              title: 'Contacts',
-              subtitle: 'Your partners. Groups can only include people from here.',
+              title: tr('Contacts'),
+              subtitle: tr('Your partners. Groups can only include people from here.'),
             ),
             const SizedBox(height: 18),
             TextField(
               controller: _search,
               onChanged: _onSearch,
               decoration: InputDecoration(
-                hintText: 'Search by name or username',
+                hintText: tr('Search by name or username'),
                 prefixIcon: const Icon(LucideIcons.search, size: 18),
                 suffixIcon: _searching
                     ? const Padding(
@@ -100,7 +101,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   return OvlCard(
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     child: _results!.isEmpty
-                        ? const EmptyState(icon: LucideIcons.search, title: 'Nobody found')
+                        ? EmptyState(icon: LucideIcons.search, title: tr('Nobody found'))
                         : Column(
                             children: [
                               for (final (i, u) in _results!.indexed)
@@ -118,10 +119,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 }
                 if (!s.hasData) return const SkeletonList();
                 if (contacts.isEmpty) {
-                  return const EmptyState(
+                  return EmptyState(
                     icon: LucideIcons.userPlus,
-                    title: 'No contacts yet',
-                    text: 'Search for people above and add them.',
+                    title: tr('No contacts yet'),
+                    text: tr('Search for people above and add them.'),
                   );
                 }
                 return OvlCard(
@@ -159,9 +160,9 @@ class _PersonTile extends StatelessWidget {
       onTap: () => context.push('/u/${user.username}'),
       leading: Avatar(name: user.displayName, url: user.avatarUrl, size: 42),
       title: NameWithBadges(user),
-      subtitle: Text('@${user.username} · ${roleLabels[user.role]}'),
+      subtitle: Text('@${user.username} · ${tr(roleLabels[user.role] ?? user.role)}'),
       trailing: isMe
-          ? const Text('You')
+          ? Text(tr('You'))
           : Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -171,21 +172,21 @@ class _PersonTile extends StatelessWidget {
                       try {
                         await session.api.addContact(user.username);
                         session.queries.invalidate('contacts');
-                        if (context.mounted) toast(context, '${user.displayName} added to contacts');
+                        if (context.mounted) toast(context, tr('{0} added to contacts', [user.displayName]));
                       } catch (e) {
                         if (context.mounted) toast(context, errorText(e), error: true);
                       }
                     },
                     icon: const Icon(LucideIcons.userPlus, size: 16),
-                    label: const Text('Add'),
+                    label: Text(tr('Add')),
                   )
                 else
                   Padding(
                     padding: const EdgeInsets.only(right: 4),
-                    child: Text('In contacts', style: context.text.bodySmall),
+                    child: Text(tr('In contacts'), style: context.text.bodySmall),
                   ),
                 IconButton(
-                  tooltip: 'Message',
+                  tooltip: tr('Message'),
                   onPressed: () => openDirectChat(context, user.id),
                   icon: const Icon(LucideIcons.messageCircle, size: 19),
                 ),
@@ -297,14 +298,14 @@ class ProfileScreen extends StatelessWidget {
                       const SizedBox(height: 14),
                       Text(u.displayName, style: context.text.headlineMedium, textAlign: TextAlign.center),
                       const SizedBox(height: 4),
-                      Text('@${u.username} · ${roleLabels[u.role]}', style: context.text.bodyMedium),
+                      Text('@${u.username} · ${tr(roleLabels[u.role] ?? u.role)}', style: context.text.bodyMedium),
                       if (u.badges.isNotEmpty) ...[const SizedBox(height: 10), Badges(u.badges)],
                       if (u.bio.isNotEmpty) ...[
                         const SizedBox(height: 14),
                         Text(u.bio, textAlign: TextAlign.center, style: context.text.bodyLarge),
                       ],
                       const SizedBox(height: 8),
-                      Text('Member since ${date(u.createdAt)}', style: context.text.bodySmall),
+                      Text(tr('Member since {0}', [date(u.createdAt)]), style: context.text.bodySmall),
                       if (!isMe) ...[
                         const SizedBox(height: 20),
                         Row(
@@ -313,7 +314,7 @@ class ProfileScreen extends StatelessWidget {
                             FilledButton.icon(
                               onPressed: () => openDirectChat(context, u.id),
                               icon: const Icon(LucideIcons.messageCircle, size: 17),
-                              label: const Text('Message'),
+                              label: Text(tr('Message')),
                             ),
                             const SizedBox(width: 10),
                             if (!u.isContact)
@@ -328,13 +329,13 @@ class ProfileScreen extends StatelessWidget {
                                   }
                                 },
                                 icon: const Icon(LucideIcons.userPlus, size: 17),
-                                label: const Text('Add contact'),
+                                label: Text(tr('Add contact')),
                               )
                             else
                               OutlinedButton.icon(
                                 onPressed: null,
                                 icon: const Icon(LucideIcons.userCheck, size: 17),
-                                label: const Text('In contacts'),
+                                label: Text(tr('In contacts')),
                               ),
                           ],
                         ),

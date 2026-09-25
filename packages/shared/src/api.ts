@@ -5,6 +5,7 @@
  */
 import { z } from 'zod';
 import { BADGES, ROLES } from './roles';
+import { LOCALES } from './i18n';
 import { THEME_IDS } from './themes';
 import {
   COUNCIL_VOTING,
@@ -85,6 +86,8 @@ export const preferencesSchema = z.object({
   statementEmails: z.boolean().optional(),
   /** Let others see when you read their messages (and see theirs); on unless false. */
   readReceipts: z.boolean().optional(),
+  /** Language of the apps (web, admin panel, native); the device's language until set. */
+  locale: z.enum(LOCALES).optional(),
   /** Push new direct and group messages to your devices while you are away; on unless false. */
   pushChats: z.boolean().optional(),
 });

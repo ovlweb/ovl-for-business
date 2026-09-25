@@ -14,10 +14,11 @@ import type { Db } from '../../db/client';
 import { applicationReviews, applications, users } from '../../db/schema';
 import { badRequest, conflict, forbidden, HttpError, isUniqueViolation, notFound } from '../../lib/errors';
 import { iso, isoOrNull, summaryColumns, toUserSummary } from '../../lib/mappers';
-import { getStaffChat, insertMessage, type ChatRow, type MessageRow } from '../chats/service';
+import { getStaffChat, insertMessage, systemText, type ChatRow, type MessageRow } from '../chats/service';
 import { fileDtos, filesOf } from '../files';
 import { applyApprovedApplication, type EffectResult } from './effects';
 import { loadGovernance } from '../../lib/governance';
+import { label, text } from '../../lib/i18n';
 
 export type ApplicationRow = typeof applications.$inferSelect;
 type ReviewRow = typeof applicationReviews.$inferSelect;
@@ -130,10 +131,9 @@ export interface Announcement {
   message: MessageRow;
 }
 
-function summarize(application: ApplicationRow): string {
+function nameOf(application: ApplicationRow): string {
   const p = application.payload as Record<string, unknown>;
-  const name = (p.name ?? p.title ?? '') as string;
-  return name ? `"${name}"` : '';
+  return (p.name ?? p.title ?? '') as string;
 }
 
 /** Post a card into the council / moderation chat when an application reaches a stage. */
@@ -148,15 +148,23 @@ export async function announceStage(db: Db, application: ApplicationRow, applica
   const announcements: Announcement[] = [];
   for (const type of targets) {
     const chat = await getStaffChat(db, type);
+    const name = nameOf(application);
+    const line = systemText(
+      name
+        ? text`${label(workflow.label)} "${name}" by @${applicantUsername} is waiting for: ${label(stage.label)}`
+        : text`${label(workflow.label)} by @${applicantUsername} is waiting for: ${label(stage.label)}`,
+    );
     const message = await insertMessage(db, {
       chatId: chat.id,
       senderId: null,
       kind: 'system',
-      body: `${workflow.label} ${summarize(application)} by @${applicantUsername} is waiting for: ${stage.label}`.replace(
-        /\s+/g,
-        ' ',
-      ),
-      meta: { applicationId: application.id, applicationType: application.type, stage: stage.key },
+      body: line.body,
+      meta: {
+        ...line.meta,
+        applicationId: application.id,
+        applicationType: application.type,
+        stage: stage.key,
+      },
     });
     announcements.push({ chat, message });
   }
@@ -188,10 +196,10 @@ export async function reviewApplication(
 ): Promise<ReviewOutcome> {
   const application = await lockApplication(db, applicationId);
   const stage = currentStage(application);
-  if (!stage) throw conflict(`This application is already ${application.status}`);
+  if (!stage) throw conflict(text`This application is already ${application.status}`);
   if (application.applicantId === reviewer.id) throw forbidden('You cannot review your own application');
   if (!canReviewStage(stage, reviewer.role))
-    throw forbidden(`Your role cannot review the "${stage.label}" stage`);
+    throw forbidden(text`Your role cannot review the "${stage.label}" stage`);
 
   const checklist = input.checklist ?? [];
   if (input.decision === 'approve' && stage.checklist) {

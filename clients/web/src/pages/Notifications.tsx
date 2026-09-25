@@ -1,5 +1,5 @@
 import type { Notification, NotificationType } from '@ovl/shared';
-import { Empty, ErrorAlert, PageHeader, Segmented, shortTime, Spinner } from '@ovl/ui';
+import { Empty, ErrorAlert, PageHeader, Segmented, shortTime, Spinner, t } from '@ovl/ui';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -53,11 +53,11 @@ export function NotificationsPage() {
     <div className="page stack-lg">
       <PageHeader
         icon="bell"
-        title="Notifications"
-        subtitle="Mentions, replies, payments, invoices, approvals and news about your applications."
+        title={t('Notifications')}
+        subtitle={t('Mentions, replies, payments, invoices, approvals and news about your applications.')}
         actions={
           <button className="btn" disabled={!unread || read.isPending} onClick={() => read.mutate(undefined)}>
-            <Icon name="checkCheck" size={16} /> Mark all as read
+            <Icon name="checkCheck" size={16} /> {t('Mark all as read')}
           </button>
         }
       />
@@ -65,20 +65,21 @@ export function NotificationsPage() {
         value={filter}
         onChange={setFilter}
         options={[
-          { value: 'all', label: 'All' },
-          { value: 'unread', label: unread ? `Unread (${unread})` : 'Unread' },
+          { value: 'all', label: t('All') },
+          { value: 'unread', label: unread ? t('Unread ({0})', unread) : t('Unread') },
         ]}
       />
       <ErrorAlert error={list.error ?? read.error ?? remove.error} />
       {list.isLoading && <Spinner center />}
       {list.data && !items.length && (
-        <Empty title={filter === 'unread' ? 'All caught up' : 'Nothing yet'}>
-          Mentions, payments and approvals show up here, and on your devices when push notifications are on
-          (Settings).
+        <Empty title={filter === 'unread' ? t('All caught up') : t('Nothing yet')}>
+          {t(
+            'Mentions, payments and approvals show up here, and on your devices when push notifications are on (Settings).',
+          )}
         </Empty>
       )}
       {items.length > 0 && (
-        <div className="card pad-0 notification-list" role="list" aria-label="Notifications">
+        <div className="card pad-0 notification-list" role="list" aria-label={t('Notifications')}>
           {items.map((n) => (
             <div key={n.id} role="listitem" className={`notification-item${n.read ? '' : ' unread'}`}>
               <button type="button" className="notification-open" onClick={() => open(n)}>
@@ -94,7 +95,7 @@ export function NotificationsPage() {
               <button
                 type="button"
                 className="btn ghost icon sm"
-                aria-label={`Remove ${n.title}`}
+                aria-label={t('Remove {0}', n.title)}
                 onClick={() => remove.mutate(n.id)}
               >
                 <Icon name="x" size={14} />
@@ -105,7 +106,7 @@ export function NotificationsPage() {
       )}
       {list.hasNextPage && (
         <button className="btn" style={{ alignSelf: 'center' }} onClick={() => list.fetchNextPage()}>
-          {list.isFetchingNextPage ? 'Loading…' : 'Older notifications'}
+          {list.isFetchingNextPage ? t('Loading…') : t('Older notifications')}
         </button>
       )}
     </div>

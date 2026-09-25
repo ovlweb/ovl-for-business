@@ -26,6 +26,7 @@ import {
   orgRoleOf,
   type WalletRow,
 } from './wallets/service';
+import { text } from '../lib/i18n';
 
 type RunRow = typeof payrollRuns.$inferSelect;
 
@@ -87,7 +88,7 @@ async function executePayroll(tx: Db, run: RunRow, actorId: string): Promise<Wal
 export async function approvePayrollRun(tx: Db, runId: string, actorId: string): Promise<WalletRow[]> {
   const [run] = await tx.select().from(payrollRuns).where(eq(payrollRuns.id, runId)).for('update');
   if (!run) throw notFound('Payroll run');
-  if (run.status !== 'pending') throw conflict(`This payroll run is already ${run.status}`);
+  if (run.status !== 'pending') throw conflict(text`This payroll run is already ${run.status}`);
   return executePayroll(tx, run, actorId);
 }
 
@@ -162,7 +163,8 @@ export async function payrollRoutes(fastify: FastifyInstance) {
         .where(inArray(users.username, usernames));
       const byName = new Map(people.map((p) => [p.username, p]));
       const missing = usernames.filter((u) => byName.get(u)?.status !== 'active');
-      if (missing.length) throw badRequest(`Unknown or suspended: ${missing.map((u) => `@${u}`).join(', ')}`);
+      if (missing.length)
+        throw badRequest(text`Unknown or suspended: ${missing.map((u) => `@${u}`).join(', ')}`);
       const items = input.items.map((i) => {
         const amount = parseAmount(i.amount, wallet.currency);
         if (amount <= 0n) throw badRequest('Every amount must be positive');

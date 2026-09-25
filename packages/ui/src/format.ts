@@ -1,32 +1,35 @@
 import { OvlApiError } from '@ovl/sdk';
 import { getCurrency, isCurrency } from '@ovl/shared';
+import { getLocale, intlLocale, t } from './i18n';
 
 /** "1234567.5" + "USD" → "1,234,567.50 USD" without losing precision. */
 export function formatMoney(amount: string, currency: string, withCode = true): string {
   const negative = amount.startsWith('-');
   const [whole = '0', fraction = ''] = amount.replace('-', '').split('.');
   const decimals = isCurrency(currency) ? getCurrency(currency).decimals : fraction.length;
-  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  const frac = decimals ? `.${fraction.padEnd(decimals, '0').slice(0, decimals)}` : '';
+  // 1,234.50 in English; 1 234,50 in Russian.
+  const [group, point] = getLocale() === 'ru' ? ['\u00a0', ','] : [',', '.'];
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, group);
+  const frac = decimals ? `${point}${fraction.padEnd(decimals, '0').slice(0, decimals)}` : '';
   return `${negative ? '−' : ''}${grouped}${frac}${withCode ? ` ${currency}` : ''}`;
 }
 
 export function formatDate(iso: string, withTime = true): string {
   const d = new Date(iso);
   return withTime
-    ? d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-    : d.toLocaleDateString(undefined, { dateStyle: 'medium' });
+    ? d.toLocaleString(intlLocale(), { dateStyle: 'medium', timeStyle: 'short' })
+    : d.toLocaleDateString(intlLocale(), { dateStyle: 'medium' });
 }
 
 export function timeAgo(iso: string): string {
   const seconds = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
-  if (seconds < 60) return 'just now';
+  if (seconds < 60) return t('just now');
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 60) return t('{0} min ago', minutes);
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
+  if (hours < 24) return t('{0} h ago', hours);
   const days = Math.round(hours / 24);
-  if (days < 30) return `${days} d ago`;
+  if (days < 30) return t('{0} d ago', days);
   return formatDate(iso, false);
 }
 
@@ -34,8 +37,8 @@ export function shortTime(iso: string): string {
   const d = new Date(iso);
   const today = new Date();
   return d.toDateString() === today.toDateString()
-    ? d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-    : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    ? d.toLocaleTimeString(intlLocale(), { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString(intlLocale(), { day: 'numeric', month: 'short' });
 }
 
 export function errorMessage(error: unknown): string {
@@ -44,23 +47,21 @@ export function errorMessage(error: unknown): string {
       { path?: string; message?: string }[] | { missing?: string[] } | undefined;
     if (Array.isArray(details) && details.length) {
       return details
-        .map((d) => `${d.path?.replace(/^\//, '').replace(/\//g, '.') || 'input'}: ${d.message}`)
+        .map((d) => `${d.path?.replace(/^\//, '').replace(/\//g, '.') || 'input'}: ${t(d.message ?? '')}`)
         .join('\n');
     }
-    return error.message;
+    return t(error.message);
   }
-  if (error instanceof Error) return error.message;
-  return 'Something went wrong';
+  if (error instanceof Error) return t(error.message);
+  return t('Something went wrong');
 }
 
+/** "changes_requested" → "Changes requested" (translated). */
 export function humanize(key: string): string {
-  return key
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/_/g, ' ')
-    .replace(/^\w/, (c) => c.toUpperCase());
-}
-
-/** "1 operation", "3 operations"; pass `many` for irregular words. */
-export function plural(count: number, one: string, many = `${one}s`): string {
-  return `${count.toLocaleString()} ${count === 1 ? one : many}`;
+  return t(
+    key
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/_/g, ' ')
+      .replace(/^\w/, (c) => c.toUpperCase()),
+  );
 }

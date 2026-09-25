@@ -14,6 +14,7 @@ import { badRequest, conflict, insufficientFunds } from '../../lib/errors';
 import { iso } from '../../lib/mappers';
 import { credit, debit, frozenAmounts, getOrCreateWallet, lockWallet } from '../wallets/service';
 import type { ListingRow } from './service';
+import { text } from '../../lib/i18n';
 
 type OrderRow = typeof stockOrders.$inferSelect;
 type TradeRow = typeof stockTrades.$inferSelect;
@@ -185,8 +186,7 @@ export async function placeOrder(
     const cost = input.shares * input.price;
     if (locked.balance - frozen < cost)
       throw insufficientFunds(
-        `This order needs ${formatAmount(cost, listing.currency)} ${listing.currency}; ` +
-          `${formatAmount(locked.balance - frozen, listing.currency)} is available`,
+        text`This order needs ${formatAmount(cost, listing.currency)} ${listing.currency}; ${formatAmount(locked.balance - frozen, listing.currency)} is available`,
       );
   } else {
     const { sellable } = await position(tx, listing.id, input.userId);
@@ -251,7 +251,7 @@ export async function placeOrder(
 
 /** Cancel an open order and release what it held. */
 export async function cancelOrder(tx: Db, order: OrderRow) {
-  if (order.status !== 'open') throw conflict(`This order is already ${order.status}`);
+  if (order.status !== 'open') throw conflict(text`This order is already ${order.status}`);
   await tx
     .update(stockOrders)
     .set({ status: 'cancelled', updatedAt: new Date() })

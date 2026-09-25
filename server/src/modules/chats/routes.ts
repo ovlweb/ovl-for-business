@@ -38,9 +38,11 @@ import {
   requireReadable,
   sendToChat,
   sortChats,
+  systemText,
   type ChatRow,
   type MessageRow,
 } from './service';
+import { text } from '../../lib/i18n';
 
 export async function chatRoutes(fastify: FastifyInstance) {
   const app = fastify.withTypeProvider<ZodTypeProvider>();
@@ -173,7 +175,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
           chatId: created!.id,
           senderId: null,
           kind: 'system',
-          body: `${me.displayName} created the group "${req.body.title}"`,
+          ...systemText(text`${me.displayName} created the group "${req.body.title}"`),
         });
         return created!;
       });
@@ -340,7 +342,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
             chatId: chat.id,
             senderId: null,
             kind: 'system',
-            body: `${me.displayName} added ${names.map((n) => n.displayName).join(', ')}`,
+            ...systemText(text`${me.displayName} added ${names.map((n) => n.displayName).join(', ')}`),
           });
         }
         return inserted;
@@ -378,15 +380,17 @@ export async function chatRoutes(fastify: FastifyInstance) {
           .select({ displayName: users.displayName })
           .from(users)
           .where(eq(users.id, req.params.userId));
-        const body =
+        const line =
           req.params.userId === me.id
-            ? `${me.displayName} left the group`
-            : `${me.displayName} removed ${user?.displayName ?? 'a member'}`;
+            ? text`${me.displayName} left the group`
+            : user
+              ? text`${me.displayName} removed ${user.displayName}`
+              : text`${me.displayName} removed a member`;
         const message = await insertMessage(app.db, {
           chatId: chat.id,
           senderId: null,
           kind: 'system',
-          body,
+          ...systemText(line),
         });
         await publishMessage(app, chat, message);
       }
@@ -708,7 +712,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
         .from(messageReactions)
         .where(and(eq(messageReactions.messageId, message.id), ne(messageReactions.emoji, req.body.emoji)));
       if ((used?.n ?? 0) >= MAX_EMOJIS)
-        throw conflict(`A message can have at most ${MAX_EMOJIS} different reactions`);
+        throw conflict(text`A message can have at most ${MAX_EMOJIS} different reactions`);
       await app.db
         .insert(messageReactions)
         .values({ messageId: message.id, userId: me.id, emoji: req.body.emoji })

@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import '../theme/theme.dart';
+import '../i18n/i18n.dart';
 
 /// Monotone cubic (Fritsch–Carlson) path through [pts]: smooth, and never overshoots.
 Path monotonePath(List<Offset> pts) {
@@ -82,7 +83,7 @@ class _AreaChartState extends State<AreaChart> with SingleTickerProviderStateMix
         height: widget.height,
         child: Center(
           child: Text(
-            'Not enough history yet — the chart appears after the next change.',
+            tr('Not enough history yet — the chart appears after the next change.'),
             style: context.text.bodySmall,
             textAlign: TextAlign.center,
           ),

@@ -37,6 +37,14 @@ people to set two-step verification up again).
 Errors always look like `{ "error": "code", "message": "Human readable", "details"?: … }`
 (`validation_error`, `unauthorized`, `forbidden`, `not_found`, `conflict`, `insufficient_funds`…).
 
+**Languages.** `message` is in the language of the request's `Accept-Language` (English and
+Russian today; English when neither is asked for); `error` codes never change. Notifications and
+emails use the language the account keeps in `preferences.locale` (`PATCH /me/preferences
+{"locale":"ru"}`), which the apps also follow on every device. System lines in chats ("Maria
+added Oleg") keep English in `body` and the text with its values in `meta.text`
+(`{ "key": "{0} added {1}", "values": ["Maria", "Oleg"] }`, where a value `{ "label": … }` is
+itself text to translate), so each reader sees them in their own language.
+
 ## Public API for other services
 
 Registry and stock data are public. Anonymous callers get `PUBLIC_RATE_LIMIT` requests per minute

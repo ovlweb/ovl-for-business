@@ -16,6 +16,7 @@ import { actionEmail } from '../lib/mailer';
 import { toMe } from '../lib/mappers';
 import { currentUser } from '../plugins/auth';
 import { revokeSessions } from './sessions';
+import { userLocale, text } from '../lib/i18n';
 
 type UserRow = typeof users.$inferSelect;
 type Purpose = 'verify_email' | 'reset_password';
@@ -73,8 +74,9 @@ export async function sendVerification(app: FastifyInstance, user: UserRow): Pro
   await app.mailer.send(
     actionEmail({
       to: user.email,
+      locale: userLocale(user.preferences),
       subject: 'Confirm your email address',
-      greeting: `Hello ${user.displayName},`,
+      greeting: text`Hello ${user.displayName},`,
       lines: ['Please confirm this email address for your OVL For Business account.'],
       action: { label: 'Confirm email', url: link(app, 'verify-email', token) },
       footer: 'The link works for 48 hours. If you did not create an account, ignore this email.',
@@ -154,10 +156,11 @@ export async function emailRoutes(fastify: FastifyInstance) {
       await app.mailer.send(
         actionEmail({
           to: user.email,
+          locale: userLocale(user.preferences),
           subject: 'Your email address was changed',
-          greeting: `Hello ${user.displayName},`,
+          greeting: text`Hello ${user.displayName},`,
           lines: [
-            `The email address of your account is now ${req.body.email}.`,
+            text`The email address of your account is now ${req.body.email}.`,
             'If you did not do this, reset your password and contact support right away.',
           ],
         }),
@@ -186,8 +189,9 @@ export async function emailRoutes(fastify: FastifyInstance) {
         await app.mailer.send(
           actionEmail({
             to: user.email,
+            locale: userLocale(user.preferences),
             subject: 'Reset your password',
-            greeting: `Hello ${user.displayName},`,
+            greeting: text`Hello ${user.displayName},`,
             lines: ['Someone asked to reset the password of your OVL For Business account.'],
             action: { label: 'Choose a new password', url: link(app, 'reset-password', token) },
             footer:
@@ -225,8 +229,9 @@ export async function emailRoutes(fastify: FastifyInstance) {
       await app.mailer.send(
         actionEmail({
           to: user.email,
+          locale: userLocale(user.preferences),
           subject: 'Your password was changed',
-          greeting: `Hello ${user.displayName},`,
+          greeting: text`Hello ${user.displayName},`,
           lines: [
             'The password of your account was just reset and every device was signed out.',
             'If this was not you, contact support right away.',

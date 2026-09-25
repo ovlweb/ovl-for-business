@@ -18,6 +18,7 @@ import { iso, isoOrNull } from '../lib/mappers';
 import { sealSecret } from '../lib/totp';
 import { assertPublicUrl, deliverNow, deliverWebhooks } from '../lib/webhooks';
 import { currentUser } from '../plugins/auth';
+import { text } from '../lib/i18n';
 
 type EndpointRow = typeof webhookEndpoints.$inferSelect;
 
@@ -115,7 +116,7 @@ export async function webhookRoutes(fastify: FastifyInstance) {
           .from(webhookEndpoints)
           .where(eq(webhookEndpoints.userId, me.id));
         if ((existing?.n ?? 0) >= MAX_ENDPOINTS)
-          throw conflict(`You can have at most ${MAX_ENDPOINTS} webhooks`);
+          throw conflict(text`You can have at most ${MAX_ENDPOINTS} webhooks`);
         await checkUrl(req.body.url);
         const secret = newSecret();
         const [row] = await app.db

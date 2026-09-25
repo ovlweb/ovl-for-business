@@ -24,6 +24,7 @@ import { emitRegistryEvent, issueRegistryEntry, licenceExpiry } from '../registr
 import { changeRole } from '../roles';
 import { createListing } from '../stock/service';
 import { getOrCreateWallet } from '../wallets/service';
+import { text } from '../../lib/i18n';
 
 type ApplicationRow = typeof applications.$inferSelect;
 
@@ -147,7 +148,7 @@ export async function applyApprovedApplication(
       const allowedFrom: Role[] = application.type === 'moderator' ? ['user'] : ['user', 'moderator'];
       if (!user || !allowedFrom.includes(user.role)) {
         throw conflict(
-          `The applicant's role changed to ${user?.role ?? 'unknown'}; reject this application instead`,
+          text`The applicant's role changed to ${user?.role ?? 'unknown'}; reject this application instead`,
         );
       }
       await changeRole(db, user.id, application.type);
@@ -165,7 +166,7 @@ export async function applyApprovedApplication(
         .where(eq(registryEntries.id, p.registryEntryId))
         .for('update');
       if (!entry || (entry.status !== 'active' && entry.status !== 'expired'))
-        throw conflict(`This licence is ${entry?.status ?? 'gone'}; reject the renewal instead`);
+        throw conflict(text`This licence is ${entry?.status ?? 'gone'}; reject the renewal instead`);
       // A new term from the old expiry date (renewed early) or from today (renewed late).
       const base = entry.expiresAt && entry.expiresAt > new Date() ? entry.expiresAt : new Date();
       const expiresAt = licenceExpiry(config, base);
@@ -189,7 +190,7 @@ export async function applyApprovedApplication(
       const [taken] = await db.select({ id: chats.id }).from(chats).where(eq(chats.handle, p.handle));
       if (taken)
         throw conflict(
-          `The channel handle @${p.handle} was taken meanwhile; reject this application instead`,
+          text`The channel handle @${p.handle} was taken meanwhile; reject this application instead`,
         );
       const channel = await createChannel(db, { ...p, ownerId: application.applicantId });
       return { result: { chatId: channel.id, handle: p.handle }, roleChanges: [] };

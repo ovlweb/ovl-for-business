@@ -15,6 +15,7 @@ import {
   StatusBadge,
   useDebounced,
   useToast,
+  t,
 } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -53,8 +54,8 @@ function OperationForm({ owner }: { owner: Owner }) {
       setForm({ ...form, amount: '', reference: '', note: '' });
       invalidateCash(queryClient);
       if ('kind' in result)
-        toast.info('Large amount: it waits for a second finance manager under “Waiting for approval”');
-      else toast.success('Operation recorded');
+        toast.info(t('Large amount: it waits for a second finance manager under “Waiting for approval”'));
+      else toast.success(t('Operation recorded'));
     },
   });
 
@@ -67,22 +68,22 @@ function OperationForm({ owner }: { owner: Owner }) {
         else setConfirming(true);
       }}
     >
-      <h3>New operation</h3>
+      <h3>{t('New operation')}</h3>
       <div className="row-wrap">
-        {(['deposit', 'withdrawal'] as const).map((t) => (
+        {(['deposit', 'withdrawal'] as const).map((kind) => (
           <button
             type="button"
-            key={t}
-            className={`chip${form.type === t ? ' active' : ''}`}
+            key={kind}
+            className={`chip${form.type === kind ? ' active' : ''}`}
             onClick={() => {
-              setForm({ ...form, type: t });
+              setForm({ ...form, type: kind });
               setConfirming(false);
             }}
           >
-            {humanize(t)}
+            {humanize(kind)}
           </button>
         ))}
-        <span className="muted">via</span>
+        <span className="muted">{t('via')}</span>
         {(['physical_cash', 'manager_transfer'] as const).map((m) => (
           <button
             type="button"
@@ -93,12 +94,12 @@ function OperationForm({ owner }: { owner: Owner }) {
               setConfirming(false);
             }}
           >
-            {m === 'physical_cash' ? 'Cash desk (physical)' : 'Manager transfer'}
+            {m === 'physical_cash' ? t('Cash desk (physical)') : t('Manager transfer')}
           </button>
         ))}
       </div>
       <div className="grid-2">
-        <Field label="Currency">
+        <Field label={t('Currency')}>
           <select
             className="select"
             value={form.currency}
@@ -114,7 +115,7 @@ function OperationForm({ owner }: { owner: Owner }) {
             ))}
           </select>
         </Field>
-        <Field label="Amount">
+        <Field label={t('Amount')}>
           <input
             className="input"
             inputMode="decimal"
@@ -127,7 +128,7 @@ function OperationForm({ owner }: { owner: Owner }) {
           />
         </Field>
       </div>
-      <Field label="Reference" hint="Bank transaction id, receipt number or cash slip number.">
+      <Field label={t('Reference')} hint={t('Bank transaction id, receipt number or cash slip number.')}>
         <input
           className="input"
           value={form.reference}
@@ -136,7 +137,7 @@ function OperationForm({ owner }: { owner: Owner }) {
           maxLength={128}
         />
       </Field>
-      <Field label="Internal note (optional)">
+      <Field label={t('Internal note (optional)')}>
         <input
           className="input"
           value={form.note}
@@ -145,19 +146,24 @@ function OperationForm({ owner }: { owner: Owner }) {
       </Field>
       {confirming && (
         <div className="alert warning">
-          Confirm: <b>{humanize(form.type)}</b> of <b>{formatMoney(form.amount || '0', form.currency)}</b>{' '}
-          {form.type === 'deposit' ? 'to' : 'from'} <b>{owner.name}</b> via{' '}
-          {form.method === 'physical_cash' ? 'the cash desk' : 'manager transfer'} (ref. {form.reference}).
+          {t('Confirm:')} <b>{humanize(form.type)}</b> {t('of')}{' '}
+          <b>{formatMoney(form.amount || '0', form.currency)}</b>{' '}
+          {form.type === 'deposit' ? t('to') : t('from')} <b>{owner.name}</b>{' '}
+          {t(
+            'via {0} (ref. {1}).',
+            form.method === 'physical_cash' ? 'the cash desk' : 'manager transfer',
+            form.reference,
+          )}
         </div>
       )}
       <ErrorAlert error={submit.error} />
       <div className="row-wrap">
         <button className={`btn ${confirming ? 'success' : 'primary'}`} disabled={submit.isPending}>
-          {confirming ? 'Confirm operation' : 'Review operation'}
+          {confirming ? t('Confirm operation') : t('Review operation')}
         </button>
         {confirming && (
           <button type="button" className="btn" onClick={() => setConfirming(false)}>
-            Edit
+            {t('Edit')}
           </button>
         )}
       </div>
@@ -195,13 +201,25 @@ function HandleRequestModal({
         : api.admin.declineCashRequest(request.id, text),
     onSuccess: () => {
       invalidateCash(queryClient);
-      toast.success(complete ? (deposit ? 'Deposit recorded' : 'Payout recorded') : 'Request declined');
+      toast.success(
+        complete ? (deposit ? t('Deposit recorded') : t('Payout recorded')) : t('Request declined'),
+      );
       onClose();
     },
   });
-  const verb = deposit ? 'deposit' : 'payout';
   return (
-    <Modal title={complete ? `Confirm ${verb}` : `Decline ${verb}`} onClose={onClose}>
+    <Modal
+      title={
+        complete
+          ? deposit
+            ? t('Confirm deposit')
+            : t('Confirm payout')
+          : deposit
+            ? t('Decline deposit')
+            : t('Decline payout')
+      }
+      onClose={onClose}
+    >
       <form
         className="stack"
         onSubmit={(e) => {
@@ -211,22 +229,27 @@ function HandleRequestModal({
       >
         <div className={`alert ${complete ? 'warning' : 'info'}`}>
           <span>
-            <b>{formatMoney(request.amount, request.currency)}</b> {deposit ? 'to' : 'from'}{' '}
-            <b>{request.ownerName}</b> via {METHOD[request.method]}, asked by @{request.requestedBy.username}.
+            <b>{formatMoney(request.amount, request.currency)}</b> {deposit ? t('to') : t('from')}{' '}
+            <b>{request.ownerName}</b> {t('via')} {METHOD[request.method]}
+            {t(', asked by @')}
+            {request.requestedBy.username}.
             {complete &&
               (deposit
-                ? ' Confirm only once the money has arrived.'
-                : ' Confirm only once the money has been paid out; the balance is debited now.')}
+                ? ` ${t('Confirm only once the money has arrived.')}`
+                : ` ${t('Confirm only once the money has been paid out; the balance is debited now.')}`)}
           </span>
         </div>
         {request.note && (
           <p className="small" style={{ margin: 0 }}>
-            <span className="muted">Their note:</span> “{request.note}”
+            <span className="muted">{t('Their note:')}</span> “{request.note}”
           </p>
         )}
         {complete ? (
           <>
-            <Field label="Reference" hint="Bank transaction id, receipt number or cash slip number.">
+            <Field
+              label={t('Reference')}
+              hint={t('Bank transaction id, receipt number or cash slip number.')}
+            >
               <input
                 className="input"
                 value={reference}
@@ -236,7 +259,7 @@ function HandleRequestModal({
                 required
               />
             </Field>
-            <Field label="Internal note (optional)">
+            <Field label={t('Internal note (optional)')}>
               <input
                 className="input"
                 value={text}
@@ -246,7 +269,7 @@ function HandleRequestModal({
             </Field>
           </>
         ) : (
-          <Field label="Reason" hint="Shown to the person who asked.">
+          <Field label={t('Reason')} hint={t('Shown to the person who asked.')}>
             <textarea
               className="textarea"
               rows={3}
@@ -261,7 +284,7 @@ function HandleRequestModal({
         )}
         <ErrorAlert error={submit.error} />
         <button className={`btn ${complete ? 'success' : 'danger'}`} disabled={submit.isPending}>
-          {complete ? `Confirm ${verb}` : 'Decline request'}
+          {complete ? (deposit ? t('Confirm deposit') : t('Confirm payout')) : t('Decline request')}
         </button>
       </form>
     </Modal>
@@ -285,7 +308,7 @@ function ApprovalQueue() {
     onSuccess: (a) => {
       invalidateCash(queryClient);
       toast.success(
-        `${a.type === 'deposit' ? 'Deposit' : 'Payout'} of ${formatMoney(a.amount, a.currency)} done`,
+        t('{0} of {1} done', a.type === 'deposit' ? 'Deposit' : 'Payout', formatMoney(a.amount, a.currency)),
       );
     },
   });
@@ -302,10 +325,11 @@ function ApprovalQueue() {
     <div className="card pad-0 table-wrap four-eyes">
       <div className="card-header" style={{ padding: '16px 18px 0' }}>
         <div>
-          <h3>Waiting for approval</h3>
+          <h3>{t('Waiting for approval')}</h3>
           <p className="small muted" style={{ margin: '2px 0 0' }}>
-            Large operations need a second finance manager. They happen when confirmed; payouts hold the money
-            meanwhile.
+            {t(
+              'Large operations need a second finance manager. They happen when confirmed; payouts hold the money meanwhile.',
+            )}
           </p>
         </div>
       </div>
@@ -313,11 +337,11 @@ function ApprovalQueue() {
       <table className="table">
         <thead>
           <tr>
-            <th>Asked</th>
-            <th>Account</th>
-            <th>Operation</th>
-            <th className="right">Amount</th>
-            <th>By</th>
+            <th>{t('Asked')}</th>
+            <th>{t('Account')}</th>
+            <th>{t('Operation')}</th>
+            <th className="right">{t('Amount')}</th>
+            <th>{t('By')}</th>
             <th />
           </tr>
         </thead>
@@ -330,11 +354,11 @@ function ApprovalQueue() {
                 <td>
                   <b>{a.ownerName}</b>
                   <div className="small muted">
-                    {a.kind === 'request' ? 'Completing a request' : 'Cash desk'}
+                    {a.kind === 'request' ? t('Completing a request') : t('Cash desk')}
                   </div>
                 </td>
                 <td className="small">
-                  {a.type === 'deposit' ? 'Deposit' : 'Payout'} · {METHOD[a.method]} · ref.{' '}
+                  {t('{0} · {1} · ref.', a.type === 'deposit' ? 'Deposit' : 'Payout', METHOD[a.method])}{' '}
                   <code>{a.reference}</code>
                 </td>
                 <td className={`right ${a.type === 'deposit' ? 'pos' : 'neg'}`}>
@@ -347,13 +371,13 @@ function ApprovalQueue() {
                       <button
                         className="btn sm success"
                         disabled={own || approve.isPending}
-                        title={own ? 'A different finance manager must confirm this' : undefined}
+                        title={own ? t('A different finance manager must confirm this') : undefined}
                         onClick={() => approve.mutate(a.id)}
                       >
-                        <Icon name="check" size={14} /> Confirm
+                        <Icon name="check" size={14} /> {t('Confirm')}
                       </button>
                       <button className="btn sm ghost" onClick={() => setRejecting(a)}>
-                        Reject
+                        {t('Reject')}
                       </button>
                     </span>
                   )}
@@ -364,7 +388,7 @@ function ApprovalQueue() {
         </tbody>
       </table>
       {rejecting && (
-        <Modal title="Reject operation" onClose={() => setRejecting(null)}>
+        <Modal title={t('Reject operation')} onClose={() => setRejecting(null)}>
           <form
             className="stack"
             onSubmit={(e) => {
@@ -372,7 +396,7 @@ function ApprovalQueue() {
               reject.mutate();
             }}
           >
-            <Field label="Reason" hint="Recorded in the audit log.">
+            <Field label={t('Reason')} hint={t('Recorded in the audit log.')}>
               <input
                 className="input"
                 value={reason}
@@ -385,7 +409,7 @@ function ApprovalQueue() {
             </Field>
             <ErrorAlert error={reject.error} />
             <button className="btn danger" disabled={reject.isPending}>
-              Reject
+              {t('Reject')}
             </button>
           </form>
         </Modal>
@@ -407,17 +431,19 @@ function RequestQueue() {
     <div className="card pad-0 table-wrap">
       <div className="card-header" style={{ padding: '16px 18px 0' }}>
         <div>
-          <h3>Requests</h3>
+          <h3>{t('Requests')}</h3>
           <p className="small muted" style={{ margin: '2px 0 0' }}>
-            Deposits and payouts people asked for from their wallet. Payouts hold the amount until handled.
+            {t(
+              'Deposits and payouts people asked for from their wallet. Payouts hold the amount until handled.',
+            )}
           </p>
         </div>
         <Segmented
           value={status}
           onChange={setStatus}
           options={[
-            { value: 'pending', label: 'Waiting' },
-            { value: 'all', label: 'All' },
+            { value: 'pending', label: t('Waiting') },
+            { value: 'all', label: t('All') },
           ]}
         />
       </div>
@@ -425,11 +451,11 @@ function RequestQueue() {
       <table className="table">
         <thead>
           <tr>
-            <th>Asked</th>
-            <th>Account</th>
-            <th>Request</th>
-            <th className="right">Amount</th>
-            <th>Status</th>
+            <th>{t('Asked')}</th>
+            <th>{t('Account')}</th>
+            <th>{t('Request')}</th>
+            <th className="right">{t('Amount')}</th>
+            <th>{t('Status')}</th>
             <th />
           </tr>
         </thead>
@@ -442,13 +468,17 @@ function RequestQueue() {
                 <td>
                   <b>{r.ownerName}</b>
                   <div className="small muted">
-                    {r.ownerType === 'organization' ? 'Company' : 'Person'} · by @{r.requestedBy.username}
+                    {t(
+                      '{0} · by @{1}',
+                      r.ownerType === 'organization' ? 'Company' : 'Person',
+                      r.requestedBy.username,
+                    )}
                   </div>
                 </td>
                 <td className="small">
                   <span className="row" style={{ gap: 6 }}>
                     <Icon name={r.type === 'deposit' ? 'incoming' : 'outgoing'} size={15} />
-                    {r.type === 'deposit' ? 'Deposit' : 'Payout'} · {METHOD[r.method]}
+                    {r.type === 'deposit' ? t('Deposit') : t('Payout')} · {METHOD[r.method]}
                   </span>
                   {r.note && (
                     <div className="muted ellipsis" style={{ maxWidth: 280 }}>
@@ -457,7 +487,7 @@ function RequestQueue() {
                   )}
                   {r.reference && (
                     <div className="muted">
-                      ref. <code>{r.reference}</code> · @{r.handledBy?.username}
+                      {t('ref.')} <code>{r.reference}</code> · @{r.handledBy?.username}
                     </div>
                   )}
                   {r.declineReason && <div className="muted">{r.declineReason}</div>}
@@ -474,16 +504,16 @@ function RequestQueue() {
                       <button
                         className="btn sm success"
                         disabled={own}
-                        title={own ? 'Another finance manager must handle your own request' : undefined}
+                        title={own ? t('Another finance manager must handle your own request') : undefined}
                         onClick={() => setOpen({ request: r, action: 'complete' })}
                       >
-                        <Icon name="check" size={14} /> {r.type === 'deposit' ? 'Confirm' : 'Pay out'}
+                        <Icon name="check" size={14} /> {r.type === 'deposit' ? t('Confirm') : t('Pay out')}
                       </button>
                       <button
                         className="btn sm ghost"
                         onClick={() => setOpen({ request: r, action: 'decline' })}
                       >
-                        Decline
+                        {t('Decline')}
                       </button>
                     </span>
                   )}
@@ -494,8 +524,8 @@ function RequestQueue() {
         </tbody>
       </table>
       {requests.data?.length === 0 && (
-        <Empty title={status === 'pending' ? 'Nothing is waiting' : 'No requests yet'}>
-          {status === 'pending' ? 'New deposit and payout requests show up here.' : undefined}
+        <Empty title={status === 'pending' ? t('Nothing is waiting') : t('No requests yet')}>
+          {status === 'pending' ? t('New deposit and payout requests show up here.') : undefined}
         </Empty>
       )}
       {open && <HandleRequestModal {...open} onClose={() => setOpen(null)} />}
@@ -529,17 +559,19 @@ export function CashDeskPage() {
     <div className="page stack-lg">
       <PageHeader
         icon="wallet"
-        title="Cash desk"
-        subtitle="Deposits and withdrawals for personal and business balances in any world currency — by manager transfer or physical cash."
+        title={t('Cash desk')}
+        subtitle={t(
+          'Deposits and withdrawals for personal and business balances in any world currency — by manager transfer or physical cash.',
+        )}
       />
       <ApprovalQueue />
       <RequestQueue />
       <div className="grid-2" style={{ alignItems: 'start' }}>
         <div className="card stack">
-          <h3>Account</h3>
+          <h3>{t('Account')}</h3>
           <input
             className="input"
-            placeholder="Search a person or a company"
+            placeholder={t('Search a person or a company')}
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -551,7 +583,7 @@ export function CashDeskPage() {
                 onClick={() => setOwner(o)}
               >
                 <span className={`badge ${o.type === 'user' ? 'info' : 'council'}`}>
-                  {o.type === 'user' ? 'Person' : 'Company'}
+                  {o.type === 'user' ? t('Person') : t('Company')}
                 </span>
                 <span className="grow">
                   <b>{o.name}</b>{' '}
@@ -560,13 +592,13 @@ export function CashDeskPage() {
               </button>
             ))}
           </div>
-          {search && owners.data?.length === 0 && <Empty title="Nothing found" />}
+          {search && owners.data?.length === 0 && <Empty title={t('Nothing found')} />}
           {owner && (
             <div className="stack-sm">
-              <h3>Balances of {owner.name}</h3>
+              <h3>{t('Balances of {0}', owner.name)}</h3>
               {wallets.isLoading && <Spinner />}
               {wallets.data?.length === 0 && (
-                <p className="small muted">No balances yet — a deposit opens one.</p>
+                <p className="small muted">{t('No balances yet — a deposit opens one.')}</p>
               )}
               {wallets.data?.map((w) => (
                 <div key={w.id} className="spread small">
@@ -574,7 +606,7 @@ export function CashDeskPage() {
                   <span>
                     <Money amount={w.balance} currency={w.currency} />
                     {Number(w.frozen) > 0 && (
-                      <span className="muted"> · {formatMoney(w.frozen, w.currency)} frozen</span>
+                      <span className="muted">{t('· {0} frozen', formatMoney(w.frozen, w.currency))}</span>
                     )}
                   </span>
                 </div>
@@ -586,10 +618,10 @@ export function CashDeskPage() {
           <OperationForm key={owner.id} owner={owner} />
         ) : (
           <div className="card">
-            <Empty title={can('wallet.cash') ? 'Pick an account first' : 'Read-only access'}>
+            <Empty title={can('wallet.cash') ? t('Pick an account first') : t('Read-only access')}>
               {can('wallet.cash')
-                ? 'Search for the person or company on the left.'
-                : 'Only finance managers, admins and the owner can move money.'}
+                ? t('Search for the person or company on the left.')
+                : t('Only finance managers, admins and the owner can move money.')}
             </Empty>
           </div>
         )}
@@ -597,18 +629,18 @@ export function CashDeskPage() {
 
       <div className="card pad-0 table-wrap">
         <div className="card-header" style={{ padding: '16px 18px 0' }}>
-          <h3>Journal</h3>
+          <h3>{t('Journal')}</h3>
         </div>
         <ErrorAlert error={journal.error} />
         <table className="table">
           <thead>
             <tr>
-              <th>Date</th>
-              <th>Account</th>
-              <th>Operation</th>
-              <th className="right">Amount</th>
-              <th>Reference</th>
-              <th>Processed by</th>
+              <th>{t('Date')}</th>
+              <th>{t('Account')}</th>
+              <th>{t('Operation')}</th>
+              <th className="right">{t('Amount')}</th>
+              <th>{t('Reference')}</th>
+              <th>{t('Processed by')}</th>
             </tr>
           </thead>
           <tbody>
@@ -617,7 +649,8 @@ export function CashDeskPage() {
                 <td className="small nowrap">{formatDate(op.createdAt)}</td>
                 <td>{op.ownerName}</td>
                 <td className="small">
-                  {humanize(op.type)} · {op.method === 'physical_cash' ? 'cash desk' : 'manager transfer'}
+                  {humanize(op.type)} ·{' '}
+                  {op.method === 'physical_cash' ? t('cash desk') : t('manager transfer')}
                 </td>
                 <td className={`right ${op.type === 'deposit' ? 'pos' : 'neg'}`}>
                   <Money amount={op.amount} currency={op.currency} />
@@ -631,7 +664,7 @@ export function CashDeskPage() {
             ))}
           </tbody>
         </table>
-        {journal.data?.items.length === 0 && <Empty title="No operations yet" />}
+        {journal.data?.items.length === 0 && <Empty title={t('No operations yet')} />}
         {journal.data && (
           <Pager total={journal.data.total} limit={limit} offset={offset} onChange={setOffset} />
         )}

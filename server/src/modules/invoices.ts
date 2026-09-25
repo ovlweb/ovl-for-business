@@ -46,6 +46,7 @@ import {
   type WalletRow,
 } from './wallets/service';
 import { queueNotification } from '../lib/notify';
+import { text } from '../lib/i18n';
 
 export type InvoiceRow = typeof invoices.$inferSelect;
 export type Party = { type: 'user' | 'organization'; id: string };
@@ -250,8 +251,8 @@ export async function announceInvoice(
   if (event === 'issued')
     await queueNotification(app.db, recipients, {
       type: 'invoice',
-      title: `Invoice ${row.number} from ${view!.issuer.name}: ${total}`,
-      body: row.dueDate ? `Due ${row.dueDate}` : 'Pay it from Invoices.',
+      title: text`Invoice ${row.number} from ${view!.issuer.name}: ${total}`,
+      body: row.dueDate ? text`Due ${row.dueDate}` : 'Pay it from Invoices.',
       link: '/invoices',
     });
   else if (event === 'paid')
@@ -259,15 +260,15 @@ export async function announceInvoice(
       type: 'invoice',
       title:
         row.status === 'paid'
-          ? `Invoice ${row.number} was paid: ${total}`
-          : `Invoice ${row.number}: ${formatAmount(row.amountPaid, row.currency)} of ${total} paid`,
-      body: `By ${view!.recipient.name}`,
+          ? text`Invoice ${row.number} was paid: ${total}`
+          : text`Invoice ${row.number}: ${formatAmount(row.amountPaid, row.currency)} of ${total} paid`,
+      body: text`By ${view!.recipient.name}`,
       link: '/invoices',
     });
   else
     await queueNotification(app.db, recipients, {
       type: 'invoice',
-      title: `Invoice ${row.number} from ${view!.issuer.name} was cancelled`,
+      title: text`Invoice ${row.number} from ${view!.issuer.name} was cancelled`,
       body: total,
       link: '/invoices',
     });
@@ -277,11 +278,11 @@ export async function announceInvoice(
 async function checkPayable(tx: Db, invoiceId: string, wallet: WalletRow): Promise<InvoiceRow> {
   const [invoice] = await tx.select().from(invoices).where(eq(invoices.id, invoiceId)).for('update');
   if (!invoice) throw notFound('Invoice');
-  if (invoice.status !== 'open') throw conflict(`This invoice is already ${invoice.status}`);
+  if (invoice.status !== 'open') throw conflict(text`This invoice is already ${invoice.status}`);
   const payer = recipientOf(invoice);
   if (wallet.ownerType !== payer.type || walletOwnerId(wallet) !== payer.id)
     throw badRequest('Pay from a balance of the invoice recipient');
-  if (wallet.currency !== invoice.currency) throw badRequest(`Pay from a ${invoice.currency} balance`);
+  if (wallet.currency !== invoice.currency) throw badRequest(text`Pay from a ${invoice.currency} balance`);
   const issuer = issuerOf(invoice);
   const [active] =
     issuer.type === 'user'
@@ -303,7 +304,7 @@ export async function executeInvoicePayment(
   const due = invoice.total - invoice.amountPaid;
   if (input.amount <= 0n) throw badRequest('Amount must be positive');
   if (input.amount > due)
-    throw conflict(`Only ${formatAmount(due, invoice.currency)} ${invoice.currency} is still due`);
+    throw conflict(text`Only ${formatAmount(due, invoice.currency)} ${invoice.currency} is still due`);
   const full = input.amount === due;
   const [view] = await invoiceDtos(tx, [invoice], input.actorId, []);
   const target = await getOrCreateWallet(tx, issuerOf(invoice), invoice.currency);
@@ -559,7 +560,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
         const due = row.total - row.amountPaid;
         const amount = req.body.amount ? parseAmount(req.body.amount, row.currency) : due;
         if (amount > due)
-          throw conflict(`Only ${formatAmount(due, row.currency)} ${row.currency} is still due`);
+          throw conflict(text`Only ${formatAmount(due, row.currency)} ${row.currency} is still due`);
         if (await needsSecondSignature(tx, wallet, amount)) {
           const invoice = await checkPayable(tx, row.id, wallet);
           if (await pendingApprovalFor(tx, 'invoice', 'invoiceId', invoice.id))

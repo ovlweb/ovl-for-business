@@ -94,6 +94,10 @@ Android, iOS, macOS and Windows.
   Emerald, Obsidian, Ivory, Aurora, High contrast) shared by the web client, the admin panel and
   the native apps. Your choice follows your account to every device. New accounts get a
   first-run tour. Several accounts can be signed in on one device, with one-tap switching.
+- **English and Russian** — the web client, the admin panel and the native apps, with Russian plural
+  forms and dates, numbers and money in the language's format. The server answers in the same
+  language: errors, notifications, emails and chat events. The choice follows the account to every
+  device; until then each device starts in its own language.
 - **Business extras** — company team roles (owner, director, accountant, member), audit log of every
   privileged action, developer API keys, OpenAPI docs, a Ctrl/⌘ + K command palette. See
   [docs/ROADMAP.md](docs/ROADMAP.md) for what comes next.
@@ -154,6 +158,13 @@ The end-to-end suite (`e2e/`) needs the database from `pnpm db:up` and a Chromiu
 (`pnpm --filter @ovl/e2e exec playwright install chromium`). It recreates its own `ovl_e2e` database.
 
 After changing `server/src/db/schema.ts`, create a migration with `pnpm db:generate`.
+
+Translations: text in the code is English, wrapped in `t('…')` (web, admin panel), `tr('…')`
+(apps) or, on the server, passed to the error helpers and `text\`…\``. After adding text, run
+`pnpm i18n`: it lists every text, rebuilds the catalogs and prints what has no Russian yet; add it
+to a file in `scripts/i18n/ru/`and run it again. CI fails while a text is untranslated. For a
+large batch of new screens,`scripts/i18n/wrap.ts`(React) and`scripts/i18n/wrap-dart.ts`
+(Flutter) wrap the text automatically.
 
 Native builds for all five platforms: see [clients/app/README.md](clients/app/README.md). CI builds
 them in `.github/workflows/native.yml`.

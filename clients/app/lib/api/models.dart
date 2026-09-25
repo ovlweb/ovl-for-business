@@ -1,6 +1,8 @@
 // Data models of the OVL For Business API (v1). Field names mirror
 // packages/shared/src/api.ts; money is always a decimal string.
 
+import '../i18n/i18n.dart';
+
 typedef Json = Map<String, dynamic>;
 
 DateTime _date(Object? v) => DateTime.parse(v as String).toLocal();
@@ -103,6 +105,7 @@ class Preferences {
     this.statementEmails = false,
     this.readReceipts = true,
     this.pushChats = true,
+    this.locale,
   });
 
   factory Preferences.fromJson(Json? j) => Preferences(
@@ -112,6 +115,7 @@ class Preferences {
     statementEmails: j?['statementEmails'] as bool? ?? false,
     readReceipts: j?['readReceipts'] as bool? ?? true,
     pushChats: j?['pushChats'] as bool? ?? true,
+    locale: j?['locale'] as String?,
   );
 
   final String? theme;
@@ -126,6 +130,9 @@ class Preferences {
 
   /// Push new direct and group messages while away.
   final bool pushChats;
+
+  /// The language of the apps ('en', 'ru'); the device's language until set.
+  final String? locale;
 }
 
 class Me extends UserSummary {
@@ -689,8 +696,8 @@ class Application {
     final name = payload['name'] ?? payload['title'];
     if (name is String && name.isNotEmpty) return name;
     return switch (type) {
-      'moderator' => 'Join the moderation team',
-      'council' => 'Join the council',
+      'moderator' => tr('Join the moderation team'),
+      'council' => tr('Join the council'),
       _ => workflows[type]?.label ?? type,
     };
   }
@@ -754,11 +761,13 @@ class RegistryEntry {
   final RegistryHolder holder;
   final DateTime issuedAt;
 
-  String get kindLabel => kind == 'license'
-      ? (licenseTypeLabels[licenseType] ?? 'License')
-      : kind == 'virtual_country'
-      ? 'Virtual country'
-      : 'Organization';
+  String get kindLabel => tr(
+    kind == 'license'
+        ? (licenseTypeLabels[licenseType] ?? 'License')
+        : kind == 'virtual_country'
+        ? 'Virtual country'
+        : 'Organization',
+  );
 }
 
 class StockListing {
@@ -1037,13 +1046,24 @@ class Message {
 
   bool get isSystem => kind == 'system';
 
+  /// The text to show: system lines from the server ("Maria added Oleg") in the reader's language.
+  String get text {
+    final t = meta['text'];
+    if (!isSystem || t is! Map || t['key'] is! String) return body;
+    // Names stay as they are; values the server marks as {label: …} are translated too.
+    final values = (t['values'] as List? ?? const [])
+        .map((v) => v is Map && v['label'] is String ? tr(v['label'] as String) : v)
+        .toList();
+    return tr(t['key'] as String, values);
+  }
+
   /// The message in one line: its text, or what it carries.
   String get summary {
-    if (deleted) return 'Message deleted';
-    if (body.isNotEmpty) return body;
+    if (deleted) return tr('Message deleted');
+    if (body.isNotEmpty) return text;
     if (attachments.isEmpty) return '';
     final images = attachments.where((f) => f.isImage).length;
-    return images == attachments.length ? (images > 1 ? '$images photos' : 'Photo') : 'File';
+    return images == attachments.length ? (images > 1 ? plural(images, 'photo') : tr('Photo')) : tr('File');
   }
 }
 
@@ -1154,23 +1174,28 @@ class Story {
 // ---------------------------------------------------------------------------
 
 class ChecklistItem {
-  const ChecklistItem(this.key, this.label);
+  const ChecklistItem(this.key, this._label);
   final String key;
-  final String label;
+  final String _label;
+  String get label => tr(_label);
 }
 
 class WorkflowStage {
-  const WorkflowStage(this.key, this.label, this.description, {this.checklist = const []});
+  const WorkflowStage(this.key, this._label, this._description, {this.checklist = const []});
   final String key;
-  final String label;
-  final String description;
+  final String _label;
+  final String _description;
+  String get label => tr(_label);
+  String get description => tr(_description);
   final List<ChecklistItem> checklist;
 }
 
 class Workflow {
-  const Workflow(this.label, this.description, this.stages);
-  final String label;
-  final String description;
+  const Workflow(this._label, this._description, this.stages);
+  final String _label;
+  final String _description;
+  String get label => tr(_label);
+  String get description => tr(_description);
   final List<WorkflowStage> stages;
 }
 
@@ -1331,11 +1356,11 @@ class GovernanceInfo {
   final int votesNeeded;
   final List<({UserSummary user, DateTime? termEndsAt})> council;
 
-  String get votingLabel => switch (councilVoting) {
-    'majority' => 'more than half of the council',
-    'two_thirds' => 'two thirds of the council',
-    _ => 'a fixed number of votes',
-  };
+  String get votingLabel => (switch (councilVoting) {
+    'majority' => tr('more than half of the council'),
+    'two_thirds' => tr('two thirds of the council'),
+    _ => tr('a fixed number of votes'),
+  });
 }
 
 /// A published transparency report; `stats` keeps the server's sections as they are.

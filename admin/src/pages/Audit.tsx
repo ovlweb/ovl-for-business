@@ -1,4 +1,4 @@
-import { ErrorAlert, formatDate, PageHeader, saveBlob, Spinner, useDebounced, useToast } from '@ovl/ui';
+import { ErrorAlert, formatDate, PageHeader, saveBlob, Spinner, useDebounced, useToast, t } from '@ovl/ui';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../api';
@@ -25,15 +25,15 @@ export function AuditPage() {
     <div className="page">
       <PageHeader
         icon="shield"
-        title="Audit log"
-        subtitle="Every privileged action: role changes, money operations, approvals, registry changes…"
+        title={t('Audit log')}
+        subtitle={t('Every privileged action: role changes, money operations, approvals, registry changes…')}
         actions={
           <div className="row">
             <button className="btn" disabled={exportLog.isPending} onClick={() => exportLog.mutate('csv')}>
-              Export CSV
+              {t('Export CSV')}
             </button>
             <button className="btn" disabled={exportLog.isPending} onClick={() => exportLog.mutate('ndjson')}>
-              Export NDJSON
+              {t('Export NDJSON')}
             </button>
           </div>
         }
@@ -41,7 +41,7 @@ export function AuditPage() {
       <div className="filters">
         <input
           className="input"
-          placeholder="Action prefix, e.g. wallet. or application."
+          placeholder={t('Action prefix, e.g. wallet. or application.')}
           value={action}
           onChange={(e) => {
             setAction(e.target.value);
@@ -55,19 +55,19 @@ export function AuditPage() {
         <table className="table">
           <thead>
             <tr>
-              <th>Time</th>
-              <th>Actor</th>
-              <th>Action</th>
-              <th>Target</th>
-              <th>Details</th>
-              <th>IP</th>
+              <th>{t('Time')}</th>
+              <th>{t('Actor')}</th>
+              <th>{t('Action')}</th>
+              <th>{t('Target')}</th>
+              <th>{t('Details')}</th>
+              <th>{t('IP')}</th>
             </tr>
           </thead>
           <tbody>
             {logs.data?.items.map((l) => (
               <tr key={l.id}>
                 <td className="small nowrap">{formatDate(l.createdAt)}</td>
-                <td>{l.actor ? `@${l.actor.username}` : 'system'}</td>
+                <td>{l.actor ? `@${l.actor.username}` : t('system')}</td>
                 <td>
                   <code>{l.action}</code>
                 </td>

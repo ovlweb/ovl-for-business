@@ -1,4 +1,4 @@
-import { Empty, ErrorAlert, Icon, PageHeader, Spinner } from '@ovl/ui';
+import { Empty, ErrorAlert, Icon, PageHeader, Spinner, t } from '@ovl/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../api';
@@ -25,22 +25,22 @@ export function WalletPage() {
     <div className="page stack-lg">
       <PageHeader
         icon="wallet"
-        title="Wallet"
-        subtitle="Your personal balances in any world currency."
+        title={t('Wallet')}
+        subtitle={t('Your personal balances in any world currency.')}
         actions={
           selected && (
             <>
               <button className="btn" onClick={() => setCash('deposit')}>
-                <Icon name="incoming" size={16} /> Deposit
+                <Icon name="incoming" size={16} /> {t('Deposit')}
               </button>
               <button className="btn" onClick={() => setCash('withdrawal')}>
-                <Icon name="outgoing" size={16} /> Withdraw
+                <Icon name="outgoing" size={16} /> {t('Withdraw')}
               </button>
               <button className="btn" onClick={() => setConverting(true)}>
-                <Icon name="refresh" size={16} /> Convert
+                <Icon name="refresh" size={16} /> {t('Convert')}
               </button>
               <button className="btn primary" onClick={() => setSending(true)}>
-                <Icon name="send" size={16} /> Send money
+                <Icon name="send" size={16} /> {t('Send money')}
               </button>
             </>
           )
@@ -49,22 +49,27 @@ export function WalletPage() {
       <div className="alert info small">
         <Icon name="info" size={17} />
         <span>
-          Deposits and payouts are handled by finance managers, by bank transfer or at the cash desk. Ask for
-          one with <b>Deposit</b> or <b>Withdraw</b>; a payout holds the amount until it is paid out.
+          {t(
+            'Deposits and payouts are handled by finance managers, by bank transfer or at the cash desk. Ask for one with',
+          )}{' '}
+          <b>{t('Deposit')}</b> {t('or')} <b>{t('Withdraw')}</b>
+          {t('; a payout holds the amount until it is paid out.')}
         </span>
       </div>
       {wallets.isLoading && <Spinner center />}
       <ErrorAlert error={wallets.error} />
       {wallets.data && wallets.data.length === 0 && (
         <div className="card">
-          <Empty title="No balances yet">Open a balance in a currency to receive transfers.</Empty>
+          <Empty title={t('No balances yet')}>
+            {t('Open a balance in a currency to receive transfers.')}
+          </Empty>
         </div>
       )}
       {wallets.data && wallets.data.length > 0 && (
         <WalletCards wallets={wallets.data} selected={selected?.id} onSelect={setSelectedId} />
       )}
       <div className="card stack-sm">
-        <h3>Open a balance in another currency</h3>
+        <h3>{t('Open a balance in another currency')}</h3>
         <OpenWalletForm
           onOpen={async (currency) => {
             const wallet = await api.wallets.open(currency);

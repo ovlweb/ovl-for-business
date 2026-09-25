@@ -1,5 +1,5 @@
 import { QUICK_REACTIONS, type FileInfo, type Message, type UserSummary } from '@ovl/shared';
-import { AttachmentList, ErrorAlert } from '@ovl/ui';
+import { AttachmentList, ErrorAlert, t } from '@ovl/ui';
 import { useRef, useState, type ReactNode } from 'react';
 import { api } from '../api';
 
@@ -86,7 +86,7 @@ export function QuickReactions({
   onToggle: (emoji: string, mine: boolean) => void;
 }) {
   return (
-    <div className="quick-reactions" role="group" aria-label="React">
+    <div className="quick-reactions" role="group" aria-label={t('React')}>
       {QUICK_REACTIONS.map((emoji) => {
         const mine = message.reactions.some((r) => r.emoji === emoji && r.mine);
         return (
@@ -94,7 +94,7 @@ export function QuickReactions({
             key={emoji}
             type="button"
             className={`btn sm ghost${mine ? ' active' : ''}`}
-            aria-label={`React ${emoji}`}
+            aria-label={t('React {0}', emoji)}
             onClick={() => onToggle(emoji, mine)}
           >
             {emoji}
@@ -137,7 +137,7 @@ export function useChatUploads(max = 10) {
       type="file"
       multiple
       hidden
-      aria-label="Choose files to attach"
+      aria-label={t('Choose files to attach')}
       accept="image/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.odt,.ods,.zip"
       onChange={(e) => {
         const picked = [...(e.target.files ?? [])];
@@ -187,7 +187,7 @@ export function MentionList({
 }) {
   if (!people.length) return null;
   return (
-    <div className="mention-list" role="listbox" aria-label="Mention someone">
+    <div className="mention-list" role="listbox" aria-label={t('Mention someone')}>
       {people.map((u, i) => (
         <button
           key={u.id}

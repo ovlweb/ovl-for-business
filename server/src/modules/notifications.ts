@@ -15,6 +15,7 @@ import { iso, isoOrNull } from '../lib/mappers';
 import { deliverNotifications, notificationDto } from '../lib/notify';
 import { assertPublicUrl } from '../lib/webhooks';
 import { currentUser } from '../plugins/auth';
+import { text } from '../lib/i18n';
 
 export async function notificationRoutes(fastify: FastifyInstance) {
   const app = fastify.withTypeProvider<ZodTypeProvider>();
@@ -169,7 +170,7 @@ export async function notificationRoutes(fastify: FastifyInstance) {
         const body = req.body;
         const config = await app.push.publicConfig();
         if ((body.kind === 'fcm' && !config.fcm) || (body.kind === 'apns' && !config.apns))
-          throw badRequest(`This server does not send ${body.kind.toUpperCase()} notifications`);
+          throw badRequest(text`This server does not send ${body.kind.toUpperCase()} notifications`);
         if (body.kind === 'webpush') {
           try {
             await assertPublicUrl(body.endpoint, app.config.WEBHOOK_ALLOW_PRIVATE_NETWORKS);

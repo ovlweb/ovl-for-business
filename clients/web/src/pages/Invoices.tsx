@@ -27,6 +27,8 @@ import {
   StaggerItem,
   StatusBadge,
   useToast,
+  t,
+  msg,
 } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
@@ -39,10 +41,10 @@ type Direction = 'incoming' | 'outgoing';
 type View = Direction | 'recurring';
 
 const EVERY: Record<InvoiceInterval, string> = {
-  weekly: 'Every week',
-  monthly: 'Every month',
-  quarterly: 'Every 3 months',
-  yearly: 'Every year',
+  weekly: msg('Every week'),
+  monthly: msg('Every month'),
+  quarterly: msg('Every 3 months'),
+  yearly: msg('Every year'),
 };
 
 const inDays = (days: number) => {
@@ -94,11 +96,13 @@ export function InvoicesPage() {
     <div className="page stack-lg">
       <PageHeader
         icon="receipt"
-        title="Invoices"
-        subtitle="Bill people and companies, and pay what you are billed — personally or for your companies."
+        title={t('Invoices')}
+        subtitle={t(
+          'Bill people and companies, and pay what you are billed — personally or for your companies.',
+        )}
         actions={
           <button className="btn primary" onClick={() => setCreating(true)}>
-            <Icon name="plus" size={16} /> New invoice
+            <Icon name="plus" size={16} /> {t('New invoice')}
           </button>
         }
       />
@@ -108,7 +112,7 @@ export function InvoicesPage() {
             <span className="kpi-icon">
               <Icon name="outgoing" size={16} />
             </span>
-            To pay
+            {t('To pay')}
           </span>
           <span className="kpi-value compact">{totals(toPay)}</span>
           <span className="small muted">{plural(toPay.length, 'open invoice')}</span>
@@ -118,7 +122,7 @@ export function InvoicesPage() {
             <span className="kpi-icon">
               <Icon name="incoming" size={16} />
             </span>
-            To receive
+            {t('To receive')}
           </span>
           <span className="kpi-value compact">{totals(toReceive)}</span>
           <span className="small muted">{plural(toReceive.length, 'open invoice')}</span>
@@ -128,10 +132,10 @@ export function InvoicesPage() {
             <span className="kpi-icon">
               <Icon name="clock" size={16} />
             </span>
-            Overdue to pay
+            {t('Overdue to pay')}
           </span>
           <span className={`kpi-value${overdue ? ' neg' : ''}`}>{overdue}</span>
-          <span className="small muted">past their due date</span>
+          <span className="small muted">{t('past their due date')}</span>
         </StaggerItem>
       </Stagger>
 
@@ -141,17 +145,17 @@ export function InvoicesPage() {
             value={view}
             onChange={setView}
             options={[
-              { value: 'incoming', label: 'Received' },
-              { value: 'outgoing', label: 'Sent' },
-              { value: 'recurring', label: 'Recurring' },
+              { value: 'incoming', label: t('Received') },
+              { value: 'outgoing', label: t('Sent') },
+              { value: 'recurring', label: t('Recurring') },
             ]}
           />
           <div className="row" hidden={view === 'recurring'}>
             <button className={`chip${onlyOpen ? ' active' : ''}`} onClick={() => setOnlyOpen(true)}>
-              Open
+              {t('Open')}
             </button>
             <button className={`chip${!onlyOpen ? ' active' : ''}`} onClick={() => setOnlyOpen(false)}>
-              All
+              {t('All')}
             </button>
           </div>
         </div>
@@ -159,10 +163,10 @@ export function InvoicesPage() {
         {view !== 'recurring' && <ErrorAlert error={list.error} />}
         {view !== 'recurring' && list.isLoading && <SkeletonList rows={3} />}
         {view !== 'recurring' && list.data?.length === 0 && (
-          <Empty icon="receipt" title={onlyOpen ? 'Nothing open' : 'No invoices yet'}>
+          <Empty icon="receipt" title={onlyOpen ? t('Nothing open') : t('No invoices yet')}>
             {direction === 'incoming'
-              ? 'Invoices people and companies send you appear here.'
-              : 'Create an invoice to bill a person or a company.'}
+              ? t('Invoices people and companies send you appear here.')
+              : t('Create an invoice to bill a person or a company.')}
           </Empty>
         )}
         {view !== 'recurring' && !!list.data?.length && (
@@ -170,11 +174,11 @@ export function InvoicesPage() {
             <table className="table invoices-table">
               <thead>
                 <tr>
-                  <th>Invoice</th>
-                  <th>{direction === 'incoming' ? 'From' : 'To'}</th>
-                  <th>Due</th>
-                  <th className="right">Total</th>
-                  <th>Status</th>
+                  <th>{t('Invoice')}</th>
+                  <th>{direction === 'incoming' ? t('From') : t('To')}</th>
+                  <th>{t('Due')}</th>
+                  <th className="right">{t('Total')}</th>
+                  <th>{t('Status')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -189,13 +193,13 @@ export function InvoicesPage() {
                           <span
                             className="badge info"
                             style={{ marginLeft: 6 }}
-                            title={EVERY[i.recurring.interval as InvoiceInterval]}
+                            title={t(EVERY[i.recurring.interval as InvoiceInterval])}
                           >
-                            <Icon name="refresh" size={11} /> Recurring
+                            <Icon name="refresh" size={11} /> {t('Recurring')}
                           </span>
                         )}
                         <div className="small muted">
-                          {own.type === 'organization' ? own.name : 'Personal'} ·{' '}
+                          {own.type === 'organization' ? own.name : t('Personal')} ·{' '}
                           {formatDate(i.createdAt, false)}
                         </div>
                       </td>
@@ -207,7 +211,9 @@ export function InvoicesPage() {
                       <td className="right bold">
                         <Money amount={i.total} currency={i.currency} />
                         {partlyPaid(i) && (
-                          <div className="small muted">{formatMoney(i.amountDue, i.currency)} due</div>
+                          <div className="small muted">
+                            {t('{0} due', formatMoney(i.amountDue, i.currency))}
+                          </div>
                         )}
                       </td>
                       <td>
@@ -245,7 +251,7 @@ function InvoiceDocument({ invoice }: { invoice: Invoice }) {
         <div className="row" style={{ gap: 10 }}>
           <Logo size={34} />
           <div>
-            <div className="invoice-title">Invoice</div>
+            <div className="invoice-title">{t('Invoice')}</div>
             <div className="mono small">{invoice.number}</div>
           </div>
         </div>
@@ -253,20 +259,20 @@ function InvoiceDocument({ invoice }: { invoice: Invoice }) {
       </header>
       <div className="invoice-parties">
         <div>
-          <div className="invoice-label">From</div>
+          <div className="invoice-label">{t('From')}</div>
           <b>{invoice.issuer.name}</b>
           <div className="small muted">{invoice.issuer.handle}</div>
         </div>
         <div>
-          <div className="invoice-label">Bill to</div>
+          <div className="invoice-label">{t('Bill to')}</div>
           <b>{invoice.recipient.name}</b>
           <div className="small muted">{invoice.recipient.handle}</div>
         </div>
         <div>
-          <div className="invoice-label">Issued</div>
+          <div className="invoice-label">{t('Issued')}</div>
           <b>{formatDate(invoice.createdAt, false)}</b>
           <div className="invoice-label" style={{ marginTop: 8 }}>
-            Due
+            {t('Due')}
           </div>
           <b className={invoice.overdue ? 'neg' : ''}>{day(invoice.dueDate)}</b>
         </div>
@@ -274,10 +280,10 @@ function InvoiceDocument({ invoice }: { invoice: Invoice }) {
       <table className="table invoice-lines">
         <thead>
           <tr>
-            <th>Description</th>
-            <th className="right">Qty</th>
-            <th className="right">Unit price</th>
-            <th className="right">Amount</th>
+            <th>{t('Description')}</th>
+            <th className="right">{t('Qty')}</th>
+            <th className="right">{t('Unit price')}</th>
+            <th className="right">{t('Amount')}</th>
           </tr>
         </thead>
         <tbody>
@@ -293,7 +299,7 @@ function InvoiceDocument({ invoice }: { invoice: Invoice }) {
         <tfoot>
           <tr>
             <td colSpan={3} className="right bold">
-              Total ({invoice.currency})
+              {t('Total ({0})', invoice.currency)}
             </td>
             <td className="right invoice-total nowrap">{formatMoney(invoice.total, invoice.currency)}</td>
           </tr>
@@ -301,13 +307,13 @@ function InvoiceDocument({ invoice }: { invoice: Invoice }) {
             <>
               <tr>
                 <td colSpan={3} className="right small">
-                  Paid so far
+                  {t('Paid so far')}
                 </td>
                 <td className="right nowrap small">{formatMoney(invoice.amountPaid, invoice.currency)}</td>
               </tr>
               <tr>
                 <td colSpan={3} className="right bold">
-                  Still due
+                  {t('Still due')}
                 </td>
                 <td className="right nowrap bold">{formatMoney(invoice.amountDue, invoice.currency)}</td>
               </tr>
@@ -318,7 +324,7 @@ function InvoiceDocument({ invoice }: { invoice: Invoice }) {
       {invoice.note && <p className="small invoice-note">{invoice.note}</p>}
       {invoice.payments.length > 1 || (invoice.payments.length === 1 && invoice.status === 'open') ? (
         <div className="stack-sm">
-          <div className="invoice-label">Payments</div>
+          <div className="invoice-label">{t('Payments')}</div>
           {invoice.payments.map((p) => (
             <div key={p.id} className="spread small">
               <span>
@@ -331,16 +337,19 @@ function InvoiceDocument({ invoice }: { invoice: Invoice }) {
       ) : null}
       {invoice.recurring && (
         <p className="tiny muted">
-          <Icon name="refresh" size={12} /> Recurring invoice ·{' '}
-          {EVERY[invoice.recurring.interval as InvoiceInterval].toLowerCase()}
+          <Icon name="refresh" size={12} />{' '}
+          {t(
+            'Recurring invoice · {0}',
+            t(EVERY[invoice.recurring.interval as InvoiceInterval]).toLowerCase(),
+          )}
         </p>
       )}
       <footer className="tiny muted">
         {invoice.status === 'paid' && invoice.paidAt
-          ? `Paid on ${formatDate(invoice.paidAt)} by ${invoice.paidBy?.displayName ?? ''}.`
+          ? t('Paid on {0} by {1}.', formatDate(invoice.paidAt), invoice.paidBy?.displayName ?? '')
           : invoice.status === 'cancelled'
-            ? `Cancelled${invoice.cancelReason ? `: ${invoice.cancelReason}` : ''}.`
-            : 'Pay in OVL For Business: Invoices → Pay, from a balance in the invoice currency.'}
+            ? t('Cancelled{0}.', invoice.cancelReason ? `: ${invoice.cancelReason}` : '')
+            : t('Pay in OVL For Business: Invoices → Pay, from a balance in the invoice currency.')}
       </footer>
     </article>
   );
@@ -387,7 +396,7 @@ function InvoiceModal({ id, onClose }: { id: string; onClose: () => void }) {
       setPartial(false);
       setPart('');
       isPendingApproval(paid)
-        ? done('Above the approval limit: another finance member has to approve this payment')
+        ? done(t('Above the approval limit: another finance member has to approve this payment'))
         : done(`Paid ${formatMoney(amount, paid.currency)} to ${paid.issuer.name}`);
     },
   });
@@ -396,12 +405,12 @@ function InvoiceModal({ id, onClose }: { id: string; onClose: () => void }) {
     mutationFn: () => api.invoices.cancel(id, reason || undefined),
     onSuccess: () => {
       setCancelling(false);
-      done('Invoice cancelled');
+      done(t('Invoice cancelled'));
     },
   });
 
   return (
-    <Modal title={i ? `Invoice ${i.number}` : 'Invoice'} onClose={onClose} wide>
+    <Modal title={i ? t('Invoice {0}', i.number) : t('Invoice')} onClose={onClose} wide>
       <ErrorAlert error={invoice.error} />
       {!i && !invoice.error && <SkeletonList rows={4} avatar={false} />}
       {i && (
@@ -419,23 +428,27 @@ function InvoiceModal({ id, onClose }: { id: string; onClose: () => void }) {
             <div className="invoice-pay">
               {matching.length > 0 ? (
                 <>
-                  <Field label="Pay from">
+                  <Field label={t('Pay from')}>
                     <select
                       className="select"
                       value={wallet?.id}
                       onChange={(e) => setWalletId(e.target.value)}
-                      aria-label="Pay from"
+                      aria-label={t('Pay from')}
                     >
                       {matching.map((w) => (
                         <option key={w.id} value={w.id}>
-                          {i.recipient.type === 'organization' ? i.recipient.name : 'Personal'} {w.currency} ·
-                          available {formatMoney(w.available, w.currency)}
+                          {t(
+                            '{0}  {1} · available {2}',
+                            i.recipient.type === 'organization' ? i.recipient.name : 'Personal',
+                            w.currency,
+                            formatMoney(w.available, w.currency),
+                          )}
                         </option>
                       ))}
                     </select>
                   </Field>
                   {partial && (
-                    <Field label={`Amount to pay now (of ${formatMoney(i.amountDue, i.currency)})`}>
+                    <Field label={t('Amount to pay now (of {0})', formatMoney(i.amountDue, i.currency))}>
                       <input
                         className="input"
                         inputMode="decimal"
@@ -453,10 +466,10 @@ function InvoiceModal({ id, onClose }: { id: string; onClose: () => void }) {
                       onClick={() => pay.mutate(payAmount)}
                     >
                       {pay.isPending ? <span className="spinner light" /> : <Icon name="check" size={16} />}
-                      Pay {Number(payAmount) > 0 ? formatMoney(payAmount, i.currency) : ''}
+                      {t('Pay')} {Number(payAmount) > 0 ? formatMoney(payAmount, i.currency) : ''}
                     </button>
                     <button type="button" className="btn ghost sm" onClick={() => setPartial(!partial)}>
-                      {partial ? 'Pay everything instead' : 'Pay part of it'}
+                      {partial ? t('Pay everything instead') : t('Pay part of it')}
                     </button>
                   </div>
                 </>
@@ -465,13 +478,13 @@ function InvoiceModal({ id, onClose }: { id: string; onClose: () => void }) {
                   <div className="alert info small">
                     <Icon name="info" size={16} />
                     <span>
-                      To pay, open a {i.currency} balance and ask for a deposit on the{' '}
+                      {t('To pay, open a {0} balance and ask for a deposit on the', i.currency)}{' '}
                       <Link
                         to={
                           i.recipient.type === 'organization' ? `/companies/${i.recipient.handle}` : '/wallet'
                         }
                       >
-                        wallet page
+                        {t('wallet page')}
                       </Link>
                       .
                     </span>
@@ -481,7 +494,7 @@ function InvoiceModal({ id, onClose }: { id: string; onClose: () => void }) {
             </div>
           )}
           {cancelling && (
-            <Field label="Reason (optional, shown to the recipient)">
+            <Field label={t('Reason (optional, shown to the recipient)')}>
               <input
                 className="input"
                 value={reason}
@@ -493,7 +506,7 @@ function InvoiceModal({ id, onClose }: { id: string; onClose: () => void }) {
           )}
           <div className="spread">
             <button className="btn" onClick={() => window.print()}>
-              <Icon name="printer" size={16} /> Print or save as PDF
+              <Icon name="printer" size={16} /> {t('Print or save as PDF')}
             </button>
             {i.direction === 'outgoing' && i.status === 'open' && !partlyPaid(i) && (
               <button
@@ -501,7 +514,7 @@ function InvoiceModal({ id, onClose }: { id: string; onClose: () => void }) {
                 disabled={cancel.isPending}
                 onClick={() => (cancelling ? cancel.mutate() : setCancelling(true))}
               >
-                {cancelling ? 'Cancel invoice' : 'Cancel invoice…'}
+                {cancelling ? t('Cancel invoice') : t('Cancel invoice…')}
               </button>
             )}
           </div>
@@ -583,8 +596,12 @@ function NewInvoiceModal({
         return {
           invoiceId: schedule.lastInvoiceId,
           message: schedule.invoiceCount
-            ? `First invoice sent to ${schedule.recipient.name}; the next goes out on ${day(schedule.nextRunOn!)}`
-            : `Recurring invoice set up: the first goes out on ${day(schedule.startDate)}`,
+            ? t(
+                'First invoice sent to {0}; the next goes out on {1}',
+                schedule.recipient.name,
+                day(schedule.nextRunOn!),
+              )
+            : t('Recurring invoice set up: the first goes out on {0}', day(schedule.startDate)),
         };
       }
       const invoice = await api.invoices.create(input);
@@ -604,7 +621,7 @@ function NewInvoiceModal({
     setLines(lines.map((l, i) => (i === n ? { ...l, ...patch } : l)));
 
   return (
-    <Modal title="New invoice" onClose={onClose} wide>
+    <Modal title={t('New invoice')} onClose={onClose} wide>
       <form
         className="stack"
         onSubmit={(e) => {
@@ -613,14 +630,14 @@ function NewInvoiceModal({
         }}
       >
         <div className="grid-2">
-          <Field label="From">
+          <Field label={t('From')}>
             <select
               className="select"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
-              aria-label="From"
+              aria-label={t('From')}
             >
-              <option value="me">Me (personal)</option>
+              <option value="me">{t('Me (personal)')}</option>
               {issuers.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.name}
@@ -628,29 +645,29 @@ function NewInvoiceModal({
               ))}
             </select>
           </Field>
-          <Field label={toType === 'user' ? 'Bill to (username)' : 'Bill to (company handle)'}>
+          <Field label={toType === 'user' ? t('Bill to (username)') : t('Bill to (company handle)')}>
             <div className="row" style={{ gap: 6 }}>
               <select
                 className="select"
                 style={{ width: 130 }}
                 value={toType}
                 onChange={(e) => setToType(e.target.value as 'user' | 'organization')}
-                aria-label="Recipient type"
+                aria-label={t('Recipient type')}
               >
-                <option value="organization">Company</option>
-                <option value="user">Person</option>
+                <option value="organization">{t('Company')}</option>
+                <option value="user">{t('Person')}</option>
               </select>
               <input
                 className="input"
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
-                placeholder={toType === 'user' ? 'username' : 'company-handle'}
-                aria-label="Recipient"
+                placeholder={toType === 'user' ? t('username') : t('company-handle')}
+                aria-label={t('Recipient')}
                 required
               />
             </div>
           </Field>
-          <Field label="Currency">
+          <Field label={t('Currency')}>
             <select className="select" value={currency} onChange={(e) => setCurrency(e.target.value)}>
               {CURRENCIES.map((c) => (
                 <option key={c.code} value={c.code}>
@@ -659,22 +676,22 @@ function NewInvoiceModal({
               ))}
             </select>
           </Field>
-          <Field label="Repeat">
+          <Field label={t('Repeat')}>
             <select
               className="select"
               value={repeat}
               onChange={(e) => setRepeat(e.target.value as InvoiceInterval | '')}
             >
-              <option value="">Does not repeat</option>
+              <option value="">{t('Does not repeat')}</option>
               {(Object.keys(EVERY) as InvoiceInterval[]).map((k) => (
                 <option key={k} value={k}>
-                  {EVERY[k]}
+                  {t(EVERY[k])}
                 </option>
               ))}
             </select>
           </Field>
           {!repeat && (
-            <Field label="Due date">
+            <Field label={t('Due date')}>
               <input
                 className="input"
                 type="date"
@@ -687,7 +704,7 @@ function NewInvoiceModal({
           )}
           {repeat && (
             <>
-              <Field label="First invoice on" hint="Today sends the first one at once.">
+              <Field label={t('First invoice on')} hint={t('Today sends the first one at once.')}>
                 <input
                   className="input"
                   type="date"
@@ -697,7 +714,10 @@ function NewInvoiceModal({
                   required
                 />
               </Field>
-              <Field label="Payment term (days)" hint="Each invoice is due this many days after it is sent.">
+              <Field
+                label={t('Payment term (days)')}
+                hint={t('Each invoice is due this many days after it is sent.')}
+              >
                 <input
                   className="input"
                   inputMode="numeric"
@@ -706,7 +726,7 @@ function NewInvoiceModal({
                   required
                 />
               </Field>
-              <Field label="Last invoice by (optional)">
+              <Field label={t('Last invoice by (optional)')}>
                 <input
                   className="input"
                   type="date"
@@ -721,17 +741,17 @@ function NewInvoiceModal({
 
         <div className="stack-sm">
           <div className="invoice-line head invoice-label">
-            <span>Description</span>
-            <span>Qty</span>
-            <span>Unit price</span>
+            <span>{t('Description')}</span>
+            <span>{t('Qty')}</span>
+            <span>{t('Unit price')}</span>
             <span />
           </div>
           {lines.map((l, n) => (
             <div key={n} className="invoice-line">
               <input
                 className="input"
-                placeholder="What you are billing for"
-                aria-label={`Line ${n + 1} description`}
+                placeholder={t('What you are billing for')}
+                aria-label={t('Line {0} description', n + 1)}
                 value={l.description}
                 onChange={(e) => setLine(n, { description: e.target.value })}
                 maxLength={200}
@@ -740,7 +760,7 @@ function NewInvoiceModal({
               <input
                 className="input"
                 inputMode="numeric"
-                aria-label={`Line ${n + 1} quantity`}
+                aria-label={t('Line {0} quantity', n + 1)}
                 value={l.quantity}
                 onChange={(e) => setLine(n, { quantity: e.target.value.replace(/\D/g, '') })}
                 required
@@ -749,7 +769,7 @@ function NewInvoiceModal({
                 className="input"
                 inputMode="decimal"
                 placeholder="0.00"
-                aria-label={`Line ${n + 1} unit price`}
+                aria-label={t('Line {0} unit price', n + 1)}
                 value={l.unitPrice}
                 onChange={(e) => setLine(n, { unitPrice: e.target.value.replace(',', '.') })}
                 required
@@ -757,7 +777,7 @@ function NewInvoiceModal({
               <button
                 type="button"
                 className="btn ghost icon sm"
-                aria-label={`Remove line ${n + 1}`}
+                aria-label={t('Remove line {0}', n + 1)}
                 disabled={lines.length === 1}
                 onClick={() => setLines(lines.filter((_, i) => i !== n))}
               >
@@ -772,15 +792,15 @@ function NewInvoiceModal({
               disabled={lines.length >= 50}
               onClick={() => setLines([...lines, { description: '', quantity: '1', unitPrice: '' }])}
             >
-              <Icon name="plus" size={14} /> Add line
+              <Icon name="plus" size={14} /> {t('Add line')}
             </button>
             <span>
-              Total <b className="invoice-total">{total}</b>
+              {t('Total')} <b className="invoice-total">{total}</b>
             </span>
           </div>
         </div>
 
-        <Field label="Note (optional)" hint="Payment terms, order number, thanks…">
+        <Field label={t('Note (optional)')} hint={t('Payment terms, order number, thanks…')}>
           <textarea
             className="textarea"
             rows={2}
@@ -792,7 +812,7 @@ function NewInvoiceModal({
         <ErrorAlert error={create.error} />
         <button className="btn primary" disabled={create.isPending}>
           <Icon name={repeat ? 'refresh' : 'send'} size={16} />{' '}
-          {repeat ? 'Set up recurring invoice' : 'Send invoice'}
+          {repeat ? t('Set up recurring invoice') : t('Send invoice')}
         </button>
       </form>
     </Modal>
@@ -812,10 +832,10 @@ function Schedules() {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       toast.success(
         s.status === 'paused'
-          ? 'Recurring invoice paused'
+          ? t('Recurring invoice paused')
           : s.status === 'ended'
-            ? 'Recurring invoice ended'
-            : `Resumed: the next invoice goes out on ${day(s.nextRunOn!)}`,
+            ? t('Recurring invoice ended')
+            : t('Resumed: the next invoice goes out on {0}', day(s.nextRunOn!)),
       );
     },
   });
@@ -824,8 +844,8 @@ function Schedules() {
     <>
       <ErrorAlert error={schedules.error ?? change.error} />
       {schedules.data?.length === 0 && (
-        <Empty icon="refresh" title="No recurring invoices">
-          Choose “Repeat” on a new invoice to bill someone every week, month, quarter or year.
+        <Empty icon="refresh" title={t('No recurring invoices')}>
+          {t('Choose “Repeat” on a new invoice to bill someone every week, month, quarter or year.')}
         </Empty>
       )}
       {!!schedules.data?.length && (
@@ -833,11 +853,11 @@ function Schedules() {
           <table className="table">
             <thead>
               <tr>
-                <th>To</th>
-                <th>Every</th>
-                <th>Next invoice</th>
-                <th className="right">Amount</th>
-                <th>Status</th>
+                <th>{t('To')}</th>
+                <th>{t('Every')}</th>
+                <th>{t('Next invoice')}</th>
+                <th className="right">{t('Amount')}</th>
+                <th>{t('Status')}</th>
                 <th />
               </tr>
             </thead>
@@ -847,14 +867,17 @@ function Schedules() {
                   <td>
                     <b>{s.recipient.name}</b>
                     <div className="small muted">
-                      {s.issuer.type === 'organization' ? `From ${s.issuer.name}` : 'Personal'} ·{' '}
-                      {plural(s.invoiceCount, 'invoice')} sent
+                      {t(
+                        '{0} · {1} sent',
+                        s.issuer.type === 'organization' ? `From ${s.issuer.name}` : 'Personal',
+                        plural(s.invoiceCount, 'invoice'),
+                      )}
                     </div>
                   </td>
-                  <td className="small">{EVERY[s.interval]}</td>
+                  <td className="small">{t(EVERY[s.interval])}</td>
                   <td className="small nowrap">
                     {s.nextRunOn ? day(s.nextRunOn) : '—'}
-                    {s.endDate && <div className="muted">until {day(s.endDate)}</div>}
+                    {s.endDate && <div className="muted">{t('until {0}', day(s.endDate))}</div>}
                   </td>
                   <td className="right bold">
                     <Money amount={s.total} currency={s.currency} />
@@ -872,14 +895,14 @@ function Schedules() {
                             change.mutate({ s, status: s.status === 'active' ? 'paused' : 'active' })
                           }
                         >
-                          {s.status === 'active' ? 'Pause' : 'Resume'}
+                          {s.status === 'active' ? t('Pause') : t('Resume')}
                         </button>
                         <button
                           className="btn ghost sm"
                           disabled={change.isPending}
                           onClick={() => change.mutate({ s, status: 'ended' })}
                         >
-                          End
+                          {t('End')}
                         </button>
                       </>
                     )}

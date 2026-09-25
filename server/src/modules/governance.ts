@@ -19,6 +19,7 @@ import { expireCouncilTerms, loadGovernance, termEnd, transparencyStats } from '
 import { iso, isoOrNull, summaryColumns, toUserSummary } from '../lib/mappers';
 import { queueNotification } from '../lib/notify';
 import { currentUser } from '../plugins/auth';
+import { text } from '../lib/i18n';
 
 type ReportRow = typeof transparencyReports.$inferSelect;
 
@@ -200,7 +201,7 @@ export async function governanceRoutes(fastify: FastifyInstance) {
         await queueNotification(tx, [target.id], {
           type: 'application',
           title: ends
-            ? `Your council term now runs until ${ends.toISOString().slice(0, 10)}`
+            ? text`Your council term now runs until ${ends.toISOString().slice(0, 10)}`
             : 'Your council seat has no term limit now',
           link: '/settings',
         });

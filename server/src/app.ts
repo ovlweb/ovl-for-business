@@ -4,7 +4,7 @@ import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import websocket from '@fastify/websocket';
-import { MoneyError, PLATFORM_NAME } from '@ovl/shared';
+import { MoneyError, msg, PLATFORM_NAME } from '@ovl/shared';
 import { sql } from 'drizzle-orm';
 import Fastify, { type FastifyInstance } from 'fastify';
 import {
@@ -69,6 +69,7 @@ import { RealtimeHub } from './realtime/hub';
 import { PostgresBroker } from './realtime/postgres-broker';
 import { cleanRateLimits, postgresRateLimitStore } from './lib/rate-limit-store';
 import { Scheduler } from './lib/scheduler';
+import { requestLocale, say } from './lib/i18n';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -148,35 +149,42 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
   });
 
   app.setErrorHandler((error, req, reply) => {
+    const locale = requestLocale(req);
     if (error instanceof HttpError) {
       return reply
         .status(error.statusCode)
-        .send({ error: error.code, message: error.message, details: error.details });
+        .send({ error: error.code, message: say(locale, error.text), details: error.details });
     }
     if (hasZodFastifySchemaValidationErrors(error)) {
       return reply.status(400).send({
         error: 'validation_error',
-        message: 'Request validation failed',
+        message: say(locale, 'Request validation failed'),
         details: error.validation.map((v) => ({ path: v.instancePath, message: v.message })),
       });
     }
     if (error instanceof MoneyError) {
-      return reply.status(400).send({ error: 'invalid_amount', message: error.message });
+      return reply.status(400).send({ error: 'invalid_amount', message: say(locale, error.message) });
     }
     if (isUniqueViolation(error)) {
-      return reply.status(409).send({ error: 'conflict', message: 'This value is already taken' });
+      return reply
+        .status(409)
+        .send({ error: 'conflict', message: say(locale, 'This value is already taken') });
     }
     if (isResponseSerializationError(error)) {
       req.log.error({ err: error, issues: error.cause.issues }, 'response serialization failed');
-      return reply.status(500).send({ error: 'internal_error', message: 'Something went wrong' });
+      return reply
+        .status(500)
+        .send({ error: 'internal_error', message: say(locale, 'Something went wrong') });
     }
     const status = (error as { statusCode?: number }).statusCode;
     if (status && status >= 400 && status < 500) {
       const e = error as { code?: string; message: string };
-      return reply.status(status).send({ error: e.code?.toLowerCase() ?? 'error', message: e.message });
+      return reply
+        .status(status)
+        .send({ error: e.code?.toLowerCase() ?? 'error', message: say(locale, e.message) });
     }
     req.log.error({ err: error }, 'unhandled error');
-    return reply.status(500).send({ error: 'internal_error', message: 'Something went wrong' });
+    return reply.status(500).send({ error: 'internal_error', message: say(locale, 'Something went wrong') });
   });
 
   await app.register(helmet, {
@@ -198,6 +206,11 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
     max: config.GLOBAL_RATE_LIMIT,
     timeWindow: '1 minute',
     allowList: () => config.NODE_ENV === 'test',
+    errorResponseBuilder: (_req, context) => ({
+      statusCode: context.statusCode,
+      code: 'too_many_requests',
+      message: msg('Too many requests. Wait a minute and try again.'),
+    }),
     // A database hiccup should not lock everyone out.
     ...(sharedLimits ? { store: postgresRateLimitStore(db), skipOnError: true } : {}),
   });

@@ -12,6 +12,7 @@ import '../theme/theme.dart';
 import '../ui/format.dart';
 import '../ui/widgets.dart';
 import 'contacts.dart';
+import '../i18n/i18n.dart';
 
 /// Horizontal approval stepper: done stages get a check, the current one pulses.
 class WorkflowSteps extends StatelessWidget {
@@ -112,13 +113,13 @@ class ApplicationsScreen extends StatelessWidget {
           builder: (context, s) => PageBody(
             onRefresh: () => s.fetch(),
             children: [
-              const PageTitle(
+              PageTitle(
                 icon: LucideIcons.fileText,
-                title: 'Applications',
-                subtitle: 'Register a company, request a license, open a news channel or join the staff.',
+                title: tr('Applications'),
+                subtitle: tr('Register a company, request a license, open a news channel or join the staff.'),
               ),
               const SizedBox(height: 18),
-              Text('Start a new application', style: context.text.titleLarge),
+              Text(tr('Start a new application'), style: context.text.titleLarge),
               const SizedBox(height: 10),
               LayoutBuilder(
                 builder: (context, box) {
@@ -169,12 +170,12 @@ class ApplicationsScreen extends StatelessWidget {
               ),
               const _Licences(),
               const SizedBox(height: 24),
-              Text('Your applications', style: context.text.titleLarge),
+              Text(tr('Your applications'), style: context.text.titleLarge),
               const SizedBox(height: 10),
               if (!s.hasData)
                 const SkeletonList(rows: 3)
               else if (s.data!.isEmpty)
-                Text('Nothing submitted yet.', style: context.text.bodyMedium)
+                Text(tr('Nothing submitted yet.'), style: context.text.bodyMedium)
               else
                 for (final (i, a) in s.data!.indexed)
                   Padding(
@@ -211,7 +212,7 @@ class _Licences extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SizedBox(height: 24),
-            Text('Your licences', style: context.text.titleLarge),
+            Text(tr('Your licences'), style: context.text.titleLarge),
             const SizedBox(height: 10),
             OvlCard(
               padding: const EdgeInsets.symmetric(vertical: 6),
@@ -229,12 +230,14 @@ class _Licences extends StatelessWidget {
                         [
                           l.number,
                           l.expiresAt == null
-                              ? 'no expiry'
-                              : '${l.status == 'expired' ? 'expired' : 'valid until'} ${date(l.expiresAt!)}',
+                              ? tr('no expiry')
+                              : l.status == 'expired'
+                              ? tr('expired {0}', [date(l.expiresAt!)])
+                              : tr('valid until {0}', [date(l.expiresAt!)]),
                         ].join(' · '),
                       ),
                       trailing: l.canRenew
-                          ? FilledButton(onPressed: () => _renew(context, l), child: const Text('Renew'))
+                          ? FilledButton(onPressed: () => _renew(context, l), child: Text(tr('Renew')))
                           : StatusPill(l.renewalApplicationId != null ? 'renewal_pending' : l.status),
                     ),
                 ],
@@ -252,15 +255,15 @@ class _Licences extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialog) => AlertDialog(
-        title: Text('Renew ${l.title}?'),
+        title: Text(tr('Renew {0}?', [l.title])),
         content: TextField(
           controller: note,
           maxLines: 3,
-          decoration: const InputDecoration(hintText: 'Note for the moderator (optional)'),
+          decoration: InputDecoration(hintText: tr('Note for the moderator (optional)')),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('Ask for a renewal')),
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: Text(tr('Cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(dialog, true), child: Text(tr('Ask for a renewal'))),
         ],
       ),
     );
@@ -271,7 +274,7 @@ class _Licences extends StatelessWidget {
         if (note.text.trim().isNotEmpty) 'note': note.text.trim(),
       });
       session.queries.invalidate('applications');
-      if (context.mounted) toast(context, 'Renewal sent to moderation');
+      if (context.mounted) toast(context, tr('Renewal sent to moderation'));
     } catch (e) {
       if (context.mounted) toast(context, errorText(e), error: true);
     }
@@ -299,7 +302,7 @@ class _ApplicationCard extends StatelessWidget {
                   children: [
                     Text(a.title, style: context.text.titleMedium),
                     Text(
-                      '${workflows[a.type]?.label ?? a.type} · submitted ${date(a.createdAt)}',
+                      tr('{0} · submitted {1}', [workflows[a.type]?.label ?? a.type, date(a.createdAt)]),
                       style: context.text.bodySmall,
                     ),
                   ],
@@ -312,7 +315,7 @@ class _ApplicationCard extends StatelessWidget {
           WorkflowSteps(application: a),
           if (a.rejectionReason != null && a.rejectionReason!.isNotEmpty) ...[
             const SizedBox(height: 10),
-            Text('Reason: ${a.rejectionReason}', style: TextStyle(color: context.c.danger, fontSize: 13.5)),
+            Text(tr('Reason: {0}', [a.rejectionReason]), style: TextStyle(color: context.c.danger, fontSize: 13.5)),
           ],
           if (a.status == 'changes_requested') ...[
             const SizedBox(height: 10),
@@ -323,7 +326,7 @@ class _ApplicationCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      'Changes requested: ${a.changesRequested ?? ''}',
+                      tr('Changes requested: {0}', [a.changesRequested ?? '']),
                       style: TextStyle(color: context.c.warning, fontSize: 13.5),
                     ),
                   ),
@@ -334,7 +337,7 @@ class _ApplicationCard extends StatelessWidget {
                         builder: (_) => NewApplicationScreen(type: a.type, resubmit: a),
                       ),
                     ),
-                    child: const Text('Edit and resubmit'),
+                    child: Text(tr('Edit and resubmit')),
                   ),
                 ],
               ),
@@ -346,7 +349,7 @@ class _ApplicationCard extends StatelessWidget {
             TextButton.icon(
               onPressed: () => context.go('/companies'),
               icon: const Icon(LucideIcons.building2, size: 16),
-              label: const Text('Open company'),
+              label: Text(tr('Open company')),
             ),
           ],
           if (a.status == 'pending' || a.status == 'changes_requested') ...[
@@ -358,11 +361,11 @@ class _ApplicationCard extends StatelessWidget {
                   final ok = await showDialog<bool>(
                     context: context,
                     builder: (d) => AlertDialog(
-                      title: const Text('Withdraw application?'),
-                      content: const Text('Reviewers will stop working on it.'),
+                      title: Text(tr('Withdraw application?')),
+                      content: Text(tr('Reviewers will stop working on it.')),
                       actions: [
-                        TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Keep')),
-                        FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Withdraw')),
+                        TextButton(onPressed: () => Navigator.pop(d, false), child: Text(tr('Keep'))),
+                        FilledButton(onPressed: () => Navigator.pop(d, true), child: Text(tr('Withdraw'))),
                       ],
                     ),
                   );
@@ -370,7 +373,7 @@ class _ApplicationCard extends StatelessWidget {
                   await session.api.withdraw(a.id);
                   session.queries.invalidate('applications');
                 },
-                child: const Text('Withdraw'),
+                child: Text(tr('Withdraw')),
               ),
             ),
           ],
@@ -495,8 +498,8 @@ class _NewApplicationScreenState extends State<NewApplicationScreen> {
         toast(
           context,
           again != null
-              ? 'Changes sent — the reviewers look at it again.'
-              : 'Application submitted — you will see every approval step here.',
+              ? tr('Changes sent — the reviewers look at it again.')
+              : tr('Application submitted — you will see every approval step here.'),
         );
         if (again != null) {
           Navigator.of(context).pop();
@@ -518,29 +521,33 @@ class _NewApplicationScreenState extends State<NewApplicationScreen> {
     final session = context.watch<Session>();
     final wf = workflows[widget.type];
     if (wf == null) {
-      return const Scaffold(
-        body: EmptyState(icon: LucideIcons.fileX, title: 'Unknown application type'),
+      return Scaffold(
+        body: EmptyState(icon: LucideIcons.fileX, title: tr('Unknown application type')),
       );
     }
     final fields = <Widget>[
       if (widget.type == 'company') ...[
-        LabeledField(label: 'Company name', controller: f('name')),
+        LabeledField(label: tr('Company name'), controller: f('name')),
         _gap(),
-        LabeledField(label: 'Description', controller: f('description'), maxLines: 3),
+        LabeledField(label: tr('Description'), controller: f('description'), maxLines: 3),
         _gap(),
         Row(
           children: [
             Expanded(
-              child: LabeledField(label: 'Website (optional)', controller: f('website'), keyboard: TextInputType.url),
+              child: LabeledField(
+                label: tr('Website (optional)'),
+                controller: f('website'),
+                keyboard: TextInputType.url,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: LabeledField(label: 'Country (optional)', controller: f('country')),
+              child: LabeledField(label: tr('Country (optional)'), controller: f('country')),
             ),
           ],
         ),
         _gap(),
-        Text('Base currency', style: context.text.labelLarge?.copyWith(fontSize: 13.5)),
+        Text(tr('Base currency'), style: context.text.labelLarge?.copyWith(fontSize: 13.5)),
         const SizedBox(height: 7),
         DropdownButtonFormField<String>(
           initialValue: _currency,
@@ -555,14 +562,14 @@ class _NewApplicationScreenState extends State<NewApplicationScreen> {
           onChanged: (v) => setState(() => _currency = v ?? _currency),
         ),
         _gap(),
-        LabeledField(label: 'Business plan', controller: f('businessPlan'), maxLines: 4),
+        LabeledField(label: tr('Business plan'), controller: f('businessPlan'), maxLines: 4),
         _gap(),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           value: _list,
           onChanged: (v) => setState(() => _list = v),
-          title: const Text('List the company on the stock exchange'),
-          subtitle: const Text('Investors buy shares; 30% of each investment is frozen for 90 days.'),
+          title: Text(tr('List the company on the stock exchange')),
+          subtitle: Text(tr('Investors buy shares; 30% of each investment is frozen for 90 days.')),
         ),
         AnimatedSize(
           duration: const Duration(milliseconds: 250),
@@ -570,12 +577,12 @@ class _NewApplicationScreenState extends State<NewApplicationScreen> {
               ? Row(
                   children: [
                     Expanded(
-                      child: LabeledField(label: 'Ticker', controller: f('ticker'), hint: 'NWS'),
+                      child: LabeledField(label: tr('Ticker'), controller: f('ticker'), hint: 'NWS'),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: LabeledField(
-                        label: 'Share price ($_currency)',
+                        label: tr('Share price ({0})', [_currency]),
                         controller: f('sharePrice'),
                         keyboard: const TextInputType.numberWithOptions(decimal: true),
                       ),
@@ -583,7 +590,7 @@ class _NewApplicationScreenState extends State<NewApplicationScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: LabeledField(
-                        label: 'Total shares',
+                        label: tr('Total shares'),
                         controller: f('totalShares'),
                         keyboard: TextInputType.number,
                       ),
@@ -594,7 +601,7 @@ class _NewApplicationScreenState extends State<NewApplicationScreen> {
         ),
       ],
       if (widget.type == 'license') ...[
-        Text('License type', style: context.text.labelLarge?.copyWith(fontSize: 13.5)),
+        Text(tr('License type'), style: context.text.labelLarge?.copyWith(fontSize: 13.5)),
         const SizedBox(height: 7),
         DropdownButtonFormField<String>(
           initialValue: _licenseType,
@@ -605,13 +612,13 @@ class _NewApplicationScreenState extends State<NewApplicationScreen> {
           onChanged: (v) => setState(() => _licenseType = v ?? _licenseType),
         ),
         _gap(),
-        LabeledField(label: 'Title', controller: f('title')),
+        LabeledField(label: tr('Title'), controller: f('title')),
         _gap(),
-        LabeledField(label: 'Description', controller: f('description'), maxLines: 3),
+        LabeledField(label: tr('Description'), controller: f('description'), maxLines: 3),
         _gap(),
-        LabeledField(label: 'Website (optional)', controller: f('website'), keyboard: TextInputType.url),
+        LabeledField(label: tr('Website (optional)'), controller: f('website'), keyboard: TextInputType.url),
         _gap(),
-        Text('Holder', style: context.text.labelLarge?.copyWith(fontSize: 13.5)),
+        Text(tr('Holder'), style: context.text.labelLarge?.copyWith(fontSize: 13.5)),
         const SizedBox(height: 7),
         Query<List<Organization>>(
           client: session.queries,
@@ -620,31 +627,36 @@ class _NewApplicationScreenState extends State<NewApplicationScreen> {
           builder: (context, s) => DropdownButtonFormField<String?>(
             initialValue: _orgId,
             items: [
-              const DropdownMenuItem(value: null, child: Text('Me personally')),
+              DropdownMenuItem(value: null, child: Text(tr('Me personally'))),
               for (final o in s.data ?? const <Organization>[]) DropdownMenuItem(value: o.id, child: Text(o.name)),
             ],
             onChanged: (v) => setState(() => _orgId = v),
           ),
         ),
         _gap(),
-        LabeledField(label: 'Details (optional)', controller: f('details'), maxLines: 3),
+        LabeledField(label: tr('Details (optional)'), controller: f('details'), maxLines: 3),
       ],
       if (widget.type == 'news_channel') ...[
-        LabeledField(label: 'Channel title', controller: f('title')),
+        LabeledField(label: tr('Channel title'), controller: f('title')),
         _gap(),
         LabeledField(
-          label: 'Handle',
+          label: tr('Handle'),
           controller: f('handle'),
           hint: 'my_channel',
-          helper: '4-32 letters, digits and underscores.',
+          helper: tr('4-32 letters, digits and underscores.'),
         ),
         _gap(),
-        LabeledField(label: 'Description', controller: f('description'), maxLines: 3),
+        LabeledField(label: tr('Description'), controller: f('description'), maxLines: 3),
       ],
       if (widget.type == 'moderator' || widget.type == 'council') ...[
-        LabeledField(label: 'Motivation', controller: f('motivation'), maxLines: 4, helper: 'At least 20 characters.'),
+        LabeledField(
+          label: tr('Motivation'),
+          controller: f('motivation'),
+          maxLines: 4,
+          helper: tr('At least 20 characters.'),
+        ),
         _gap(),
-        LabeledField(label: 'Experience (optional)', controller: f('experience'), maxLines: 3),
+        LabeledField(label: tr('Experience (optional)'), controller: f('experience'), maxLines: 3),
       ],
     ];
     return Scaffold(
@@ -663,7 +675,7 @@ class _NewApplicationScreenState extends State<NewApplicationScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Caption('Approval steps'),
+                Caption(tr('Approval steps')),
                 const SizedBox(height: 10),
                 for (final (i, s) in wf.stages.indexed)
                   Padding(
@@ -700,7 +712,7 @@ class _NewApplicationScreenState extends State<NewApplicationScreen> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: fields),
           ),
           const SizedBox(height: 18),
-          GradientButton(label: 'Submit application', icon: LucideIcons.send, busy: _busy, onPressed: _submit),
+          GradientButton(label: tr('Submit application'), icon: LucideIcons.send, busy: _busy, onPressed: _submit),
         ],
       ),
     );

@@ -13,6 +13,7 @@ import '../ui/format.dart';
 import '../ui/widgets.dart';
 import 'contacts.dart';
 import 'home.dart';
+import '../i18n/i18n.dart';
 
 class ExchangeScreen extends StatelessWidget {
   const ExchangeScreen({super.key});
@@ -32,13 +33,13 @@ class ExchangeScreen extends StatelessWidget {
             children: [
               PageTitle(
                 icon: LucideIcons.chartLine,
-                title: 'Stock exchange',
-                subtitle: 'Invest in approved companies. Part of every investment is frozen for 3–6 months.',
+                title: tr('Stock exchange'),
+                subtitle: tr('Invest in approved companies. Part of every investment is frozen for 3–6 months.'),
                 actions: [
                   OutlinedButton.icon(
                     onPressed: () => context.go('/exchange/portfolio'),
                     icon: const Icon(LucideIcons.chartPie, size: 17),
-                    label: const Text('My portfolio'),
+                    label: Text(tr('My portfolio')),
                   ),
                 ],
               ),
@@ -46,7 +47,7 @@ class ExchangeScreen extends StatelessWidget {
               if (!s.hasData)
                 const SkeletonList()
               else if (s.data!.isEmpty)
-                const EmptyState(icon: LucideIcons.chartLine, title: 'No listed companies yet')
+                EmptyState(icon: LucideIcons.chartLine, title: tr('No listed companies yet'))
               else
                 for (final (i, l) in s.data!.indexed)
                   Padding(
@@ -94,7 +95,11 @@ class _ListingCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  '${plural(l.investorsCount, 'investor')} · ${l.freezePercent.round()}% frozen for ${l.lockDays} d',
+                  tr('{0} · {1}% frozen for {2} d', [
+                    plural(l.investorsCount, 'investor'),
+                    l.freezePercent.round(),
+                    l.lockDays,
+                  ]),
                   style: context.text.bodySmall,
                 ),
                 const SizedBox(height: 8),
@@ -103,7 +108,7 @@ class _ListingCard extends StatelessWidget {
                   child: LinearProgressIndicator(value: sold, minHeight: 5),
                 ),
                 const SizedBox(height: 3),
-                Text('${(sold * 100).toStringAsFixed(1)}% of shares sold', style: context.text.bodySmall),
+                Text(tr('{0}% of shares sold', [(sold * 100).toStringAsFixed(1)]), style: context.text.bodySmall),
               ],
             ),
           ),
@@ -113,7 +118,7 @@ class _ListingCard extends StatelessWidget {
             children: [
               Text(money(l.sharePrice, l.currency), style: context.text.titleMedium),
               const SizedBox(height: 4),
-              Text('Cap ${money(l.marketCap, l.currency)}', style: context.text.bodySmall),
+              Text(tr('Cap {0}', [money(l.marketCap, l.currency)]), style: context.text.bodySmall),
             ],
           ),
         ],
@@ -178,7 +183,7 @@ class ListingScreen extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Expanded(child: Text('Price history', style: context.text.titleLarge)),
+                    Expanded(child: Text(tr('Price history'), style: context.text.titleLarge)),
                     ChangeBadge(l.change),
                   ],
                 ),
@@ -210,7 +215,7 @@ class ListingScreen extends StatelessWidget {
                         children: [
                           Text(l.organizationName, style: context.text.headlineLarge),
                           Text(
-                            '${l.registryNumber ?? ''} · listed ${date(l.listedAt)}',
+                            tr('{0} · listed {1}', [l.registryNumber ?? '', date(l.listedAt)]),
                             style: context.text.bodyMedium,
                           ),
                           if (l.verified) ...[const SizedBox(height: 6), const VerifiedBadge()],
@@ -305,7 +310,7 @@ class _ForShareholders extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Shareholder votes', style: context.text.titleLarge),
+                  Text(tr('Shareholder votes'), style: context.text.titleLarge),
                   for (final p in list) ...[
                     const Divider(height: 24),
                     Row(
@@ -335,7 +340,15 @@ class _ForShareholders extends StatelessWidget {
                                 try {
                                   await session.api.vote(p.id, o.key);
                                   session.queries.invalidate('listings');
-                                  if (context.mounted) toast(context, 'Voted “${o.label}” with ${p.myShares} shares');
+                                  if (context.mounted) {
+                                    toast(
+                                      context,
+                                      tr('Voted “{0}” with {1}', [
+                                        o.label,
+                                        plural(int.tryParse(p.myShares) ?? 0, 'share'),
+                                      ]),
+                                    );
+                                  }
                                 } catch (e) {
                                   if (context.mounted) toast(context, errorText(e), error: true);
                                 }
@@ -362,7 +375,7 @@ class _ForShareholders extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Company results', style: context.text.titleLarge),
+                  Text(tr('Company results'), style: context.text.titleLarge),
                   for (final r in list) ...[
                     const Divider(height: 24),
                     Text('${r.period} · ${r.title}', style: context.text.titleSmall),
@@ -413,7 +426,7 @@ class _Market extends StatelessWidget {
             children: [
               Caption(title),
               const SizedBox(height: 6),
-              if (levels.isEmpty) Text('None', style: context.text.bodySmall),
+              if (levels.isEmpty) Text(tr('None'), style: context.text.bodySmall),
               for (final lv in levels.take(8))
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),
@@ -438,8 +451,9 @@ class _Market extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Expanded(child: Text('Order book', style: context.text.titleLarge)),
-                  if (book != null) Text('Last ${money(book.lastPrice, l.currency)}', style: context.text.bodySmall),
+                  Expanded(child: Text(tr('Order book'), style: context.text.titleLarge)),
+                  if (book != null)
+                    Text(tr('Last {0}', [money(book.lastPrice, l.currency)]), style: context.text.bodySmall),
                 ],
               ),
               const SizedBox(height: 12),
@@ -456,8 +470,10 @@ class _Market extends StatelessWidget {
                 ),
               const SizedBox(height: 12),
               Text(
-                'Shares from an investment can be sold after its ${l.lockDays}-day lock. Orders trade at the '
-                'best matching price; the rest waits in the book.',
+                tr(
+                  'Shares from an investment can be sold after its {0}-day lock. Orders trade at the best matching price; the rest waits in the book.',
+                  [l.lockDays],
+                ),
                 style: context.text.bodySmall,
               ),
               const SizedBox(height: 12),
@@ -466,11 +482,11 @@ class _Market extends StatelessWidget {
                 children: [
                   FilledButton(
                     onPressed: l.status == 'active' ? () => _orderSheet(context, 'buy', book) : null,
-                    child: const Text('Buy'),
+                    child: Text(tr('Buy')),
                   ),
                   OutlinedButton(
                     onPressed: l.status == 'active' ? () => _orderSheet(context, 'sell', book) : null,
-                    child: const Text('Sell'),
+                    child: Text(tr('Sell')),
                   ),
                 ],
               ),
@@ -485,13 +501,17 @@ class _Market extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       const Divider(height: 24),
-                      Text('Your open orders', style: context.text.titleSmall),
+                      Text(tr('Your open orders'), style: context.text.titleSmall),
                       for (final x in mine)
                         ListTile(
                           dense: true,
                           contentPadding: EdgeInsets.zero,
                           title: Text(
-                            '${x.side == 'buy' ? 'Buy' : 'Sell'} ${x.remaining} at ${money(x.price, x.currency)}',
+                            tr('{0} {1} at {2}', [
+                              x.side == 'buy' ? 'Buy' : 'Sell',
+                              x.remaining,
+                              money(x.price, x.currency),
+                            ]),
                           ),
                           trailing: TextButton(
                             onPressed: () async {
@@ -500,7 +520,7 @@ class _Market extends StatelessWidget {
                                 session.queries.invalidate(k);
                               }
                             },
-                            child: const Text('Cancel'),
+                            child: Text(tr('Cancel')),
                           ),
                         ),
                     ],
@@ -534,17 +554,22 @@ class _Market extends StatelessWidget {
               Text('${side == 'buy' ? 'Buy' : 'Sell'} ${listing.ticker}', style: sheet.text.headlineSmall),
               const SizedBox(height: 14),
               if (error != null) ...[ErrorBox(error), const SizedBox(height: 12)],
-              LabeledField(label: 'Shares', controller: shares, icon: LucideIcons.hash, keyboard: TextInputType.number),
+              LabeledField(
+                label: tr('Shares'),
+                controller: shares,
+                icon: LucideIcons.hash,
+                keyboard: TextInputType.number,
+              ),
               const SizedBox(height: 12),
               LabeledField(
-                label: 'Limit price (${listing.currency})',
+                label: tr('Limit price ({0})', [listing.currency]),
                 controller: price,
                 icon: LucideIcons.banknote,
                 keyboard: const TextInputType.numberWithOptions(decimal: true),
               ),
               const SizedBox(height: 18),
               GradientButton(
-                label: side == 'buy' ? 'Place buy order' : 'Place sell order',
+                label: side == 'buy' ? tr('Place buy order') : tr('Place sell order'),
                 icon: side == 'buy' ? LucideIcons.arrowDownLeft : LucideIcons.arrowUpRight,
                 busy: busy,
                 onPressed: () async {
@@ -576,7 +601,7 @@ class _Market extends StatelessWidget {
                         r.traded > 0
                             ? '${side == 'buy' ? 'Bought' : 'Sold'} ${r.traded} ${listing.ticker}'
                                   '${r.order.status == 'open' ? '; ${r.order.remaining} left in the book' : ''}'
-                            : 'Order placed',
+                            : tr('Order placed'),
                       );
                     }
                   } catch (e) {
@@ -622,10 +647,13 @@ class _InvestCardState extends State<_InvestCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Invest', style: context.text.titleLarge),
+          Text(tr('Invest'), style: context.text.titleLarge),
           const SizedBox(height: 6),
           Text(
-            '${plural(int.tryParse(l.sharesAvailable) ?? 0, 'share')} available. ${l.freezePercent.round()}% of your investment is frozen on the company balance for ${l.lockDays} days, the rest is available to the company immediately.',
+            tr(
+              '{0} available. {1}% of your investment is frozen on the company balance for {2} days, the rest is available to the company immediately.',
+              [plural(int.tryParse(l.sharesAvailable) ?? 0, 'share'), l.freezePercent.round(), l.lockDays],
+            ),
             style: context.text.bodyMedium,
           ),
           const SizedBox(height: 12),
@@ -640,10 +668,10 @@ class _InvestCardState extends State<_InvestCard> {
                 decoration: BoxDecoration(color: context.c.accentSoft, borderRadius: BorderRadius.circular(12)),
                 child: Text(
                   !ws.hasData
-                      ? 'Checking your ${l.currency} balance…'
+                      ? tr('Checking your {0} balance…', [l.currency])
                       : wallet == null
-                      ? 'You have no ${l.currency} balance yet.'
-                      : 'Your ${l.currency} balance: ${money(wallet.available, l.currency)}',
+                      ? tr('You have no {0} balance yet.', [l.currency])
+                      : tr('Your {0} balance: {1}', [l.currency, money(wallet.available, l.currency)]),
                   style: TextStyle(color: context.c.accent2),
                 ),
               );
@@ -652,7 +680,7 @@ class _InvestCardState extends State<_InvestCard> {
           const SizedBox(height: 12),
           if (_error != null) ...[ErrorBox(_error), const SizedBox(height: 12)],
           LabeledField(
-            label: 'Amount (${l.currency})',
+            label: tr('Amount ({0})', [l.currency]),
             controller: _amount,
             icon: LucideIcons.banknote,
             hint: money(l.sharePrice, l.currency, code: false),
@@ -665,7 +693,12 @@ class _InvestCardState extends State<_InvestCard> {
                 ? Padding(
                     padding: const EdgeInsets.only(top: 10),
                     child: Text(
-                      'You buy $shares shares for ${moneyOf(cost, l.currency)}. ${moneyOf(frozen, l.currency)} stays frozen for ${l.lockDays} days.',
+                      tr('You buy {0} shares for {1}. {2} stays frozen for {3} days.', [
+                        shares,
+                        moneyOf(cost, l.currency),
+                        moneyOf(frozen, l.currency),
+                        l.lockDays,
+                      ]),
                       style: context.text.bodyMedium,
                     ),
                   )
@@ -673,7 +706,7 @@ class _InvestCardState extends State<_InvestCard> {
           ),
           const SizedBox(height: 16),
           GradientButton(
-            label: 'Invest',
+            label: tr('Invest'),
             busy: _busy,
             onPressed: shares <= 0 || l.status != 'active'
                 ? null
@@ -692,7 +725,7 @@ class _InvestCardState extends State<_InvestCard> {
                         session.queries.invalidate(k);
                       }
                       _amount.clear();
-                      if (context.mounted) toast(context, 'Bought ${inv.shares} shares of ${l.ticker}');
+                      if (context.mounted) toast(context, tr('Bought {0} shares of {1}', [inv.shares, l.ticker]));
                     } catch (e) {
                       setState(() => _error = e);
                     } finally {
@@ -716,7 +749,7 @@ class PortfolioScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         leading: BackButton(onPressed: () => context.go('/exchange')),
-        title: const Text('My portfolio'),
+        title: Text(tr('My portfolio')),
       ),
       body: Query<Portfolio>(
         client: session.queries,
@@ -728,14 +761,14 @@ class PortfolioScreen extends StatelessWidget {
           if (p.holdings.isEmpty) {
             return EmptyState(
               icon: LucideIcons.chartPie,
-              title: 'No investments yet',
-              text: 'Browse the exchange and buy your first shares.',
-              action: FilledButton(onPressed: () => context.go('/exchange'), child: const Text('Open the exchange')),
+              title: tr('No investments yet'),
+              text: tr('Browse the exchange and buy your first shares.'),
+              action: FilledButton(onPressed: () => context.go('/exchange'), child: Text(tr('Open the exchange'))),
             );
           }
           return PageBody(
             children: [
-              Text('Holdings', style: context.text.titleLarge),
+              Text(tr('Holdings'), style: context.text.titleLarge),
               const SizedBox(height: 10),
               for (final (i, h) in p.holdings.indexed)
                 Padding(
@@ -754,7 +787,7 @@ class PortfolioScreen extends StatelessWidget {
                               children: [
                                 Text(h.organizationName, style: context.text.titleMedium),
                                 Text(
-                                  '${h.shares} shares · invested ${money(h.invested, h.currency)}',
+                                  tr('{0} shares · invested {1}', [h.shares, money(h.invested, h.currency)]),
                                   style: context.text.bodySmall,
                                 ),
                               ],
@@ -781,7 +814,7 @@ class PortfolioScreen extends StatelessWidget {
                   ),
                 ),
               const SizedBox(height: 14),
-              Text('Investments', style: context.text.titleLarge),
+              Text(tr('Investments'), style: context.text.titleLarge),
               const SizedBox(height: 10),
               OvlCard(
                 padding: const EdgeInsets.symmetric(vertical: 6),
@@ -794,9 +827,13 @@ class PortfolioScreen extends StatelessWidget {
                           size: 36,
                           color: inv.unlocksAt.isAfter(DateTime.now()) ? c.warning : c.success,
                         ),
-                        title: Text('${inv.ticker} · ${inv.shares} shares'),
+                        title: Text(tr('{0} · {1} shares', [inv.ticker, inv.shares])),
                         subtitle: Text(
-                          '${money(inv.frozenAmount, inv.currency)} frozen until ${date(inv.unlocksAt)} · bought ${date(inv.createdAt)}',
+                          tr('{0} frozen until {1} · bought {2}', [
+                            money(inv.frozenAmount, inv.currency),
+                            date(inv.unlocksAt),
+                            date(inv.createdAt),
+                          ]),
                         ),
                         trailing: Text(money(inv.amount, inv.currency), style: context.text.titleSmall),
                       ),
@@ -830,7 +867,7 @@ Future<T?> withRiskDisclosure<T>(BuildContext context, Future<T> Function() acti
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Please read this once before your first investment or trade.'),
+              Text(tr('Please read this once before your first investment or trade.')),
               const SizedBox(height: 12),
               for (final point in risk.points)
                 Padding(
@@ -847,8 +884,8 @@ Future<T?> withRiskDisclosure<T>(BuildContext context, Future<T> Function() acti
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('Not now')),
-          FilledButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('I understand, continue')),
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: Text(tr('Not now'))),
+          FilledButton(onPressed: () => Navigator.pop(dialog, true), child: Text(tr('I understand, continue'))),
         ],
       ),
     );

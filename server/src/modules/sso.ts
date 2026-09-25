@@ -10,6 +10,7 @@ import { audit } from '../lib/audit';
 import { badRequest, HttpError } from '../lib/errors';
 import { issueTokens } from './auth';
 import { clientContext } from './sessions';
+import { text } from '../lib/i18n';
 
 /**
  * Single sign-on for the admin panel with OpenID Connect (authorization code + PKCE). The
@@ -155,7 +156,7 @@ export async function ssoRoutes(fastify: FastifyInstance) {
 
       const [user] = await app.db.select().from(users).where(eq(users.email, claims.email.toLowerCase()));
       if (!user || user.status !== 'active' || !can(user.role, 'admin.panel'))
-        throw new HttpError(403, 'sso_no_account', `No staff account uses ${claims.email}`);
+        throw new HttpError(403, 'sso_no_account', text`No staff account uses ${claims.email}`);
       await audit(app.db, {
         actorId: user.id,
         action: 'auth.sso',

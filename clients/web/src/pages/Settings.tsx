@@ -33,6 +33,9 @@ import {
   timeAgo,
   useToast,
   type IconName,
+  t,
+  LanguagePicker,
+  msg,
 } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
@@ -53,12 +56,12 @@ type Section =
   'profile' | 'appearance' | 'notifications' | 'accounts' | 'security' | 'identity' | 'developer';
 
 const SECTIONS: { id: Section; label: string; icon: IconName; hint: string }[] = [
-  { id: 'profile', label: 'Profile', icon: 'user', hint: 'Name, bio and avatar' },
+  { id: 'profile', label: msg('Profile'), icon: 'user', hint: msg('Name, bio and avatar') },
   { id: 'appearance', label: 'Appearance', icon: 'palette', hint: 'Themes' },
-  { id: 'notifications', label: 'Notifications', icon: 'bell', hint: 'Push and background alerts' },
-  { id: 'accounts', label: 'Accounts', icon: 'users', hint: 'Switch or add accounts' },
-  { id: 'security', label: 'Security', icon: 'lock', hint: 'Password and sessions' },
-  { id: 'identity', label: 'Identity', icon: 'shield', hint: 'Verification for company owners' },
+  { id: 'notifications', label: msg('Notifications'), icon: 'bell', hint: msg('Push and background alerts') },
+  { id: 'accounts', label: msg('Accounts'), icon: 'users', hint: msg('Switch or add accounts') },
+  { id: 'security', label: msg('Security'), icon: 'lock', hint: msg('Password and sessions') },
+  { id: 'identity', label: msg('Identity'), icon: 'shield', hint: msg('Verification for company owners') },
   { id: 'developer', label: 'Developer', icon: 'key', hint: 'API keys, webhooks' },
 ];
 
@@ -71,7 +74,7 @@ function EmailCard() {
   const [form, setForm] = useState({ email: '', password: '' });
   const resend = useMutation({
     mutationFn: api.me.resendVerification,
-    onSuccess: () => toast.success(`Link sent to ${me.email}`),
+    onSuccess: () => toast.success(t('Link sent to {0}', me.email)),
   });
   const change = useMutation({
     mutationFn: () => api.me.changeEmail(form.email, form.password),
@@ -79,14 +82,14 @@ function EmailCard() {
       await reload();
       setChanging(false);
       setForm({ email: '', password: '' });
-      toast.success(`Check ${updated.email} for a confirmation link`);
+      toast.success(t('Check {0} for a confirmation link', updated.email));
     },
   });
   return (
     <div className="card stack">
       <div className="spread">
         <div>
-          <h3>Email</h3>
+          <h3>{t('Email')}</h3>
           <div className="row" style={{ gap: 8, marginTop: 4 }}>
             <span>{me.email}</span>
             <StatusBadge status={me.emailVerified ? 'confirmed' : 'not_confirmed'} />
@@ -94,7 +97,7 @@ function EmailCard() {
         </div>
         {!changing && (
           <button className="btn" onClick={() => setChanging(true)}>
-            Change email
+            {t('Change email')}
           </button>
         )}
       </div>
@@ -102,11 +105,12 @@ function EmailCard() {
         <div className="alert warning small">
           <Icon name="info" size={16} />
           <span className="grow">
-            Confirm your address with the link we emailed you. Applications for companies and licenses need a
-            confirmed email.
+            {t(
+              'Confirm your address with the link we emailed you. Applications for companies and licenses need a confirmed email.',
+            )}
           </span>
           <button className="btn sm" disabled={resend.isPending} onClick={() => resend.mutate()}>
-            Send the link again
+            {t('Send the link again')}
           </button>
         </div>
       )}
@@ -120,7 +124,7 @@ function EmailCard() {
           }}
         >
           <div className="grid-2">
-            <Field label="New email">
+            <Field label={t('New email')}>
               <input
                 className="input"
                 type="email"
@@ -130,7 +134,7 @@ function EmailCard() {
                 required
               />
             </Field>
-            <Field label="Your password">
+            <Field label={t('Your password')}>
               <input
                 className="input"
                 type="password"
@@ -144,10 +148,10 @@ function EmailCard() {
           <ErrorAlert error={change.error} />
           <div className="row-wrap">
             <button className="btn primary" disabled={change.isPending}>
-              Change and send a confirmation link
+              {t('Change and send a confirmation link')}
             </button>
             <button type="button" className="btn ghost" onClick={() => setChanging(false)}>
-              Cancel
+              {t('Cancel')}
             </button>
           </div>
         </form>
@@ -174,7 +178,7 @@ function ProfileSection() {
       }),
     onSuccess: async () => {
       await reload();
-      toast.success('Profile saved');
+      toast.success(t('Profile saved'));
     },
   });
   return (
@@ -191,8 +195,13 @@ function ProfileSection() {
               <Badges badges={me.badges} />
             </div>
             <div className="small muted">
-              @{me.username} · {me.email} · {ROLE_LABELS[me.role]} · member since{' '}
-              {formatDate(me.createdAt, false)}
+              {t(
+                '@{0} · {1} · {2} · member since {3}',
+                me.username,
+                me.email,
+                ROLE_LABELS[me.role],
+                formatDate(me.createdAt, false),
+              )}
             </div>
           </div>
         </div>
@@ -204,7 +213,7 @@ function ProfileSection() {
           save.mutate();
         }}
       >
-        <Field label="Display name">
+        <Field label={t('Display name')}>
           <input
             className="input"
             value={form.displayName}
@@ -212,7 +221,7 @@ function ProfileSection() {
             onChange={(e) => setForm({ ...form, displayName: e.target.value })}
           />
         </Field>
-        <Field label="Bio">
+        <Field label={t('Bio')}>
           <textarea
             className="textarea"
             value={form.bio}
@@ -220,7 +229,7 @@ function ProfileSection() {
             onChange={(e) => setForm({ ...form, bio: e.target.value })}
           />
         </Field>
-        <Field label="Avatar URL">
+        <Field label={t('Avatar URL')}>
           <input
             className="input"
             type="url"
@@ -230,7 +239,7 @@ function ProfileSection() {
         </Field>
         <ErrorAlert error={save.error} />
         <button className="btn primary" style={{ alignSelf: 'flex-start' }} disabled={save.isPending}>
-          Save profile
+          {t('Save profile')}
         </button>
       </form>
       <EmailCard />
@@ -244,11 +253,24 @@ function AppearanceSection() {
   const [value, setValue] = useState(getThemePreference);
   return (
     <div className="card stack-lg">
+      <div className="setting-row">
+        <span className="kpi-icon">
+          <Icon name="globe" size={17} />
+        </span>
+        <div className="grow">
+          <b>{t('Language')}</b>
+          <div className="small muted">
+            {t('For the web app, the admin panel and the apps on every device.')}
+          </div>
+        </div>
+        <LanguagePicker onChange={(locale) => void updatePreferences({ locale }).catch(toast.error)} />
+      </div>
       <div className="stack-sm">
-        <h3>Theme</h3>
+        <h3>{t('Theme')}</h3>
         <p className="small muted">
-          Your theme is saved to your account, so the web app, the admin panel and the mobile and desktop apps
-          use it too.
+          {t(
+            'Your theme is saved to your account, so the web app, the admin panel and the mobile and desktop apps use it too.',
+          )}
         </p>
       </div>
       <ThemeGallery
@@ -259,7 +281,9 @@ function AppearanceSection() {
           updatePreferences({ theme: id })
             .then(() =>
               toast.success(
-                id === 'system' ? 'Following your system theme' : `${getTheme(id).name} theme applied`,
+                id === 'system'
+                  ? t('Following your system theme')
+                  : t('{0} theme applied', getTheme(id).name),
               ),
             )
             .catch(toast.error);
@@ -279,14 +303,14 @@ function NotificationsSection() {
           <Icon name="bell" size={17} />
         </span>
         <div className="grow">
-          <b>Message notifications</b>
+          <b>{t('Message notifications')}</b>
           <div className="small muted">
-            Show a notification for new messages while the app is in the background.
+            {t('Show a notification for new messages while the app is in the background.')}
           </div>
         </div>
         {notificationsSupported() ? (
           <Switch
-            label="Message notifications"
+            label={t('Message notifications')}
             checked={enabled}
             onChange={async (on) => {
               if (on) {
@@ -300,12 +324,12 @@ function NotificationsSection() {
             }}
           />
         ) : (
-          <span className="small muted">Not supported here</span>
+          <span className="small muted">{t('Not supported here')}</span>
         )}
       </div>
       {denied && (
         <div className="alert warning small">
-          Notifications are blocked for this site. Allow them in your browser settings.
+          {t('Notifications are blocked for this site. Allow them in your browser settings.')}
         </div>
       )}
       <PushRows />
@@ -330,7 +354,7 @@ function PushRows() {
     onSuccess: (_, on) => {
       refresh();
       toast.success(
-        on ? 'Push notifications on for this browser' : 'Push notifications off for this browser',
+        on ? t('Push notifications on for this browser') : t('Push notifications off for this browser'),
       );
     },
     onError: toast.error,
@@ -339,9 +363,9 @@ function PushRows() {
     mutationFn: api.notifications.test,
     onSuccess: (r) =>
       r.delivered
-        ? toast.success(`Sent to ${r.delivered} of ${r.devices} devices`)
+        ? toast.success(t('Sent to {0} of {1} devices', r.delivered, r.devices))
         : toast.error(
-            r.devices ? 'No device took the test notification' : 'Turn push notifications on first',
+            r.devices ? t('No device took the test notification') : t('Turn push notifications on first'),
           ),
     onError: toast.error,
   });
@@ -353,21 +377,22 @@ function PushRows() {
           <Icon name="smartphone" size={17} />
         </span>
         <div className="grow">
-          <b>Push notifications on this browser</b>
+          <b>{t('Push notifications on this browser')}</b>
           <div className="small muted">
-            Mentions, payments, invoices and approvals reach you even when OVL For Business is closed. One
-            account per browser gets them: the one that turned them on last.
+            {t(
+              'Mentions, payments, invoices and approvals reach you even when OVL For Business is closed. One account per browser gets them: the one that turned them on last.',
+            )}
           </div>
         </div>
         {pushSupported() ? (
           <Switch
-            label="Push notifications on this browser"
+            label={t('Push notifications on this browser')}
             checked={onHere}
             disabled={toggle.isPending}
             onChange={(on) => toggle.mutate(on)}
           />
         ) : (
-          <span className="small muted">Not supported here</span>
+          <span className="small muted">{t('Not supported here')}</span>
         )}
       </div>
       <div className="setting-row">
@@ -375,15 +400,15 @@ function PushRows() {
           <Icon name="chat" size={17} />
         </span>
         <div className="grow">
-          <b>Push new messages</b>
-          <div className="small muted">Also push direct and group messages while you are away.</div>
+          <b>{t('Push new messages')}</b>
+          <div className="small muted">{t('Also push direct and group messages while you are away.')}</div>
         </div>
         <Switch
-          label="Push new messages"
+          label={t('Push new messages')}
           checked={me.preferences.pushChats !== false}
           onChange={(value) =>
             updatePreferences({ pushChats: value })
-              .then(() => toast.success(value ? 'Message pushes on' : 'Message pushes off'))
+              .then(() => toast.success(value ? t('Message pushes on') : t('Message pushes off')))
               .catch(toast.error)
           }
         />
@@ -391,9 +416,9 @@ function PushRows() {
       {!!devices.data?.length && (
         <div className="stack-sm">
           <div className="spread">
-            <b className="small">Devices with push notifications</b>
+            <b className="small">{t('Devices with push notifications')}</b>
             <button className="btn sm" disabled={test.isPending} onClick={() => test.mutate()}>
-              Send a test
+              {t('Send a test')}
             </button>
           </div>
           {devices.data.map((d) => (
@@ -401,14 +426,14 @@ function PushRows() {
               <Icon name={d.kind === 'webpush' ? 'monitor' : 'smartphone'} size={15} />
               <span className="grow ellipsis">
                 {d.label || d.kind}
-                {d.id === thisDevice && <span className="muted"> · this browser</span>}
+                {d.id === thisDevice && <span className="muted">{t('· this browser')}</span>}
               </span>
               <span className="muted nowrap">
-                {d.lastUsedAt ? `last push ${formatDate(d.lastUsedAt)}` : 'no pushes yet'}
+                {d.lastUsedAt ? t('last push {0}', formatDate(d.lastUsedAt)) : t('no pushes yet')}
               </span>
               <button
                 className="btn ghost icon sm"
-                aria-label={`Remove ${d.label || d.kind}`}
+                aria-label={t('Remove {0}', d.label || d.kind)}
                 onClick={() => remove.mutate(d.id)}
               >
                 <Icon name="x" size={14} />
@@ -432,18 +457,18 @@ function StatementEmailsRow() {
         <Icon name="file" size={17} />
       </span>
       <div className="grow">
-        <b>Monthly statements by email</b>
+        <b>{t('Monthly statements by email')}</b>
         <div className="small muted">
-          At the start of each month, get a PDF statement of every balance you can see that moved.
-          {!me.emailVerified && ' Confirm your email address first.'}
+          {t('At the start of each month, get a PDF statement of every balance you can see that moved.')}
+          {!me.emailVerified && ` ${t('Confirm your email address first.')}`}
         </div>
       </div>
       <Switch
-        label="Monthly statements by email"
+        label={t('Monthly statements by email')}
         checked={on}
         onChange={(value) =>
           updatePreferences({ statementEmails: value })
-            .then(() => toast.success(value ? 'Monthly statements on' : 'Monthly statements off'))
+            .then(() => toast.success(value ? t('Monthly statements on') : t('Monthly statements off')))
             .catch(toast.error)
         }
       />
@@ -462,18 +487,19 @@ function ReadReceiptsRow() {
         <Icon name="checkCheck" size={17} />
       </span>
       <div className="grow">
-        <b>Read receipts</b>
+        <b>{t('Read receipts')}</b>
         <div className="small muted">
-          Show others when you have read their messages in direct chats and groups. When off, you do not see
-          theirs either.
+          {t(
+            'Show others when you have read their messages in direct chats and groups. When off, you do not see theirs either.',
+          )}
         </div>
       </div>
       <Switch
-        label="Read receipts"
+        label={t('Read receipts')}
         checked={on}
         onChange={(value) =>
           updatePreferences({ readReceipts: value })
-            .then(() => toast.success(value ? 'Read receipts on' : 'Read receipts off'))
+            .then(() => toast.success(value ? t('Read receipts on') : t('Read receipts off')))
             .catch(toast.error)
         }
       />
@@ -487,10 +513,11 @@ function AccountsSection() {
   return (
     <div className="card stack">
       <div className="stack-sm">
-        <h3>Accounts on this device</h3>
+        <h3>{t('Accounts on this device')}</h3>
         <p className="small muted">
-          Stay signed in to several accounts — for example your personal and a staff account — and switch
-          instantly.
+          {t(
+            'Stay signed in to several accounts — for example your personal and a staff account — and switch instantly.',
+          )}
         </p>
       </div>
       <div className="list card pad-0">
@@ -503,17 +530,17 @@ function AccountsSection() {
                 <Badges badges={a.badges} />
               </div>
               <div className="small muted">
-                @{a.username} · {ROLE_LABELS[a.role]}
+                @{a.username} · {t(ROLE_LABELS[a.role])}
               </div>
             </div>
             {a.id === me.id ? (
               <span className="badge ok">
                 <span className="dot" />
-                Active
+                {t('Active')}
               </span>
             ) : (
               <button className="btn sm" onClick={() => switchAccount(a.id)}>
-                Switch
+                {t('Switch')}
               </button>
             )}
           </div>
@@ -521,10 +548,10 @@ function AccountsSection() {
       </div>
       <div className="row-wrap">
         <button className="btn primary" onClick={startAddAccount}>
-          <Icon name="userPlus" size={16} /> Add account
+          <Icon name="userPlus" size={16} /> {t('Add account')}
         </button>
         <button className="btn" onClick={() => logout()}>
-          <Icon name="logout" size={16} /> Sign out of @{me.username}
+          <Icon name="logout" size={16} /> {t('Sign out of @{0}', me.username)}
         </button>
       </div>
     </div>
@@ -547,7 +574,7 @@ function SessionsCard() {
   const signOut = useMutation({
     mutationFn: (id: string) => api.me.signOutSession(id),
     onSuccess: () => {
-      toast.success('Device signed out');
+      toast.success(t('Device signed out'));
       return queryClient.invalidateQueries({ queryKey: ['sessions'] });
     },
   });
@@ -555,7 +582,9 @@ function SessionsCard() {
     mutationFn: api.me.signOutOtherSessions,
     onSuccess: (r) => {
       toast.success(
-        r.signedOut ? `Signed out ${plural(r.signedOut, 'other device')}` : 'No other devices were signed in',
+        r.signedOut
+          ? t('Signed out {0}', plural(r.signedOut, 'other device'))
+          : t('No other devices were signed in'),
       );
       return queryClient.invalidateQueries({ queryKey: ['sessions'] });
     },
@@ -565,10 +594,11 @@ function SessionsCard() {
     <div className="card stack">
       <div className="spread" style={{ alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
         <div className="stack-sm">
-          <h3>Signed-in devices</h3>
+          <h3>{t('Signed-in devices')}</h3>
           <p className="small muted">
-            Every browser and app where this account is signed in. Sign out anything you do not recognise — it
-            stops working immediately.
+            {t(
+              'Every browser and app where this account is signed in. Sign out anything you do not recognise — it stops working immediately.',
+            )}
           </p>
         </div>
         {others > 0 && (
@@ -577,7 +607,7 @@ function SessionsCard() {
             onClick={() => signOutOthers.mutate()}
             disabled={signOutOthers.isPending}
           >
-            <Icon name="logout" size={15} /> Sign out all other devices
+            <Icon name="logout" size={15} /> {t('Sign out all other devices')}
           </button>
         )}
       </div>
@@ -595,24 +625,27 @@ function SessionsCard() {
                 {s.current && (
                   <span className="badge ok">
                     <span className="dot" />
-                    This device
+                    {t('This device')}
                   </span>
                 )}
               </div>
               <div className="small muted">
-                {s.ip ? `${s.ip} · ` : ''}
-                {s.current ? 'Active now' : `Last active ${timeAgo(s.lastUsedAt)}`} · signed in{' '}
-                {formatDate(s.createdAt, false)}
+                {t(
+                  '{0}{1} · signed in {2}',
+                  s.ip ? `${s.ip} · ` : '',
+                  s.current ? 'Active now' : `Last active ${timeAgo(s.lastUsedAt)}`,
+                  formatDate(s.createdAt, false),
+                )}
               </div>
             </div>
             {!s.current && (
               <button
                 className="btn sm"
-                aria-label={`Sign out ${s.device}`}
+                aria-label={t('Sign out {0}', s.device)}
                 onClick={() => signOut.mutate(s.id)}
                 disabled={signOut.isPending}
               >
-                Sign out
+                {t('Sign out')}
               </button>
             )}
           </div>
@@ -627,7 +660,10 @@ function EnableTwoFactor({ onClose }: { onClose: () => void }) {
   const { reload } = useAuth();
   const [enabled, setEnabled] = useState(false);
   return (
-    <Modal title={enabled ? 'Save your recovery codes' : 'Turn on two-step verification'} onClose={onClose}>
+    <Modal
+      title={enabled ? t('Save your recovery codes') : t('Turn on two-step verification')}
+      onClose={onClose}
+    >
       <TwoFactorSetupForm
         load={api.me.twoFactor.setup}
         enable={api.me.twoFactor.enable}
@@ -676,7 +712,7 @@ function PasskeysCard() {
     mutationFn: () => addPasskey(api, name.trim() || defaultPasskeyName()),
     onSuccess: (key) => {
       void queryClient.invalidateQueries({ queryKey: ['passkeys'] });
-      toast.success(`Passkey "${key.name}" added`);
+      toast.success(t('Passkey "{0}" added', key.name));
     },
   });
   const remove = useMutation({
@@ -691,10 +727,11 @@ function PasskeysCard() {
           <Icon name="key" size={19} />
         </span>
         <div className="grow">
-          <h3>Passkeys</h3>
+          <h3>{t('Passkeys')}</h3>
           <p className="small muted" style={{ margin: '2px 0 0' }}>
-            Sign in with your fingerprint, face or device PIN instead of a password. Passkeys cannot be
-            phished and are stored by your device or password manager.
+            {t(
+              'Sign in with your fingerprint, face or device PIN instead of a password. Passkeys cannot be phished and are stored by your device or password manager.',
+            )}
           </p>
         </div>
       </div>
@@ -703,18 +740,21 @@ function PasskeysCard() {
           <div>
             <b>{k.name}</b>
             <div className="small muted">
-              Added {formatDate(k.createdAt, false)}
-              {k.lastUsedAt ? ` · last used ${timeAgo(k.lastUsedAt)}` : ' · not used yet'}
-              {k.backedUp ? ' · synced' : ''}
+              {t(
+                'Added {0}{1}{2}',
+                formatDate(k.createdAt, false),
+                k.lastUsedAt ? ` · last used ${timeAgo(k.lastUsedAt)}` : ' · not used yet',
+                k.backedUp ? ' · synced' : '',
+              )}
             </div>
           </div>
           <button
             className="btn ghost sm"
             disabled={remove.isPending}
             onClick={() => remove.mutate(k.id)}
-            aria-label={`Remove ${k.name}`}
+            aria-label={t('Remove {0}', k.name)}
           >
-            <Icon name="trash" size={15} /> Remove
+            <Icon name="trash" size={15} /> {t('Remove')}
           </button>
         </div>
       ))}
@@ -730,17 +770,17 @@ function PasskeysCard() {
           <input
             className="input"
             style={{ maxWidth: 260 }}
-            aria-label="Passkey name"
+            aria-label={t('Passkey name')}
             value={name}
             maxLength={64}
             onChange={(e) => setName(e.target.value)}
           />
           <button className="btn primary" disabled={add.isPending}>
-            <Icon name="plus" size={16} /> Add a passkey
+            <Icon name="plus" size={16} /> {t('Add a passkey')}
           </button>
         </form>
       ) : (
-        <p className="small muted">This browser does not support passkeys.</p>
+        <p className="small muted">{t('This browser does not support passkeys.')}</p>
       )}
     </div>
   );
@@ -761,7 +801,7 @@ function TwoFactorCard() {
   const disable = useMutation({
     mutationFn: () => api.me.twoFactor.disable(form.password, form.code),
     onSuccess: () => {
-      toast.success('Two-step verification is off');
+      toast.success(t('Two-step verification is off'));
       close();
       return queryClient.invalidateQueries({ queryKey: ['2fa', 'status'] });
     },
@@ -783,18 +823,24 @@ function TwoFactorCard() {
           </span>
           <div className="stack-sm">
             <div className="row" style={{ gap: 8 }}>
-              <h3>Two-step verification</h3>
+              <h3>{t('Two-step verification')}</h3>
               {s && (
                 <span className={`badge ${s.enabled ? 'ok' : 'warn'}`}>
                   <span className="dot" />
-                  {s.enabled ? 'On' : 'Off'}
+                  {s.enabled ? t('On') : t('Off')}
                 </span>
               )}
             </div>
             <p className="small muted">
               {s?.enabled
-                ? `Signing in asks for a code from your authenticator app. On since ${formatDate(s.enabledAt!, false)} · ${plural(s.recoveryCodesLeft, 'recovery code')} left.`
-                : 'Protect the account with a code from an authenticator app, so a stolen password is not enough.'}
+                ? t(
+                    'Signing in asks for a code from your authenticator app. On since {0} · {1} left.',
+                    formatDate(s.enabledAt!, false),
+                    plural(s.recoveryCodesLeft, 'recovery code'),
+                  )
+                : t(
+                    'Protect the account with a code from an authenticator app, so a stolen password is not enough.',
+                  )}
             </p>
           </div>
         </div>
@@ -802,22 +848,22 @@ function TwoFactorCard() {
           (s.enabled ? (
             <div className="row-wrap">
               <button className="btn sm" onClick={() => setDialog('codes')}>
-                New recovery codes
+                {t('New recovery codes')}
               </button>
               <button className="btn sm danger" onClick={() => setDialog('disable')}>
-                Turn off
+                {t('Turn off')}
               </button>
             </div>
           ) : (
             <button className="btn primary sm" onClick={() => setDialog('enable')}>
-              Turn on
+              {t('Turn on')}
             </button>
           ))}
       </div>
       <ErrorAlert error={status.error} />
       {dialog === 'enable' && <EnableTwoFactor onClose={close} />}
       {dialog === 'codes' && (
-        <Modal title="New recovery codes" onClose={close}>
+        <Modal title={t('New recovery codes')} onClose={close}>
           {codes ? (
             <RecoveryCodes codes={codes} onDone={close} />
           ) : (
@@ -829,9 +875,9 @@ function TwoFactorCard() {
               }}
             >
               <p className="small muted">
-                Your old recovery codes stop working. Confirm with a code from the app.
+                {t('Your old recovery codes stop working. Confirm with a code from the app.')}
               </p>
-              <Field label="Authentication or recovery code">
+              <Field label={t('Authentication or recovery code')}>
                 <input
                   className="input"
                   autoComplete="one-time-code"
@@ -842,14 +888,14 @@ function TwoFactorCard() {
               </Field>
               <ErrorAlert error={renew.error} />
               <button className="btn primary" disabled={renew.isPending}>
-                Create new codes
+                {t('Create new codes')}
               </button>
             </form>
           )}
         </Modal>
       )}
       {dialog === 'disable' && (
-        <Modal title="Turn off two-step verification" onClose={close}>
+        <Modal title={t('Turn off two-step verification')} onClose={close}>
           <form
             className="stack"
             onSubmit={(e) => {
@@ -857,8 +903,8 @@ function TwoFactorCard() {
               disable.mutate();
             }}
           >
-            <p className="small muted">Your account will be protected by the password only.</p>
-            <Field label="Password">
+            <p className="small muted">{t('Your account will be protected by the password only.')}</p>
+            <Field label={t('Password')}>
               <input
                 className="input"
                 type="password"
@@ -868,7 +914,7 @@ function TwoFactorCard() {
                 required
               />
             </Field>
-            <Field label="Authentication or recovery code">
+            <Field label={t('Authentication or recovery code')}>
               <input
                 className="input"
                 autoComplete="one-time-code"
@@ -879,7 +925,7 @@ function TwoFactorCard() {
             </Field>
             <ErrorAlert error={disable.error} />
             <button className="btn danger" disabled={disable.isPending}>
-              Turn off
+              {t('Turn off')}
             </button>
           </form>
         </Modal>
@@ -890,9 +936,9 @@ function TwoFactorCard() {
 
 const DOCUMENT_LABELS: Record<(typeof IDENTITY_DOCUMENTS)[number], string> = {
   passport: 'Passport',
-  id_card: 'National ID card',
-  driver_license: 'Driving licence',
-  residence_permit: 'Residence permit',
+  id_card: msg('National ID card'),
+  driver_license: msg('Driving licence'),
+  residence_permit: msg('Residence permit'),
 };
 
 function IdentitySection() {
@@ -915,7 +961,7 @@ function IdentitySection() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['identity'] });
       void reload();
-      toast.success('Sent — staff check it by hand, usually within a day');
+      toast.success(t('Sent — staff check it by hand, usually within a day'));
     },
   });
   const c = check.data;
@@ -928,11 +974,11 @@ function IdentitySection() {
             <Icon name="shield" size={19} />
           </span>
           <div className="grow">
-            <h3>Identity verification</h3>
+            <h3>{t('Identity verification')}</h3>
             <p className="small muted" style={{ margin: '2px 0 0' }}>
-              Company owners pass a one-time identity check before their company is approved; their companies
-              then show the “Verified business” badge. Staff compare your details with a photo of your
-              document. Only the last four characters of the document number are kept.
+              {t(
+                'Company owners pass a one-time identity check before their company is approved; their companies then show the “Verified business” badge. Staff compare your details with a photo of your document. Only the last four characters of the document number are kept.',
+              )}
             </p>
           </div>
           {c && <StatusBadge status={c.status === 'approved' ? 'verified' : c.status} />}
@@ -942,8 +988,12 @@ function IdentitySection() {
           <div className="alert info small">
             <Icon name="clock" size={16} />
             <span>
-              Sent {timeAgo(c.createdAt)} — {DOCUMENT_LABELS[c.documentType]} ending in {c.documentLast4}. You
-              get an email when it is checked.
+              {t(
+                'Sent {0} — {1} ending in {2}. You get an email when it is checked.',
+                timeAgo(c.createdAt),
+                t(DOCUMENT_LABELS[c.documentType]),
+                c.documentLast4,
+              )}
             </span>
           </div>
         )}
@@ -951,7 +1001,8 @@ function IdentitySection() {
           <div className="alert success small">
             <Icon name="check" size={16} />
             <span>
-              Verified {c.reviewedAt ? formatDate(c.reviewedAt, false) : ''} as <b>{c.legalName}</b>.
+              {t('Verified {0} as', c.reviewedAt ? formatDate(c.reviewedAt, false) : '')} <b>{c.legalName}</b>
+              .
             </span>
           </div>
         )}
@@ -959,8 +1010,8 @@ function IdentitySection() {
           <div className="alert error small">
             <Icon name="info" size={16} />
             <span>
-              {c.status === 'rejected' ? 'Not accepted' : 'Verification removed'}: {c.rejectionReason}. You
-              can send a new check below.
+              {c.status === 'rejected' ? t('Not accepted') : t('Verification removed')}: {c.rejectionReason}
+              {t('. You can send a new check below.')}
             </span>
           </div>
         )}
@@ -973,9 +1024,9 @@ function IdentitySection() {
             submit.mutate();
           }}
         >
-          <h3>Send your details</h3>
+          <h3>{t('Send your details')}</h3>
           <div className="grid-2">
-            <Field label="Full legal name" hint="As written in the document.">
+            <Field label={t('Full legal name')} hint={t('As written in the document.')}>
               <input
                 className="input"
                 value={form.legalName}
@@ -984,7 +1035,7 @@ function IdentitySection() {
                 maxLength={120}
               />
             </Field>
-            <Field label="Date of birth">
+            <Field label={t('Date of birth')}>
               <input
                 className="input"
                 type="date"
@@ -993,7 +1044,7 @@ function IdentitySection() {
                 required
               />
             </Field>
-            <Field label="Country or virtual country">
+            <Field label={t('Country or virtual country')}>
               <input
                 className="input"
                 value={form.country}
@@ -1002,7 +1053,7 @@ function IdentitySection() {
                 maxLength={80}
               />
             </Field>
-            <Field label="Document">
+            <Field label={t('Document')}>
               <select
                 className="select"
                 value={form.documentType}
@@ -1012,12 +1063,12 @@ function IdentitySection() {
               >
                 {IDENTITY_DOCUMENTS.map((d) => (
                   <option key={d} value={d}>
-                    {DOCUMENT_LABELS[d]}
+                    {t(DOCUMENT_LABELS[d])}
                   </option>
                 ))}
               </select>
             </Field>
-            <Field label="Document number">
+            <Field label={t('Document number')}>
               <input
                 className="input"
                 value={form.documentNumber}
@@ -1029,7 +1080,7 @@ function IdentitySection() {
               />
             </Field>
           </div>
-          <Field label="Photo or scan of the document">
+          <Field label={t('Photo or scan of the document')}>
             <AttachmentPicker
               value={document}
               onChange={setDocument}
@@ -1038,10 +1089,10 @@ function IdentitySection() {
               href={api.files.url}
               max={1}
               accept="image/*,.pdf"
-              label="Add the document"
+              label={t('Add the document')}
             />
           </Field>
-          <Field label="A photo of you holding it (optional, speeds up the check)">
+          <Field label={t('A photo of you holding it (optional, speeds up the check)')}>
             <AttachmentPicker
               value={selfie}
               onChange={setSelfie}
@@ -1050,7 +1101,7 @@ function IdentitySection() {
               href={api.files.url}
               max={1}
               accept="image/*"
-              label="Add a photo"
+              label={t('Add a photo')}
             />
           </Field>
           <ErrorAlert error={submit.error} />
@@ -1059,7 +1110,7 @@ function IdentitySection() {
             style={{ alignSelf: 'flex-start' }}
             disabled={submit.isPending || !document.length}
           >
-            Send for checking
+            {t('Send for checking')}
           </button>
         </form>
       )}
@@ -1074,7 +1125,7 @@ function SecuritySection() {
   const change = useMutation({
     mutationFn: () => api.me.changePassword(form.current, form.next),
     onSuccess: () => {
-      toast.success('Password changed — your other devices were signed out');
+      toast.success(t('Password changed — your other devices were signed out'));
       setForm({ current: '', next: '' });
       return queryClient.invalidateQueries({ queryKey: ['sessions'] });
     },
@@ -1088,8 +1139,8 @@ function SecuritySection() {
           change.mutate();
         }}
       >
-        <h3>Change password</h3>
-        <Field label="Current password">
+        <h3>{t('Change password')}</h3>
+        <Field label={t('Current password')}>
           <input
             className="input"
             type="password"
@@ -1099,7 +1150,10 @@ function SecuritySection() {
             required
           />
         </Field>
-        <Field label="New password" hint="Every other device is signed out; this one stays signed in.">
+        <Field
+          label={t('New password')}
+          hint={t('Every other device is signed out; this one stays signed in.')}
+        >
           <input
             className="input"
             type="password"
@@ -1112,7 +1166,7 @@ function SecuritySection() {
         </Field>
         <ErrorAlert error={change.error} />
         <button className="btn primary" style={{ alignSelf: 'flex-start' }} disabled={change.isPending}>
-          Change password
+          {t('Change password')}
         </button>
       </form>
       <TwoFactorCard />
@@ -1139,13 +1193,13 @@ function DeveloperSection() {
   const base = apiUrl() || location.origin;
   return (
     <div className="card stack">
-      <h3>Developer API keys</h3>
+      <h3>{t('Developer API keys')}</h3>
       <p className="small muted">
-        Let your own services search the public registry and read stock data. Send the key as the{' '}
-        <code>X-API-Key</code> header, e.g. <code>GET {base}/api/v1/registry?q=…</code> — full reference in
-        the{' '}
+        {t('Let your own services search the public registry and read stock data. Send the key as the')}{' '}
+        <code>{t('X-API-Key')}</code> {t('header, e.g.')}{' '}
+        <code>{t('GET {0}/api/v1/registry?q=…', base)}</code> {t('— full reference in the')}{' '}
         <a href={`${base}/api/docs`} target="_blank" rel="noreferrer">
-          API docs
+          {t('API docs')}
         </a>
         .
       </p>
@@ -1157,16 +1211,16 @@ function DeveloperSection() {
             animate={{ opacity: 1, y: 0 }}
           >
             <div className="grow stack-sm">
-              <b>Copy your new key now — it is shown only once:</b>
+              <b>{t('Copy your new key now — it is shown only once:')}</b>
               <code style={{ wordBreak: 'break-all' }}>{create.data.key}</code>
             </div>
             <button
               className="btn sm"
               onClick={() =>
-                navigator.clipboard?.writeText(create.data!.key).then(() => toast.success('Key copied'))
+                navigator.clipboard?.writeText(create.data!.key).then(() => toast.success(t('Key copied')))
               }
             >
-              <Icon name="copy" size={14} /> Copy
+              <Icon name="copy" size={14} /> {t('Copy')}
             </button>
           </motion.div>
         )}
@@ -1181,12 +1235,12 @@ function DeveloperSection() {
         <input
           className="input"
           style={{ maxWidth: 300 }}
-          placeholder="Key name, e.g. My website"
+          placeholder={t('Key name, e.g. My website')}
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
         />
-        <button className="btn primary">Create key</button>
+        <button className="btn primary">{t('Create key')}</button>
       </form>
       <ErrorAlert error={create.error ?? revoke.error} />
       <div className="list">
@@ -1198,30 +1252,30 @@ function DeveloperSection() {
             <div className="grow">
               <div className="bold">{k.name}</div>
               <div className="small muted">
-                <code>{k.prefix}…</code> · created {formatDate(k.createdAt, false)}
-                {k.lastUsedAt && ` · last used ${formatDate(k.lastUsedAt)}`}
+                <code>{k.prefix}…</code> {t('· created')} {formatDate(k.createdAt, false)}
+                {k.lastUsedAt && ` ${t('· last used {0}', formatDate(k.lastUsedAt))}`}
               </div>
             </div>
             {k.revokedAt ? (
-              <span className="badge bad">Revoked</span>
+              <span className="badge bad">{t('Revoked')}</span>
             ) : (
               <button className="btn sm ghost" onClick={() => revoke.mutate(k.id)}>
-                Revoke
+                {t('Revoke')}
               </button>
             )}
           </div>
         ))}
       </div>
-      {keys.data?.length === 0 && <Empty icon="key" title="No keys yet" />}
+      {keys.data?.length === 0 && <Empty icon="key" title={t('No keys yet')} />}
     </div>
   );
 }
 
 const EVENT_LABELS: Record<(typeof WEBHOOK_EVENTS)[number], string> = {
-  'registry.created': 'New registry entries',
-  'registry.updated': 'Registry changes (status, renewal, expiry)',
-  'listing.created': 'New stock listings',
-  'listing.updated': 'Listing changes (price, status)',
+  'registry.created': msg('New registry entries'),
+  'registry.updated': msg('Registry changes (status, renewal, expiry)'),
+  'listing.created': msg('New stock listings'),
+  'listing.updated': msg('Listing changes (price, status)'),
 };
 
 /** Push registry and stock changes to your own service. */
@@ -1260,8 +1314,8 @@ function WebhooksCard() {
     }) => {
       if (action === 'test') {
         const d = await api.webhooks.test(w.id);
-        if (d.status === 'delivered') toast.success(`Ping delivered (HTTP ${d.responseStatus})`);
-        else toast.error(new Error(`Ping failed: ${d.error ?? 'no answer'}`));
+        if (d.status === 'delivered') toast.success(t('Ping delivered (HTTP {0})', d.responseStatus ?? ''));
+        else toast.error(new Error(t('Ping failed: {0}', d.error ?? t('no answer'))));
       } else if (action === 'toggle') await api.webhooks.update(w.id, { active: !w.active });
       else if (action === 'rotate') setSecret((await api.webhooks.rotateSecret(w.id)).secret);
       else await api.webhooks.remove(w.id);
@@ -1282,11 +1336,12 @@ function WebhooksCard() {
   });
   return (
     <div className="card stack">
-      <h3>Webhooks</h3>
+      <h3>{t('Webhooks')}</h3>
       <p className="small muted">
-        We POST a JSON event to your URL when the registry or the stock exchange changes. Check the{' '}
-        <code>X-OVL-Signature</code> header with your secret (the SDK has <code>verifyWebhookSignature</code>
-        ); failed deliveries are retried for about 15 hours.
+        {t('We POST a JSON event to your URL when the registry or the stock exchange changes. Check the')}{' '}
+        <code>{t('X-OVL-Signature')}</code> {t('header with your secret (the SDK has')}{' '}
+        <code>{t('verifyWebhookSignature')}</code>
+        {t('); failed deliveries are retried for about 15 hours.')}
       </p>
       <AnimatePresence>
         {secret && (
@@ -1296,16 +1351,16 @@ function WebhooksCard() {
             animate={{ opacity: 1, y: 0 }}
           >
             <div className="grow stack-sm">
-              <b>Copy the signing secret now — it is shown only once:</b>
+              <b>{t('Copy the signing secret now — it is shown only once:')}</b>
               <code style={{ wordBreak: 'break-all' }}>{secret}</code>
             </div>
             <button
               className="btn sm"
               onClick={() =>
-                navigator.clipboard?.writeText(secret).then(() => toast.success('Secret copied'))
+                navigator.clipboard?.writeText(secret).then(() => toast.success(t('Secret copied')))
               }
             >
-              <Icon name="copy" size={14} /> Copy
+              <Icon name="copy" size={14} /> {t('Copy')}
             </button>
           </motion.div>
         )}
@@ -1322,8 +1377,8 @@ function WebhooksCard() {
             className="input"
             style={{ flex: '2 1 280px' }}
             type="url"
-            placeholder="https://example.com/ovl-webhook"
-            aria-label="Webhook URL"
+            placeholder={t('https://example.com/ovl-webhook')}
+            aria-label={t('Webhook URL')}
             value={form.url}
             required
             onChange={(e) => setForm({ ...form, url: e.target.value })}
@@ -1331,8 +1386,8 @@ function WebhooksCard() {
           <input
             className="input"
             style={{ flex: '1 1 180px' }}
-            placeholder="Description (optional)"
-            aria-label="Webhook description"
+            placeholder={t('Description (optional)')}
+            aria-label={t('Webhook description')}
             value={form.description}
             maxLength={200}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
@@ -1351,13 +1406,13 @@ function WebhooksCard() {
                   })
                 }
               />
-              {EVENT_LABELS[ev]}
+              {t(EVENT_LABELS[ev])}
             </label>
           ))}
         </div>
         <div>
           <button className="btn primary" disabled={create.isPending || !form.events.length}>
-            Add webhook
+            {t('Add webhook')}
           </button>
         </div>
       </form>
@@ -1373,41 +1428,41 @@ function WebhooksCard() {
                 <div className="bold ellipsis">{w.description || w.url}</div>
                 <div className="small muted ellipsis">
                   {w.description && `${w.url} · `}
-                  {w.events.length} {w.events.length === 1 ? 'event' : 'events'}
-                  {w.lastDeliveryAt && ` · last delivery ${formatDate(w.lastDeliveryAt)}`}
-                  {w.failures > 0 && ` · ${w.failures} failed in a row`}
+                  {plural(w.events.length, 'event')}
+                  {w.lastDeliveryAt && ` ${t('· last delivery {0}', formatDate(w.lastDeliveryAt))}`}
+                  {w.failures > 0 && ` ${t('· {0} failed in a row', w.failures)}`}
                 </div>
                 {w.disabledReason && <div className="small neg">{w.disabledReason}</div>}
               </div>
-              <span className={`badge ${w.active ? 'ok' : ''}`}>{w.active ? 'Active' : 'Off'}</span>
+              <span className={`badge ${w.active ? 'ok' : ''}`}>{w.active ? t('Active') : t('Off')}</span>
               <div className="row" style={{ gap: 4 }}>
                 <button
                   className="btn sm ghost"
                   disabled={act.isPending}
                   onClick={() => act.mutate({ w, action: 'test' })}
                 >
-                  Test
+                  {t('Test')}
                 </button>
                 <button className="btn sm ghost" onClick={() => setOpen(open === w.id ? null : w.id)}>
-                  Log
+                  {t('Log')}
                 </button>
                 <button
                   className="btn sm ghost"
                   disabled={act.isPending}
                   onClick={() => act.mutate({ w, action: 'toggle' })}
                 >
-                  {w.active ? 'Turn off' : 'Turn on'}
+                  {w.active ? t('Turn off') : t('Turn on')}
                 </button>
                 <button
                   className="btn sm ghost"
                   disabled={act.isPending}
                   onClick={() => act.mutate({ w, action: 'rotate' })}
                 >
-                  New secret
+                  {t('New secret')}
                 </button>
                 <button
                   className="btn sm ghost"
-                  aria-label={`Delete webhook ${w.url}`}
+                  aria-label={t('Delete webhook {0}', w.url)}
                   disabled={act.isPending}
                   onClick={() => act.mutate({ w, action: 'delete' })}
                 >
@@ -1429,12 +1484,12 @@ function WebhooksCard() {
                           <StatusBadge status={d.status} />
                         </td>
                         <td className="small muted">
-                          {d.responseStatus ? `HTTP ${d.responseStatus}` : ''}{' '}
+                          {d.responseStatus ? t('HTTP {0}', d.responseStatus) : ''}{' '}
                           {d.error && d.error !== `HTTP ${d.responseStatus}` ? d.error : ''}
                           {d.nextAttemptAt &&
                             (d.attempts > 0
-                              ? ` · retry ${formatDate(d.nextAttemptAt)}`
-                              : 'Waiting to be sent')}
+                              ? ` ${t('· retry {0}', formatDate(d.nextAttemptAt))}`
+                              : t('Waiting to be sent'))}
                         </td>
                         <td className="right">
                           {d.status !== 'delivered' && (
@@ -1443,7 +1498,7 @@ function WebhooksCard() {
                               disabled={redeliver.isPending}
                               onClick={() => redeliver.mutate(d.id)}
                             >
-                              Send again
+                              {t('Send again')}
                             </button>
                           )}
                         </td>
@@ -1451,7 +1506,9 @@ function WebhooksCard() {
                     ))}
                   </tbody>
                 </table>
-                {deliveries.data?.length === 0 && <p className="small muted">Nothing delivered yet.</p>}
+                {deliveries.data?.length === 0 && (
+                  <p className="small muted">{t('Nothing delivered yet.')}</p>
+                )}
               </div>
             )}
           </div>
@@ -1468,11 +1525,11 @@ export function SettingsPage() {
     <div className="page">
       <PageHeader
         icon="settings"
-        title="Settings"
-        subtitle="Your profile, appearance, accounts and developer access."
+        title={t('Settings')}
+        subtitle={t('Your profile, appearance, accounts and developer access.')}
       />
       <div className="settings-layout">
-        <nav className="settings-nav" aria-label="Settings sections">
+        <nav className="settings-nav" aria-label={t('Settings sections')}>
           {SECTIONS.map((s) => (
             <button
               key={s.id}
@@ -1488,8 +1545,8 @@ export function SettingsPage() {
               )}
               <Icon name={s.icon} size={18} />
               <span className="stack-sm" style={{ gap: 0 }}>
-                <span>{s.label}</span>
-                <span className="tiny muted">{s.hint}</span>
+                <span>{t(s.label)}</span>
+                <span className="tiny muted">{t(s.hint)}</span>
               </span>
             </button>
           ))}

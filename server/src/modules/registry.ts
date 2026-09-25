@@ -31,6 +31,7 @@ import { apiKeyGuard, publicRouteConfig } from '../lib/public-api';
 import { emitEvent } from '../lib/webhooks';
 import { currentUser } from '../plugins/auth';
 import { queueNotification } from '../lib/notify';
+import { userLocale, text } from '../lib/i18n';
 
 type RegistryKind = (typeof registryEntries.$inferInsert)['kind'];
 
@@ -173,15 +174,15 @@ type EntryRow = typeof registryEntries.$inferSelect;
 async function holderContact(db: Db, entry: EntryRow) {
   const [row] = entry.holderUserId
     ? await db
-        .select({ id: users.id, email: users.email, name: users.displayName })
+        .select({ id: users.id, email: users.email, name: users.displayName, preferences: users.preferences })
         .from(users)
         .where(eq(users.id, entry.holderUserId))
     : await db
-        .select({ id: users.id, email: users.email, name: users.displayName })
+        .select({ id: users.id, email: users.email, name: users.displayName, preferences: users.preferences })
         .from(organizations)
         .innerJoin(users, eq(users.id, organizations.ownerId))
         .where(eq(organizations.id, entry.holderOrganizationId!));
-  return row ?? null;
+  return row ? { ...row, locale: userLocale(row.preferences) } : null;
 }
 
 /**
@@ -239,7 +240,10 @@ export async function runLicenceExpiry(app: FastifyInstance, now = new Date()) {
     if (!person) continue;
     await queueNotification(app.db, [person.id], {
       type: 'licence',
-      title: outcome.kind === 'expired' ? `${entry.title} has expired` : `${entry.title} expires on ${when}`,
+      title:
+        outcome.kind === 'expired'
+          ? text`${entry.title} has expired`
+          : text`${entry.title} expires on ${when}`,
       body: 'Ask for a renewal in Applications.',
       link: `/applications?renew=${entry.id}`,
     });
@@ -247,17 +251,20 @@ export async function runLicenceExpiry(app: FastifyInstance, now = new Date()) {
       .send(
         actionEmail({
           to: person.email,
+          locale: person.locale,
           subject:
-            outcome.kind === 'expired' ? `${entry.title} has expired` : `${entry.title} expires on ${when}`,
-          greeting: `Hello ${person.name},`,
+            outcome.kind === 'expired'
+              ? text`${entry.title} has expired`
+              : text`${entry.title} expires on ${when}`,
+          greeting: text`Hello ${person.name},`,
           lines:
             outcome.kind === 'expired'
               ? [
-                  `The licence ${entry.title} (${entry.number}) expired on ${when} and now shows as expired in the public registry.`,
-                  `You can still renew it for ${RENEWAL_GRACE_DAYS} days after the expiry date.`,
+                  text`The licence ${entry.title} (${entry.number}) expired on ${when} and now shows as expired in the public registry.`,
+                  text`You can still renew it for ${RENEWAL_GRACE_DAYS} days after the expiry date.`,
                 ]
               : [
-                  `The licence ${entry.title} (${entry.number}) expires on ${when}.`,
+                  text`The licence ${entry.title} (${entry.number}) expires on ${when}.`,
                   'Ask for a renewal now: a moderator checks it and the licence runs for another term.',
                 ],
           action: { label: 'Renew the licence', url: `${web}/#/applications?renew=${entry.id}` },

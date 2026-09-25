@@ -10,6 +10,10 @@ import {
   ThemeMenu,
   TwoFactorSetupForm,
   type IconName,
+  t,
+  LanguagePicker,
+  useLocale,
+  msg,
 } from '@ovl/ui';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
@@ -63,34 +67,34 @@ export const SECTIONS: Section[] = [
   },
   {
     path: 'users',
-    label: 'Users & roles',
+    label: msg('Users & roles'),
     icon: 'users',
-    group: 'People & money',
+    group: msg('People & money'),
     permission: 'users.view',
     element: <UsersPage />,
   },
   {
     path: 'cash',
-    label: 'Cash desk',
+    label: msg('Cash desk'),
     icon: 'wallet',
-    group: 'People & money',
+    group: msg('People & money'),
     permission: 'wallet.view_all',
     element: <CashDeskPage />,
     count: ['pendingCashRequests', 'pendingCashApprovals'],
   },
   {
     path: 'rates',
-    label: 'Exchange rates',
+    label: msg('Exchange rates'),
     icon: 'refresh',
-    group: 'People & money',
+    group: msg('People & money'),
     permission: 'exchange.manage',
     element: <RatesPage />,
   },
   {
     path: 'identity',
-    label: 'Identity checks',
+    label: msg('Identity checks'),
     icon: 'shield',
-    group: 'People & money',
+    group: msg('People & money'),
     permission: 'identity.review',
     element: <IdentityPage />,
     count: 'pendingIdentityChecks',
@@ -122,7 +126,7 @@ export const SECTIONS: Section[] = [
   },
   {
     path: 'stock',
-    label: 'Stock exchange',
+    label: msg('Stock exchange'),
     icon: 'chart',
     group: 'Business',
     permission: 'admin.panel',
@@ -130,7 +134,7 @@ export const SECTIONS: Section[] = [
   },
   {
     path: 'support',
-    label: 'Tech support',
+    label: msg('Tech support'),
     icon: 'support',
     group: 'Communication',
     permission: 'support.answer',
@@ -139,7 +143,7 @@ export const SECTIONS: Section[] = [
   },
   {
     path: 'stories',
-    label: 'Service stories',
+    label: msg('Service stories'),
     icon: 'sparkles',
     group: 'Communication',
     permission: 'stories.publish',
@@ -155,7 +159,7 @@ export const SECTIONS: Section[] = [
   },
   {
     path: 'audit',
-    label: 'Audit log',
+    label: msg('Audit log'),
     icon: 'shield',
     group: 'System',
     permission: 'audit.view',
@@ -177,7 +181,7 @@ function NavGroups({ sections, counts }: { sections: Section[]; counts?: Record<
     <div className="admin-nav-scroll">
       {groups.map((g) => (
         <div key={g} className="admin-group">
-          <div className="admin-group-title">{g}</div>
+          <div className="admin-group-title">{t(g)}</div>
           {sections
             .filter((s) => s.group === g)
             .map((s) => {
@@ -198,7 +202,7 @@ function NavGroups({ sections, counts }: { sections: Section[]; counts?: Record<
                         />
                       )}
                       <Icon name={s.icon} size={18} />
-                      <span className="grow">{s.label}</span>
+                      <span className="grow">{t(s.label)}</span>
                       {count > 0 && <span className="admin-count">{count > 99 ? '99+' : count}</span>}
                     </>
                   )}
@@ -219,7 +223,7 @@ function ThemeButton() {
       <button
         className="btn ghost icon"
         onClick={() => setOpen(!open)}
-        aria-label="Theme"
+        aria-label={t('Theme')}
         aria-haspopup="menu"
         aria-expanded={open}
       >
@@ -227,7 +231,7 @@ function ThemeButton() {
       </button>
       <Popover open={open} onClose={() => setOpen(false)} style={{ right: 0, top: 46, width: 250 }}>
         <div className="tiny muted" style={{ padding: '6px 10px' }}>
-          Console theme · this device
+          {t('Console theme · this device')}
         </div>
         <ThemeMenu value={theme} onChange={(id, origin) => setTheme(id, origin)} />
       </Popover>
@@ -244,7 +248,7 @@ function UserMenu() {
         <Avatar name={me.displayName} url={me.avatarUrl} size={32} />
         <span className="admin-user-text">
           <b className="ellipsis">{me.displayName}</b>
-          <span className="tiny muted">{ROLE_LABELS[me.role]}</span>
+          <span className="tiny muted">{t(ROLE_LABELS[me.role])}</span>
         </span>
         <Icon name="chevronDown" size={16} />
       </button>
@@ -261,7 +265,7 @@ function UserMenu() {
         </div>
         <div className="menu-sep" />
         <button className="menu-item danger" onClick={() => logout()}>
-          <Icon name="logout" size={17} /> Sign out
+          <Icon name="logout" size={17} /> {t('Sign out')}
         </button>
       </Popover>
     </div>
@@ -277,7 +281,7 @@ function Shell() {
   const current = sections.find((s) => location.pathname.startsWith(`/${s.path}`));
   useEffect(() => setDrawer(false), [location.pathname]);
   useEffect(() => {
-    document.title = current ? `${current.label} · OVL Admin` : 'OVL Admin';
+    document.title = current ? `${t(current.label)} · OVL Admin` : 'OVL Admin';
   }, [current]);
 
   const sidebar = (
@@ -285,21 +289,21 @@ function Shell() {
       <div className="admin-brand">
         <Logo size={34} />
         <div>
-          OVL For Business
-          <small>Admin console</small>
+          {t('OVL For Business')}
+          <small>{t('Admin console')}</small>
         </div>
       </div>
       <NavGroups sections={sections} counts={stats.data} />
       <div className="admin-env">
-        <span className="dot" /> Connected to{' '}
-        {api.baseUrl.replace(/^https?:\/\//, '') || window.location.host}
+        <span className="dot" />{' '}
+        {t('Connected to {0}', api.baseUrl.replace(/^https?:\/\//, '') || window.location.host)}
       </div>
     </>
   );
 
   return (
     <div className="admin">
-      <nav className="admin-nav" aria-label="Admin">
+      <nav className="admin-nav" aria-label={t('Admin')}>
         {sidebar}
       </nav>
       <AnimatePresence>
@@ -313,7 +317,7 @@ function Shell() {
           >
             <motion.nav
               className="admin-nav drawer"
-              aria-label="Admin"
+              aria-label={t('Admin')}
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
@@ -330,16 +334,20 @@ function Shell() {
           <button
             className="btn ghost icon admin-menu-button"
             onClick={() => setDrawer(true)}
-            aria-label="Menu"
+            aria-label={t('Menu')}
           >
             <Icon name="menu" size={20} />
           </button>
           <div className="admin-crumbs">
-            <span className="muted">Admin</span>
+            <span className="muted">{t('Admin')}</span>
             <Icon name="chevronRight" size={14} />
-            <b>{current?.label ?? 'Dashboard'}</b>
+            <b>{t(current?.label ?? 'Dashboard')}</b>
           </div>
           <div className="grow" />
+          <LanguagePicker
+            compact
+            onChange={(locale) => void api.me.updatePreferences({ locale }).catch(() => undefined)}
+          />
           <ThemeButton />
           <UserMenu />
         </header>
@@ -370,10 +378,11 @@ function TwoFactorGate() {
         <div className="admin-login-card stack-lg" style={{ width: 'min(520px, 100%)' }}>
           <div className="stack-sm">
             <Logo size={44} />
-            <h2 style={{ marginTop: 10 }}>Turn on two-step verification</h2>
+            <h2 style={{ marginTop: 10 }}>{t('Turn on two-step verification')}</h2>
             <p className="small muted">
-              Staff accounts need a code from an authenticator app at every sign-in. Set it up once, then the
-              console opens.
+              {t(
+                'Staff accounts need a code from an authenticator app at every sign-in. Set it up once, then the console opens.',
+              )}
             </p>
           </div>
           <TwoFactorSetupForm
@@ -382,7 +391,7 @@ function TwoFactorGate() {
             onDone={reload}
           />
           <button className="btn ghost sm" style={{ alignSelf: 'flex-start' }} onClick={() => void logout()}>
-            <Icon name="logout" size={15} /> Sign out {me?.username}
+            <Icon name="logout" size={15} /> {t('Sign out')} {me?.username}
           </button>
         </div>
       </div>
@@ -390,7 +399,13 @@ function TwoFactorGate() {
   );
 }
 
+/** A new language re-renders the console (cached data stays). */
 export function App() {
+  const locale = useLocale();
+  return <Console key={locale} />;
+}
+
+function Console() {
   const { me, loading, can } = useAdminAuth();
   const meta = useQuery({ queryKey: ['meta'], queryFn: api.meta, staleTime: Infinity, enabled: !!me });
   if (loading) return <Splash />;

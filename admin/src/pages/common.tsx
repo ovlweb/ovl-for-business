@@ -1,3 +1,4 @@
+import { t } from '@ovl/ui';
 export function Pager({
   total,
   limit,
@@ -17,13 +18,13 @@ export function Pager({
         disabled={offset === 0}
         onClick={() => onChange(Math.max(0, offset - limit))}
       >
-        Previous
+        {t('Previous')}
       </button>
       <span className="small muted">
-        {offset + 1}–{Math.min(offset + limit, total)} of {total}
+        {t('{0}–{1} of {2}', offset + 1, Math.min(offset + limit, total), total)}
       </span>
       <button className="btn sm" disabled={offset + limit >= total} onClick={() => onChange(offset + limit)}>
-        Next
+        {t('Next')}
       </button>
     </div>
   );

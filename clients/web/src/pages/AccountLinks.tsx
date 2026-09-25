@@ -1,4 +1,4 @@
-import { ErrorAlert, Icon, Logo, ResetPasswordForm, Spinner } from '@ovl/ui';
+import { ErrorAlert, Icon, Logo, ResetPasswordForm, Spinner, t } from '@ovl/ui';
 import { motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -58,21 +58,21 @@ function VerifyEmail({ token }: { token: string }) {
   if (state.error)
     return (
       <div className="stack">
-        <h1 className="auth-title">This link did not work</h1>
+        <h1 className="auth-title">{t('This link did not work')}</h1>
         <ErrorAlert error={state.error} />
         <button className="btn" onClick={() => navigate('/settings?section=profile')}>
-          Send a new link from Settings
+          {t('Send a new link from Settings')}
         </button>
       </div>
     );
   if (!state.email) return <Spinner center />;
   return (
     <Done
-      title="Email confirmed"
+      title={t('Email confirmed')}
       text={`${state.email} is confirmed. You can now apply for companies and licenses.`}
       action={
         <button className="btn gradient lg block" onClick={() => navigate('/home')}>
-          Continue <Icon name="arrowRight" size={18} />
+          {t('Continue')} <Icon name="arrowRight" size={18} />
         </button>
       }
     />
@@ -86,20 +86,20 @@ function ResetPassword({ token }: { token: string }) {
   if (done)
     return (
       <Done
-        title="Password changed"
-        text="Every device was signed out. Sign in with your new password."
+        title={t('Password changed')}
+        text={t('Every device was signed out. Sign in with your new password.')}
         action={
           <button className="btn gradient lg block" onClick={() => navigate('/')}>
-            Sign in <Icon name="arrowRight" size={18} />
+            {t('Sign in')} <Icon name="arrowRight" size={18} />
           </button>
         }
       />
     );
   return (
     <div className="stack">
-      <h1 className="auth-title">Choose a new password</h1>
+      <h1 className="auth-title">{t('Choose a new password')}</h1>
       <p className="muted" style={{ margin: 0 }}>
-        After this, every device signed in to the account is signed out.
+        {t('After this, every device signed in to the account is signed out.')}
       </p>
       <ResetPasswordForm
         onSubmit={async (password) => {

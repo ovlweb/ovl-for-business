@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -11,6 +12,7 @@ import '../theme/theme.dart';
 import '../ui/format.dart';
 import '../ui/widgets.dart';
 import 'contacts.dart';
+import '../i18n/i18n.dart';
 
 const _cardGradients = [
   [Color(0xFF1E3A8A), Color(0xFF2563EB), Color(0xFF7C3AED)],
@@ -61,28 +63,28 @@ class _WalletScreenState extends State<WalletScreen> {
               children: [
                 PageTitle(
                   icon: LucideIcons.wallet,
-                  title: 'Wallet',
-                  subtitle: 'Your personal balances in any world currency.',
+                  title: tr('Wallet'),
+                  subtitle: tr('Your personal balances in any world currency.'),
                   actions: [
                     OutlinedButton.icon(
                       onPressed: selected == null ? null : () => showCashRequestSheet(context, selected, 'deposit'),
                       icon: const Icon(LucideIcons.arrowDownLeft, size: 17),
-                      label: const Text('Deposit'),
+                      label: Text(tr('Deposit')),
                     ),
                     OutlinedButton.icon(
                       onPressed: selected == null ? null : () => showCashRequestSheet(context, selected, 'withdrawal'),
                       icon: const Icon(LucideIcons.arrowUpRight, size: 17),
-                      label: const Text('Withdraw'),
+                      label: Text(tr('Withdraw')),
                     ),
                     OutlinedButton.icon(
                       onPressed: selected == null ? null : () => showConvertSheet(context, selected),
                       icon: const Icon(LucideIcons.arrowLeftRight, size: 17),
-                      label: const Text('Convert'),
+                      label: Text(tr('Convert')),
                     ),
                     FilledButton.icon(
                       onPressed: wallets.isEmpty ? null : () => showTransferSheet(context, from: selected),
                       icon: const Icon(LucideIcons.send, size: 17),
-                      label: const Text('Send money'),
+                      label: Text(tr('Send money')),
                     ),
                   ],
                 ),
@@ -92,10 +94,10 @@ class _WalletScreenState extends State<WalletScreen> {
                 if (!s.hasData)
                   const Skeleton(height: 170, radius: 22)
                 else if (wallets.isEmpty)
-                  const EmptyState(
+                  EmptyState(
                     icon: LucideIcons.wallet,
-                    title: 'No balances yet',
-                    text: 'Open a balance below, then ask a finance manager for a deposit.',
+                    title: tr('No balances yet'),
+                    text: tr('Open a balance below, then ask a finance manager for a deposit.'),
                   )
                 else
                   WalletCards(
@@ -137,20 +139,22 @@ class DepositInfo extends StatelessWidget {
             child: Text.rich(
               TextSpan(
                 style: TextStyle(color: c.accent2, fontSize: 13.5, height: 1.4),
-                children: const [
+                children: [
                   TextSpan(
-                    text: 'Deposits and payouts are handled by finance managers, by bank transfer or at the cash desk. Ask for one with ',
+                    text: tr(
+                      'Deposits and payouts are handled by finance managers, by bank transfer or at the cash desk. Ask for one with ',
+                    ),
                   ),
                   TextSpan(
-                    text: 'Deposit',
+                    text: tr('Deposit'),
                     style: TextStyle(fontWeight: FontWeight.w700),
                   ),
-                  TextSpan(text: ' or '),
+                  TextSpan(text: tr(' or ')),
                   TextSpan(
-                    text: 'Withdraw',
+                    text: tr('Withdraw'),
                     style: TextStyle(fontWeight: FontWeight.w700),
                   ),
-                  TextSpan(text: '; a payout holds the amount until it is paid out.'),
+                  TextSpan(text: tr('; a payout holds the amount until it is paid out.')),
                 ],
               ),
             ),
@@ -269,7 +273,7 @@ class BankCard extends StatelessWidget {
                             Icon(LucideIcons.lock, size: 13, color: white70),
                             const SizedBox(width: 4),
                             Text(
-                              '${money(wallet.frozen, wallet.currency, code: false)} frozen',
+                              tr('{0} frozen', [money(wallet.frozen, wallet.currency, code: false)]),
                               style: TextStyle(color: white70, fontSize: 12.5),
                             ),
                           ],
@@ -296,7 +300,7 @@ class BankCard extends StatelessWidget {
                         children: [
                           Expanded(
                             child: Text(
-                              'Available: ${money(wallet.available, wallet.currency)}',
+                              tr('Available: {0}', [money(wallet.available, wallet.currency)]),
                               style: TextStyle(color: white70, fontSize: 12.5),
                             ),
                           ),
@@ -379,11 +383,13 @@ class _StatementState extends State<Statement> {
                 padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
                 child: Row(
                   children: [
-                    Expanded(child: Text(widget.title ?? 'Statement · ${w.currency}', style: context.text.titleLarge)),
+                    Expanded(
+                      child: Text(widget.title ?? tr('Statement · {0}', [w.currency]), style: context.text.titleLarge),
+                    ),
                     if (page != null) Text(plural(page.total, 'operation'), style: context.text.bodySmall),
                     if (page != null && page.total > 0)
                       IconButton(
-                        tooltip: 'Export',
+                        tooltip: tr('Export'),
                         onPressed: () => showExportSheet(context, w),
                         icon: const Icon(LucideIcons.download, size: 19),
                       ),
@@ -393,7 +399,7 @@ class _StatementState extends State<Statement> {
               if (page == null)
                 const SkeletonList(rows: 4)
               else if (page.items.isEmpty)
-                const EmptyState(icon: LucideIcons.receipt, title: 'No operations yet')
+                EmptyState(icon: LucideIcons.receipt, title: tr('No operations yet'))
               else ...[
                 for (final (i, e) in page.items.indexed)
                   FadeSlideIn(
@@ -424,7 +430,7 @@ class _StatementState extends State<Statement> {
                     ),
                   ),
                 if (page.total > page.items.length)
-                  TextButton(onPressed: () => setState(() => _limit += 20), child: const Text('Load more')),
+                  TextButton(onPressed: () => setState(() => _limit += 20), child: Text(tr('Load more'))),
                 _MonthlyStatements(wallet: w),
               ],
             ],
@@ -466,7 +472,7 @@ class _OpenBalanceState extends State<_OpenBalance> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Open a balance in another currency', style: context.text.titleMedium),
+              Text(tr('Open a balance in another currency'), style: context.text.titleMedium),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -493,14 +499,14 @@ class _OpenBalanceState extends State<_OpenBalance> {
                             try {
                               await session.api.openWallet(_currency);
                               session.queries.invalidate('wallets');
-                              if (context.mounted) toast(context, '$_currency balance opened');
+                              if (context.mounted) toast(context, tr('{0} balance opened', [_currency]));
                             } catch (e) {
                               if (context.mounted) toast(context, errorText(e), error: true);
                             } finally {
                               if (mounted) setState(() => _busy = false);
                             }
                           },
-                    child: const Text('Open balance'),
+                    child: Text(tr('Open balance')),
                   ),
                 ],
               ),
@@ -537,13 +543,13 @@ void showTransferSheet(BuildContext context, {Wallet? from}) {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Send money', style: sheet.text.headlineSmall),
+                Text(tr('Send money'), style: sheet.text.headlineSmall),
                 const SizedBox(height: 4),
-                Text('Instant transfers between accounts in the same currency.', style: sheet.text.bodyMedium),
+                Text(tr('Instant transfers between accounts in the same currency.'), style: sheet.text.bodyMedium),
                 const SizedBox(height: 16),
                 if (error != null) ...[ErrorBox(error), const SizedBox(height: 12)],
                 if (wallets.isEmpty && snap.hasData)
-                  const EmptyState(icon: LucideIcons.wallet, title: 'No balances to send from')
+                  EmptyState(icon: LucideIcons.wallet, title: tr('No balances to send from'))
                 else ...[
                   SizedBox(
                     height: 44,
@@ -564,23 +570,23 @@ void showTransferSheet(BuildContext context, {Wallet? from}) {
                   ),
                   const SizedBox(height: 14),
                   LabeledField(
-                    label: 'Username',
+                    label: tr('Username'),
                     controller: username,
                     icon: LucideIcons.atSign,
-                    hint: 'who receives the money',
+                    hint: tr('who receives the money'),
                   ),
                   const SizedBox(height: 12),
                   LabeledField(
-                    label: 'Amount (${wallet?.currency ?? ''})',
+                    label: tr('Amount ({0})', [wallet?.currency ?? '']),
                     controller: amount,
                     icon: LucideIcons.banknote,
                     keyboard: const TextInputType.numberWithOptions(decimal: true),
                   ),
                   const SizedBox(height: 12),
-                  LabeledField(label: 'Note (optional)', controller: note, icon: LucideIcons.stickyNote),
+                  LabeledField(label: tr('Note (optional)'), controller: note, icon: LucideIcons.stickyNote),
                   const SizedBox(height: 18),
                   GradientButton(
-                    label: 'Send',
+                    label: tr('Send'),
                     icon: LucideIcons.send,
                     busy: busy,
                     onPressed: wallet == null
@@ -605,8 +611,13 @@ void showTransferSheet(BuildContext context, {Wallet? from}) {
                                 toast(
                                   context,
                                   approval != null
-                                      ? 'Above the approval limit: another finance member has to approve this payment'
-                                      : 'Sent ${money(amount.text.trim(), wallet!.currency)} to @${username.text.trim()}',
+                                      ? tr(
+                                          'Above the approval limit: another finance member has to approve this payment',
+                                        )
+                                      : tr('Sent {0} to @{1}', [
+                                          money(amount.text.trim(), wallet!.currency),
+                                          username.text.trim(),
+                                        ]),
                                 );
                               }
                             } catch (e) {
@@ -672,7 +683,7 @@ void showConvertSheet(BuildContext context, Wallet wallet) {
                 padding: const EdgeInsets.symmetric(vertical: 3),
                 child: Row(
                   children: [
-                    Expanded(child: Text(label, style: sheet.text.bodyMedium)),
+                    Expanded(child: Text(tr(label), style: sheet.text.bodyMedium)),
                     Text(
                       value,
                       style: strong ? font(display, 20, FontWeight.w700, color: c.text) : sheet.text.bodyMedium,
@@ -684,25 +695,27 @@ void showConvertSheet(BuildContext context, Wallet wallet) {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Convert ${wallet.currency}', style: sheet.text.headlineSmall),
+                  Text(tr('Convert {0}', [wallet.currency]), style: sheet.text.headlineSmall),
                   const SizedBox(height: 4),
                   Text(
-                    'Available: ${money(wallet.available, wallet.currency)}. The fee is taken before converting.',
+                    tr('Available: {0}. The fee is taken before converting.', [
+                      money(wallet.available, wallet.currency),
+                    ]),
                     style: sheet.text.bodyMedium,
                   ),
                   const SizedBox(height: 16),
                   if (snap.hasError) ErrorBox(snap.error!),
                   if (!snap.hasData && !snap.hasError) const SkeletonList(rows: 2),
                   if (info != null && targets.isEmpty)
-                    const EmptyState(
+                    EmptyState(
                       icon: LucideIcons.arrowLeftRight,
-                      title: 'No exchange rates yet',
-                      text: 'Finance managers publish rates in the admin panel.',
+                      title: tr('No exchange rates yet'),
+                      text: tr('Finance managers publish rates in the admin panel.'),
                     ),
                   if (info != null && targets.isNotEmpty) ...[
                     if (error != null) ...[ErrorBox(error!), const SizedBox(height: 12)],
                     LabeledField(
-                      label: 'Amount (${wallet.currency})',
+                      label: tr('Amount ({0})', [wallet.currency]),
                       controller: amount,
                       icon: LucideIcons.banknote,
                       keyboard: const TextInputType.numberWithOptions(decimal: true),
@@ -743,7 +756,7 @@ void showConvertSheet(BuildContext context, Wallet wallet) {
                     if (quoteError != null) ...[const SizedBox(height: 10), ErrorBox(quoteError!)],
                     const SizedBox(height: 18),
                     GradientButton(
-                      label: 'Convert',
+                      label: tr('Convert'),
                       icon: LucideIcons.arrowLeftRight,
                       busy: busy,
                       onPressed: quote == null
@@ -767,8 +780,10 @@ void showConvertSheet(BuildContext context, Wallet wallet) {
                                   toast(
                                     context,
                                     approval != null
-                                        ? 'Above the approval limit: another finance member has to approve this exchange'
-                                        : 'Converted to ${money(done!.receive, done.toCurrency)}',
+                                        ? tr(
+                                            'Above the approval limit: another finance member has to approve this exchange',
+                                          )
+                                        : tr('Converted to {0}', [money(done!.receive, done.toCurrency)]),
                                   );
                                 }
                               } catch (e) {
@@ -821,7 +836,7 @@ class CashRequests extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
                   child: Row(
                     children: [
-                      Expanded(child: Text('Deposit and payout requests', style: context.text.titleLarge)),
+                      Expanded(child: Text(tr('Deposit and payout requests'), style: context.text.titleLarge)),
                       Text(plural(pending, 'pending request'), style: context.text.bodySmall),
                     ],
                   ),
@@ -836,7 +851,7 @@ class CashRequests extends StatelessWidget {
                         color: r.isDeposit ? c.success : c.warning,
                       ),
                       title: Text(
-                        '${r.isDeposit ? 'Deposit' : 'Payout'} · ${_methodLabel[r.method] ?? humanize(r.method)}',
+                        '${r.isDeposit ? tr('Deposit') : tr('Payout')} · ${tr(_methodLabel[r.method] ?? humanize(r.method))}',
                         style: context.text.titleSmall,
                       ),
                       subtitle: Text(
@@ -862,7 +877,7 @@ class CashRequests extends StatelessWidget {
                           ),
                           if (r.isPending)
                             IconButton(
-                              tooltip: 'Cancel request',
+                              tooltip: tr('Cancel request'),
                               onPressed: () => _confirmCancel(context, r),
                               icon: Icon(LucideIcons.x, size: 18, color: c.text3),
                             ),
@@ -879,10 +894,10 @@ class CashRequests extends StatelessWidget {
   }
 
   String _detail(CashRequest r) => switch (r.status) {
-    'completed' => 'Done by ${r.handledBy ?? 'finance'} · ref. ${r.reference}',
-    'declined' => 'Declined: ${r.declineReason}',
-    'cancelled' => 'Cancelled · ${date(r.createdAt)}',
-    _ => '${r.isDeposit ? 'Waiting for a finance manager' : 'Waiting · amount held'} · ${date(r.createdAt)}',
+    'completed' => tr('Done by {0} · ref. {1}', [r.handledBy ?? tr('finance'), r.reference]),
+    'declined' => tr('Declined: {0}', [r.declineReason]),
+    'cancelled' => tr('Cancelled · {0}', [date(r.createdAt)]),
+    _ => '${r.isDeposit ? tr('Waiting for a finance manager') : tr('Waiting · amount held')} · ${date(r.createdAt)}',
   };
 
   Future<void> _confirmCancel(BuildContext context, CashRequest r) async {
@@ -890,15 +905,15 @@ class CashRequests extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialog) => AlertDialog(
-        title: Text('Cancel this ${r.isDeposit ? 'deposit' : 'payout'}?'),
+        title: Text(tr('Cancel this {0}?', [r.isDeposit ? 'deposit' : 'payout'])),
         content: Text(
           r.isDeposit
-              ? 'The finance team will no longer expect ${money(r.amount, r.currency)}.'
-              : 'The ${money(r.amount, r.currency)} held for it becomes available again.',
+              ? tr('The finance team will no longer expect {0}.', [money(r.amount, r.currency)])
+              : tr('The {0} held for it becomes available again.', [money(r.amount, r.currency)]),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('Keep')),
-          FilledButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('Cancel request')),
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: Text(tr('Keep'))),
+          FilledButton(onPressed: () => Navigator.pop(dialog, true), child: Text(tr('Cancel request'))),
         ],
       ),
     );
@@ -908,7 +923,7 @@ class CashRequests extends StatelessWidget {
       session.queries.invalidate('cashRequests');
       session.queries.invalidate('wallets');
       session.queries.invalidate('orgs');
-      if (context.mounted) toast(context, 'Request cancelled');
+      if (context.mounted) toast(context, tr('Request cancelled'));
     } catch (e) {
       if (context.mounted) toast(context, errorText(e), error: true);
     }
@@ -936,20 +951,24 @@ void showCashRequestSheet(BuildContext context, Wallet wallet, String type) {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              deposit ? 'Deposit ${wallet.currency}' : 'Withdraw ${wallet.currency}',
+              deposit ? tr('Deposit {0}', [wallet.currency]) : tr('Withdraw {0}', [wallet.currency]),
               style: sheet.text.headlineSmall,
             ),
             const SizedBox(height: 4),
             Text(
               deposit
-                  ? 'A finance manager confirms the deposit once the money arrives by bank transfer or is handed in at the cash desk.'
-                  : 'A finance manager pays the money out. The amount is held on your balance until then; you can cancel while it is pending.',
+                  ? tr(
+                      'A finance manager confirms the deposit once the money arrives by bank transfer or is handed in at the cash desk.',
+                    )
+                  : tr(
+                      'A finance manager pays the money out. The amount is held on your balance until then; you can cancel while it is pending.',
+                    ),
               style: sheet.text.bodyMedium,
             ),
             const SizedBox(height: 16),
             if (error != null) ...[ErrorBox(error), const SizedBox(height: 12)],
             if (!deposit) ...[
-              Text('Available: ${money(wallet.available, wallet.currency)}', style: sheet.text.titleSmall),
+              Text(tr('Available: {0}', [money(wallet.available, wallet.currency)]), style: sheet.text.titleSmall),
               const SizedBox(height: 12),
             ],
             Segmented<String>(
@@ -959,7 +978,7 @@ void showCashRequestSheet(BuildContext context, Wallet wallet, String type) {
             ),
             const SizedBox(height: 14),
             LabeledField(
-              label: 'Amount (${wallet.currency})',
+              label: tr('Amount ({0})', [wallet.currency]),
               controller: amount,
               icon: LucideIcons.banknote,
               keyboard: const TextInputType.numberWithOptions(decimal: true),
@@ -967,15 +986,17 @@ void showCashRequestSheet(BuildContext context, Wallet wallet, String type) {
             ),
             const SizedBox(height: 12),
             LabeledField(
-              label: 'Note for the finance manager (optional)',
+              label: tr('Note for the finance manager (optional)'),
               controller: note,
               icon: LucideIcons.stickyNote,
               maxLines: 2,
-              helper: !deposit && method == 'manager_transfer' ? 'For example, the bank account to pay into.' : null,
+              helper: !deposit && method == 'manager_transfer'
+                  ? tr('For example, the bank account to pay into.')
+                  : null,
             ),
             const SizedBox(height: 18),
             GradientButton(
-              label: deposit ? 'Request deposit' : 'Request payout',
+              label: deposit ? tr('Request deposit') : tr('Request payout'),
               icon: deposit ? LucideIcons.arrowDownLeft : LucideIcons.arrowUpRight,
               busy: busy,
               onPressed: () async {
@@ -996,7 +1017,10 @@ void showCashRequestSheet(BuildContext context, Wallet wallet, String type) {
                   session.queries.invalidate('orgs');
                   if (sheet.mounted) Navigator.pop(sheet);
                   if (context.mounted) {
-                    toast(context, deposit ? 'Deposit requested' : 'Payout requested — the amount is held meanwhile');
+                    toast(
+                      context,
+                      deposit ? tr('Deposit requested') : tr('Payout requested — the amount is held meanwhile'),
+                    );
                   }
                 } catch (e) {
                   set(() {
@@ -1037,7 +1061,7 @@ class _MonthlyStatements extends StatelessWidget {
             const Divider(height: 24),
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
-              child: Text('Monthly statements', style: context.text.titleMedium),
+              child: Text(tr('Monthly statements'), style: context.text.titleMedium),
             ),
             for (final m in months)
               ListTile(
@@ -1045,7 +1069,11 @@ class _MonthlyStatements extends StatelessWidget {
                 leading: const Icon(LucideIcons.fileText, size: 20),
                 title: Text(_monthName(m.month), style: context.text.titleSmall),
                 subtitle: Text(
-                  '${plural(m.operations, 'operation')} · in ${money(m.moneyIn, wallet.currency)} · out ${money(m.moneyOut, wallet.currency)}',
+                  tr('{0} · in {1} · out {2}', [
+                    plural(m.operations, 'operation'),
+                    money(m.moneyIn, wallet.currency),
+                    money(m.moneyOut, wallet.currency),
+                  ]),
                 ),
                 trailing: Text(money(m.closing, wallet.currency), style: context.text.bodyMedium),
                 onTap: () async {
@@ -1064,23 +1092,9 @@ class _MonthlyStatements extends StatelessWidget {
   }
 }
 
-const _months = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];
 String _monthName(String month) {
   final [y, m] = month.split('-');
-  return '${_months[int.parse(m) - 1]} $y';
+  return DateFormat.yMMMM().format(DateTime(int.parse(y), int.parse(m)));
 }
 
 /// Export the statement as CSV or PDF: the server makes a 5-minute link that the system browser opens.
@@ -1100,12 +1114,14 @@ void showExportSheet(BuildContext context, Wallet wallet) {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Export ${wallet.currency} statement', style: sheet.text.headlineSmall),
+            Text(tr('Export {0} statement', [wallet.currency]), style: sheet.text.headlineSmall),
             const SizedBox(height: 4),
             Text(
               format == 'pdf'
-                  ? 'A printable PDF with opening and closing balances. It opens in your browser.'
-                  : 'A CSV file for spreadsheets and accounting software. It opens in your browser, which saves it.',
+                  ? tr('A printable PDF with opening and closing balances. It opens in your browser.')
+                  : tr(
+                      'A CSV file for spreadsheets and accounting software. It opens in your browser, which saves it.',
+                    ),
               style: sheet.text.bodyMedium,
             ),
             const SizedBox(height: 16),
@@ -1128,7 +1144,7 @@ void showExportSheet(BuildContext context, Wallet wallet) {
             ),
             const SizedBox(height: 18),
             GradientButton(
-              label: 'Download ${format.toUpperCase()}',
+              label: tr('Download {0}', [format.toUpperCase()]),
               icon: LucideIcons.download,
               busy: busy,
               onPressed: () async {

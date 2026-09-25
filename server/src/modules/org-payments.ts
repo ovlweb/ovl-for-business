@@ -33,6 +33,7 @@ import { approveDividend, releaseDividend } from './stock/shareholders';
 import { executeTransfer, walletAudience } from './wallets/routes';
 import { assertWalletAccess, frozenAmounts, lockWallet, orgRoleOf, type WalletRow } from './wallets/service';
 import { queueNotification } from '../lib/notify';
+import { text } from '../lib/i18n';
 
 /** Money of a payment waiting for its second signature is set aside until someone decides. */
 const APPROVAL_HOLD = 'payment_approval';
@@ -83,7 +84,7 @@ export async function requestSecondSignature<K extends Kind>(
   const frozen = (await frozenAmounts(tx, [wallet.id])).get(wallet.id) ?? 0n;
   if (wallet.balance - frozen < input.amount)
     throw insufficientFunds(
-      `Only ${formatAmount(wallet.balance - frozen, wallet.currency)} ${wallet.currency} is available`,
+      text`Only ${formatAmount(wallet.balance - frozen, wallet.currency)} ${wallet.currency} is available`,
     );
   const [row] = await tx
     .insert(paymentApprovals)
@@ -216,7 +217,9 @@ export async function announceApproval(app: FastifyInstance, row: ApprovalRow) {
       audience.filter((id) => id !== row.requestedBy),
       {
         type: 'payment_approval',
-        title: `${org?.name ?? 'A company'} payment needs your signature: ${amount}`,
+        title: org
+          ? text`${org.name} payment needs your signature: ${amount}`
+          : text`A company payment needs your signature: ${amount}`,
         body: row.description,
         link,
       },
@@ -224,7 +227,10 @@ export async function announceApproval(app: FastifyInstance, row: ApprovalRow) {
   else
     await queueNotification(app.db, [row.requestedBy], {
       type: 'payment_approval',
-      title: `${row.status === 'approved' ? 'Approved' : 'Not approved'}: ${amount} from ${org?.name ?? 'the company'}`,
+      title:
+        row.status === 'approved'
+          ? text`Approved: ${amount} from ${org?.name ?? ''}`
+          : text`Not approved: ${amount} from ${org?.name ?? ''}`,
       body: row.reason ? `${row.description} — ${row.reason}` : row.description,
       link,
     });
@@ -279,7 +285,7 @@ export async function orgPaymentRoutes(fastify: FastifyInstance) {
       .where(and(eq(paymentApprovals.id, id), eq(paymentApprovals.organizationId, organizationId)))
       .for('update');
     if (!row) throw notFound('Payment');
-    if (row.status !== 'pending') throw conflict(`This payment is already ${row.status}`);
+    if (row.status !== 'pending') throw conflict(text`This payment is already ${row.status}`);
     return row;
   };
   const releaseHold = (tx: Db, id: string) =>

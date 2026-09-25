@@ -44,6 +44,7 @@ import {
   type ApplicationRow,
 } from './engine';
 import { queueNotification } from '../../lib/notify';
+import { label, text } from '../../lib/i18n';
 
 export async function applicationRoutes(fastify: FastifyInstance) {
   const app = fastify.withTypeProvider<ZodTypeProvider>();
@@ -55,15 +56,16 @@ export async function applicationRoutes(fastify: FastifyInstance) {
 
   const afterCommit = async (row: ApplicationRow, announcements: Announcement[]) => {
     for (const { chat, message } of announcements) await publishMessage(app, chat, message);
+    const kind = label(WORKFLOWS[row.type].label);
     const outcome = {
-      approved: 'was approved',
-      rejected: 'was not approved',
-      changes_requested: 'needs changes',
+      approved: text`Your application was approved: ${kind}`,
+      rejected: text`Your application was not approved: ${kind}`,
+      changes_requested: text`Your application needs changes: ${kind}`,
     }[row.status as 'approved'];
     if (outcome)
       await queueNotification(app.db, [row.applicantId], {
         type: 'application',
-        title: `Your application ${outcome}: ${WORKFLOWS[row.type].label}`,
+        title: outcome,
         body: row.status === 'changes_requested' ? 'See what to change and send it again.' : '',
         link: '/applications',
       });
@@ -80,7 +82,7 @@ export async function applicationRoutes(fastify: FastifyInstance) {
     if (input.type === 'moderator' || input.type === 'council') {
       const allowed: Role[] = input.type === 'moderator' ? ['user'] : ['user', 'moderator'];
       if (!allowed.includes(me.role))
-        throw badRequest(`Your current role cannot apply to join the ${input.type}`);
+        throw badRequest(text`Your current role cannot apply to join the ${input.type}`);
       const [pending] = await app.db
         .select({ id: applications.id })
         .from(applications)
@@ -103,7 +105,7 @@ export async function applicationRoutes(fastify: FastifyInstance) {
           .select({ id: stockListings.id })
           .from(stockListings)
           .where(eq(stockListings.ticker, p.listing.ticker));
-        if (taken) throw conflict(`Ticker ${p.listing.ticker} is already used on the exchange`);
+        if (taken) throw conflict(text`Ticker ${p.listing.ticker} is already used on the exchange`);
       }
     }
     if (input.type === 'license' && input.payload.organizationId) {
@@ -364,7 +366,7 @@ export async function applicationRoutes(fastify: FastifyInstance) {
         const application = await lockApplication(tx, req.params.id);
         if (application.applicantId !== me.id) throw forbidden();
         if (application.status !== 'pending' && application.status !== 'changes_requested')
-          throw conflict(`This application is already ${application.status}`);
+          throw conflict(text`This application is already ${application.status}`);
         const [updated] = await tx
           .update(applications)
           .set({ status: 'withdrawn', decidedAt: new Date(), updatedAt: new Date() })

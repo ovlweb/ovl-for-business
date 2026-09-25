@@ -2,6 +2,7 @@ import type { FileInfo } from '@ovl/shared';
 import { useRef, useState } from 'react';
 import { ErrorAlert } from './components';
 import { Icon } from './icons';
+import { t } from './i18n';
 
 export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -44,7 +45,7 @@ export function AttachmentList({
             <button
               type="button"
               className="btn ghost icon sm"
-              aria-label={`Remove ${f.name}`}
+              aria-label={t('Remove {0}', f.name)}
               onClick={() => onRemove(f)}
             >
               <Icon name="x" size={14} />
@@ -65,7 +66,7 @@ export function AttachmentPicker({
   href,
   max = 10,
   accept = 'image/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.odt,.ods,.zip',
-  label = 'Attach files',
+  label = t('Attach files'),
 }: {
   value: FileInfo[];
   onChange: (files: FileInfo[]) => void;

@@ -1,5 +1,5 @@
 import type { Story } from '@ovl/shared';
-import { Avatar, Badges, ErrorAlert, Field, Modal, timeAgo } from '@ovl/ui';
+import { Avatar, Badges, ErrorAlert, Field, Modal, plural, timeAgo, t } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
@@ -52,7 +52,7 @@ function StoryViewer({ stories, start, onClose }: { stories: Story[]; start: num
               <Badges badges={story.author.badges} />
             </div>
             <div className="tiny" style={{ opacity: 0.8 }}>
-              {timeAgo(story.createdAt)} · {story.viewsCount} views
+              {t('{0} · {1} views', timeAgo(story.createdAt), story.viewsCount)}
             </div>
           </div>
         </div>
@@ -67,7 +67,7 @@ function StoryViewer({ stories, start, onClose }: { stories: Story[]; start: num
             onClick={(e) => e.stopPropagation()}
             style={{ alignSelf: 'center' }}
           >
-            Open link
+            {t('Open link')}
           </a>
         )}
       </div>
@@ -99,7 +99,7 @@ function PublishStoryModal({ onClose }: { onClose: () => void }) {
     },
   });
   return (
-    <Modal title="Publish a service story" onClose={onClose}>
+    <Modal title={t('Publish a service story')} onClose={onClose}>
       <form
         className="stack"
         onSubmit={(e) => {
@@ -108,9 +108,9 @@ function PublishStoryModal({ onClose }: { onClose: () => void }) {
         }}
       >
         <p className="small muted">
-          Service stories are shown to every user on every platform until they expire.
+          {t('Service stories are shown to every user on every platform until they expire.')}
         </p>
-        <Field label="Text">
+        <Field label={t('Text')}>
           <textarea
             className="textarea"
             maxLength={500}
@@ -119,7 +119,7 @@ function PublishStoryModal({ onClose }: { onClose: () => void }) {
             required
           />
         </Field>
-        <Field label="Image URL (optional)">
+        <Field label={t('Image URL (optional)')}>
           <input
             className="input"
             type="url"
@@ -127,7 +127,7 @@ function PublishStoryModal({ onClose }: { onClose: () => void }) {
             onChange={(e) => setForm({ ...form, mediaUrl: e.target.value })}
           />
         </Field>
-        <Field label="Link (optional)">
+        <Field label={t('Link (optional)')}>
           <input
             className="input"
             type="url"
@@ -136,7 +136,7 @@ function PublishStoryModal({ onClose }: { onClose: () => void }) {
           />
         </Field>
         <div className="grid-2">
-          <Field label="Background">
+          <Field label={t('Background')}>
             <input
               className="input"
               type="color"
@@ -144,7 +144,7 @@ function PublishStoryModal({ onClose }: { onClose: () => void }) {
               onChange={(e) => setForm({ ...form, background: e.target.value })}
             />
           </Field>
-          <Field label="Visible for">
+          <Field label={t('Visible for')}>
             <select
               className="select"
               value={form.durationHours}
@@ -152,7 +152,7 @@ function PublishStoryModal({ onClose }: { onClose: () => void }) {
             >
               {[6, 12, 24, 48, 72, 168].map((h) => (
                 <option key={h} value={h}>
-                  {h < 48 ? `${h} hours` : `${h / 24} days`}
+                  {h < 48 ? plural(h, 'hour') : plural(h / 24, 'day')}
                 </option>
               ))}
             </select>
@@ -160,7 +160,7 @@ function PublishStoryModal({ onClose }: { onClose: () => void }) {
         </div>
         <ErrorAlert error={publish.error} />
         <button className="btn primary" disabled={publish.isPending}>
-          Publish
+          {t('Publish')}
         </button>
       </form>
     </Modal>
@@ -198,7 +198,7 @@ export function StoriesBar() {
             <span className="story-add">
               <Icon name="plus" />
             </span>
-            New story
+            {t('New story')}
           </button>
         )}
         {authors.map(({ author, start, seen }) => (

@@ -11,3 +11,4 @@ export * from './two-factor';
 export * from './account';
 export * from './passkeys';
 export * from './attachments';
+export * from './i18n';

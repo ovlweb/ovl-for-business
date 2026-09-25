@@ -20,6 +20,7 @@ import { convert, loadRateTable, type RateTable } from '../../lib/fx';
 import { iso } from '../../lib/mappers';
 import { currentUser } from '../../plugins/auth';
 import type { ListingRow } from './service';
+import { text } from '../../lib/i18n';
 
 interface LimitSettings {
   maxHoldingPercent: number;
@@ -121,8 +122,7 @@ export async function assertWithinLimits(
   const after = (held?.shares ?? 0n) + BigInt(pending?.n ?? 0) + input.shares;
   if (after > cap)
     throw conflict(
-      `Nobody may hold more than ${limits.maxHoldingPercent}% of ${input.listing.ticker} (${cap} shares); ` +
-        `with open orders you would have ${after}`,
+      text`Nobody may hold more than ${limits.maxHoldingPercent}% of ${input.listing.ticker} (${cap} shares); with open orders you would have ${after}`,
     );
   const { decimal } = await limitFor(tx, input.userId, limits);
   if (!decimal) return;
@@ -132,9 +132,7 @@ export async function assertWithinLimits(
   const adding = toBase(input.cost, input.listing.currency, table);
   if (used + adding > limit)
     throw conflict(
-      `This goes over your limit of ${decimal} ${table.base} per ${WINDOW_DAYS} days: ` +
-        `${formatAmount(limit - used > 0n ? limit - used : 0n, table.base)} ${table.base} left` +
-        ' (a verified identity may raise it)',
+      text`This goes over your limit of ${decimal} ${table.base} per ${WINDOW_DAYS} days: ${formatAmount(limit - used > 0n ? limit - used : 0n, table.base)} ${table.base} left (a verified identity may raise it)`,
     );
 }
 

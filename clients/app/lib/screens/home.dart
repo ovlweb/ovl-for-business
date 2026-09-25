@@ -15,6 +15,7 @@ import 'applications.dart';
 import 'chats.dart';
 import 'stories.dart';
 import 'wallet.dart';
+import '../i18n/i18n.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -53,7 +54,11 @@ class HomeScreen extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: SectionHeader('Recent conversations', action: 'All chats', onAction: () => context.go('/chats')),
+            child: SectionHeader(
+              tr('Recent conversations'),
+              action: tr('All chats'),
+              onAction: () => context.go('/chats'),
+            ),
           ),
           Query<List<Chat>>(
             client: q,
@@ -63,7 +68,7 @@ class HomeScreen extends StatelessWidget {
               if (!s.hasData) return const SkeletonList(rows: 3);
               final chats = [...s.data!]..sort((a, b) => b.activityAt.compareTo(a.activityAt));
               if (chats.isEmpty) {
-                return const EmptyState(icon: LucideIcons.messageCircle, title: 'No conversations yet');
+                return EmptyState(icon: LucideIcons.messageCircle, title: tr('No conversations yet'));
               }
               return Column(
                 children: [
@@ -87,11 +92,14 @@ class HomeScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SectionHeader('Your applications', action: 'View all', onAction: () => context.go('/applications')),
+            SectionHeader(tr('Your applications'), action: tr('View all'), onAction: () => context.go('/applications')),
             if (!s.hasData)
               const Skeleton(height: 60)
             else if (s.data!.isEmpty)
-              Text('Nothing submitted yet. Register a company or request a license.', style: context.text.bodyMedium)
+              Text(
+                tr('Nothing submitted yet. Register a company or request a license.'),
+                style: context.text.bodyMedium,
+              )
             else
               for (final a in s.data!.take(3))
                 Padding(
@@ -129,19 +137,21 @@ class HomeScreen extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: SectionHeader('Exchange', action: 'Open market', onAction: () => context.go('/exchange')),
+              child: SectionHeader(tr('Exchange'), action: tr('Open market'), onAction: () => context.go('/exchange')),
             ),
             if (!s.hasData)
               const SkeletonList(rows: 3)
             else if (s.data!.isEmpty)
-              const EmptyState(icon: LucideIcons.chartLine, title: 'No listed companies yet')
+              EmptyState(icon: LucideIcons.chartLine, title: tr('No listed companies yet'))
             else
               for (final l in s.data!.take(4))
                 ListTile(
                   onTap: () => context.go('/exchange/${l.ticker}'),
                   leading: TickerBadge(l.ticker),
                   title: Text(l.organizationName, overflow: TextOverflow.ellipsis),
-                  subtitle: Text('${plural(l.investorsCount, 'investor')} · ${l.freezePercent.round()}% frozen'),
+                  subtitle: Text(
+                    tr('{0} · {1}% frozen', [plural(l.investorsCount, 'investor'), l.freezePercent.round()]),
+                  ),
                   trailing: Text(money(l.sharePrice, l.currency), style: context.text.titleSmall),
                 ),
           ],
@@ -228,7 +238,7 @@ class _Hero extends StatelessWidget {
                 builder: (context, s) {
                   final unread = (s.data ?? const <Chat>[]).fold<int>(0, (n, c) => n + c.unreadCount);
                   return Text(
-                    unread > 0 ? plural(unread, 'unread message') : 'You are all caught up',
+                    unread > 0 ? plural(unread, 'unread message') : tr('You are all caught up'),
                     style: const TextStyle(color: Colors.white70, fontSize: 14.5),
                   );
                 },
@@ -260,7 +270,7 @@ class _Hero extends StatelessWidget {
                         const Icon(LucideIcons.wallet, size: 14, color: Colors.white70),
                         const SizedBox(width: 6),
                         Text(
-                          primary == null ? 'BALANCE' : '${primary.currency} BALANCE',
+                          primary == null ? tr('BALANCE') : tr('{0} BALANCE', [primary.currency]),
                           style: font(body, 11, FontWeight.w700, letterSpacing: 0.8, color: Colors.white70),
                         ),
                       ],
@@ -269,7 +279,7 @@ class _Hero extends StatelessWidget {
                     if (!s.hasData)
                       const SizedBox(width: 160, child: Skeleton(height: 30))
                     else if (primary == null)
-                      Text('No balance yet', style: font(display, 20, FontWeight.w800, color: Colors.white))
+                      Text(tr('No balance yet'), style: font(display, 20, FontWeight.w800, color: Colors.white))
                     else
                       AnimatedAmount(
                         value: primary.balance,
@@ -336,7 +346,7 @@ class _QuickActions extends StatelessWidget {
                       ),
                       const SizedBox(height: 9),
                       Text(
-                        a.$2,
+                        tr(a.$2),
                         textAlign: TextAlign.center,
                         style: context.text.labelMedium?.copyWith(color: c.text),
                       ),
@@ -476,7 +486,7 @@ class _StaffBanner extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        '${plural(n, 'application')} waiting for your decision',
+                        tr('{0} waiting for your decision', [plural(n, 'application')]),
                         style: context.text.titleSmall,
                       ),
                     ),

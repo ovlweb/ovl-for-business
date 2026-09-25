@@ -9,14 +9,18 @@ import '../state/session.dart';
 import '../theme/theme.dart';
 import '../ui/theme_gallery.dart';
 import '../ui/widgets.dart';
+import '../i18n/i18n.dart';
 
 class _Goal {
-  const _Goal(this.icon, this.title, this.text, this.to, this.cta);
+  const _Goal(this.icon, this._title, this._text, this.to, this._cta);
   final IconData icon;
-  final String title;
-  final String text;
+  final String _title;
+  final String _text;
   final String to;
-  final String cta;
+  final String _cta;
+  String get title => tr(_title);
+  String get text => tr(_text);
+  String get cta => tr(_cta);
 }
 
 const _goals = <String, _Goal>{
@@ -141,7 +145,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   ),
                   const SizedBox(width: 8),
                   if (_step != _Step.done)
-                    TextButton(onPressed: _saving ? null : () => _finish('/home'), child: const Text('Skip setup')),
+                    TextButton(onPressed: _saving ? null : () => _finish('/home'), child: Text(tr('Skip setup'))),
                 ],
               ),
             ),
@@ -187,11 +191,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     children: [
       const Logo(size: 82, animated: true),
       const SizedBox(height: 28),
-      Text('Welcome, $name', style: context.text.displayMedium),
+      Text(tr('Welcome, {0}', [name]), style: context.text.displayMedium),
       const SizedBox(height: 10),
       Text(
-        'OVL For Business keeps your company, its money in any currency, its licenses and your partners in one place. '
-        'Let us set things up — it takes under a minute.',
+        tr(
+          'OVL For Business keeps your company, its money in any currency, its licenses and your partners in one place. Let us set things up — it takes under a minute.',
+        ),
         style: context.text.bodyLarge?.copyWith(color: context.c.text2),
       ),
       const SizedBox(height: 26),
@@ -222,7 +227,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
         ),
       const SizedBox(height: 18),
-      GradientButton(label: 'Get started', icon: LucideIcons.arrowRight, expand: false, onPressed: () => _go(1)),
+      GradientButton(label: tr('Get started'), icon: LucideIcons.arrowRight, expand: false, onPressed: () => _go(1)),
     ],
   );
 
@@ -237,9 +242,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         ],
       ),
       const SizedBox(height: 8),
-      Text(title, style: context.text.headlineLarge),
+      Text(tr(title), style: context.text.headlineLarge),
       const SizedBox(height: 6),
-      Text(text, style: context.text.bodyMedium),
+      Text(tr(text), style: context.text.bodyMedium),
       const SizedBox(height: 22),
     ],
   );
@@ -251,7 +256,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         TextButton.icon(
           onPressed: () => _go(-1),
           icon: const Icon(LucideIcons.arrowLeft, size: 16),
-          label: const Text('Back'),
+          label: Text(tr('Back')),
         ),
         const Spacer(),
         FilledButton.icon(
@@ -305,13 +310,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           Expanded(
             child: Column(
               children: [
-                LabeledField(label: 'Display name', controller: _name),
+                LabeledField(label: tr('Display name'), controller: _name),
                 const SizedBox(height: 14),
                 LabeledField(
-                  label: 'About you (optional)',
+                  label: tr('About you (optional)'),
                   controller: _bio,
                   maxLines: 3,
-                  hint: 'Founder of…, investor in…, moderator of…',
+                  hint: tr('Founder of…, investor in…, moderator of…'),
                 ),
               ],
             ),
@@ -367,10 +372,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         const SizedBox(height: 8),
         const _Burst(),
         const SizedBox(height: 22),
-        Text('You’re all set', style: context.text.displaySmall, textAlign: TextAlign.center),
+        Text(tr('You’re all set'), style: context.text.displaySmall, textAlign: TextAlign.center),
         const SizedBox(height: 6),
         Text(
-          'Your workspace is ready. Here is where you might start:',
+          tr('Your workspace is ready. Here is where you might start:'),
           style: context.text.bodyMedium,
           textAlign: TextAlign.center,
         ),
@@ -397,7 +402,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
         const SizedBox(height: 14),
         GradientButton(
-          label: 'Enter my workspace',
+          label: tr('Enter my workspace'),
           icon: LucideIcons.arrowRight,
           expand: false,
           busy: _saving,

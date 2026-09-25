@@ -1,5 +1,5 @@
 import type { Chat } from '@ovl/shared';
-import { Avatar, Empty, ErrorAlert, Field, Modal, shortTime, Spinner, StatusBadge, Tabs } from '@ovl/ui';
+import { Avatar, Empty, ErrorAlert, Field, Modal, shortTime, Spinner, StatusBadge, Tabs, t } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -52,7 +52,7 @@ function NewTicketModal({ onClose }: { onClose: () => void }) {
     },
   });
   return (
-    <Modal title="Contact tech support" onClose={onClose}>
+    <Modal title={t('Contact tech support')} onClose={onClose}>
       <form
         className="stack"
         onSubmit={(e) => {
@@ -60,7 +60,7 @@ function NewTicketModal({ onClose }: { onClose: () => void }) {
           create.mutate();
         }}
       >
-        <Field label="Subject">
+        <Field label={t('Subject')}>
           <input
             className="input"
             value={form.subject}
@@ -70,7 +70,7 @@ function NewTicketModal({ onClose }: { onClose: () => void }) {
             maxLength={128}
           />
         </Field>
-        <Field label="How can we help?">
+        <Field label={t('How can we help?')}>
           <textarea
             className="textarea"
             value={form.body}
@@ -80,7 +80,7 @@ function NewTicketModal({ onClose }: { onClose: () => void }) {
         </Field>
         <ErrorAlert error={create.error} />
         <button className="btn primary" disabled={create.isPending}>
-          Open ticket
+          {t('Open ticket')}
         </button>
       </form>
     </Modal>
@@ -109,9 +109,9 @@ export function SupportPage() {
     <div className={`messenger${chatId ? ' has-chat' : ''}`}>
       <aside className="chat-list-pane">
         <div className="pane-header">
-          <h2 className="grow">{isStaff ? 'Support desk' : 'Tech support'}</h2>
+          <h2 className="grow">{isStaff ? t('Support desk') : t('Tech support')}</h2>
           <button className="btn primary sm" onClick={() => setCreating(true)}>
-            <Icon name="plus" size={16} /> Ticket
+            <Icon name="plus" size={16} /> {t('Ticket')}
           </button>
         </div>
         {isStaff && (
@@ -120,9 +120,9 @@ export function SupportPage() {
               value={view}
               onChange={setView}
               tabs={[
-                { value: 'open', label: 'Open' },
-                { value: 'closed', label: 'Closed' },
-                { value: 'mine', label: 'My tickets' },
+                { value: 'open', label: t('Open') },
+                { value: 'closed', label: t('Closed') },
+                { value: 'mine', label: t('My tickets') },
               ]}
             />
           </div>
@@ -130,12 +130,17 @@ export function SupportPage() {
         <div className="chat-list-scroll">
           {list.isLoading && <Spinner center />}
           <ErrorAlert error={list.error} />
-          {list.data?.map((t) => (
-            <TicketRow key={t.id} ticket={t} active={t.id === chatId} staffView={view !== 'mine'} />
+          {list.data?.map((ticket) => (
+            <TicketRow
+              key={ticket.id}
+              ticket={ticket}
+              active={ticket.id === chatId}
+              staffView={view !== 'mine'}
+            />
           ))}
           {list.data?.length === 0 && (
-            <Empty title={view === 'mine' ? 'No tickets yet' : 'No tickets here'}>
-              {view === 'mine' && 'Questions about deposits, applications or your account? Open a ticket.'}
+            <Empty title={view === 'mine' ? t('No tickets yet') : t('No tickets here')}>
+              {view === 'mine' && t('Questions about deposits, applications or your account? Open a ticket.')}
             </Empty>
           )}
         </div>
@@ -145,10 +150,10 @@ export function SupportPage() {
       ) : (
         <div className="conversation">
           <div className="center grow">
-            <Empty title={isStaff ? 'Pick a ticket to answer' : 'We are here to help'}>
+            <Empty title={isStaff ? t('Pick a ticket to answer') : t('We are here to help')}>
               {isStaff
-                ? 'Your replies carry a support badge; the owner’s replies carry the owner badge.'
-                : 'Moderators and administrators answer tickets here.'}
+                ? t('Your replies carry a support badge; the owner’s replies carry the owner badge.')
+                : t('Moderators and administrators answer tickets here.')}
             </Empty>
           </div>
         </div>

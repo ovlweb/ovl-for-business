@@ -11,6 +11,8 @@ import {
   useDebounced,
   UserName,
   useToast,
+  plural,
+  t,
 } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -36,9 +38,7 @@ function EditUser({ user, onClose }: { user: AdminUser; onClose: () => void }) {
     mutationFn: () => api.admin.signOutUser(user.id),
     onSuccess: (r) =>
       toast.success(
-        r.signedOut
-          ? `Signed out on ${r.signedOut} device${r.signedOut === 1 ? '' : 's'}`
-          : 'No active devices',
+        r.signedOut ? t('Signed out on {0}', plural(r.signedOut, 'device')) : t('No active devices'),
       ),
   });
   const editable = can('users.manage') && user.id !== me.id && canAssignRole(me.role, user.role, user.role);
@@ -50,22 +50,24 @@ function EditUser({ user, onClose }: { user: AdminUser; onClose: () => void }) {
           <div>
             <UserName user={user} showHandle />
             <div className="small muted">
-              {user.email} · joined {formatDate(user.createdAt, false)}
-              {user.lastSeenAt && ` · last seen ${formatDate(user.lastSeenAt)}`}
+              {user.email} {t('· joined')} {formatDate(user.createdAt, false)}
+              {user.lastSeenAt && ` ${t('· last seen {0}', formatDate(user.lastSeenAt))}`}
             </div>
           </div>
         </div>
-        {!editable && <div className="alert warning">You cannot change this account.</div>}
+        {!editable && <div className="alert warning">{t('You cannot change this account.')}</div>}
         {editable && (
           <>
             <Field
-              label="Platform role"
-              hint="Council and moderators normally join through applications; the council chat and moderation chat follow the role automatically."
+              label={t('Platform role')}
+              hint={t(
+                'Council and moderators normally join through applications; the council chat and moderation chat follow the role automatically.',
+              )}
             >
               <select className="select" value={role} onChange={(e) => setRole(e.target.value as Role)}>
                 {assignable.map((r) => (
                   <option key={r} value={r}>
-                    {ROLE_LABELS[r]}
+                    {t(ROLE_LABELS[r])}
                   </option>
                 ))}
               </select>
@@ -77,18 +79,18 @@ function EditUser({ user, onClose }: { user: AdminUser; onClose: () => void }) {
                 disabled={role === user.role || save.isPending}
                 onClick={() => save.mutate({ role })}
               >
-                Save role
+                {t('Save role')}
               </button>
               <button className="btn" onClick={() => signOut.mutate()} disabled={signOut.isPending}>
-                Sign out everywhere
+                {t('Sign out everywhere')}
               </button>
               {user.status === 'active' ? (
                 <button className="btn danger" onClick={() => save.mutate({ status: 'suspended' })}>
-                  Suspend account
+                  {t('Suspend account')}
                 </button>
               ) : (
                 <button className="btn success" onClick={() => save.mutate({ status: 'active' })}>
-                  Reactivate account
+                  {t('Reactivate account')}
                 </button>
               )}
             </div>
@@ -113,11 +115,15 @@ export function UsersPage() {
 
   return (
     <div className="page">
-      <PageHeader icon="users" title="Users & roles" subtitle={`${users.data?.total ?? 0} accounts`} />
+      <PageHeader
+        icon="users"
+        title={t('Users & roles')}
+        subtitle={t('{0} accounts', users.data?.total ?? 0)}
+      />
       <div className="filters">
         <input
           className="input"
-          placeholder="Search name, username, email"
+          placeholder={t('Search name, username, email')}
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
@@ -132,10 +138,10 @@ export function UsersPage() {
             setOffset(0);
           }}
         >
-          <option value="">All roles</option>
+          <option value="">{t('All roles')}</option>
           {ROLES.map((r) => (
             <option key={r} value={r}>
-              {ROLE_LABELS[r]}
+              {t(ROLE_LABELS[r])}
             </option>
           ))}
         </select>
@@ -146,11 +152,11 @@ export function UsersPage() {
         <table className="table">
           <thead>
             <tr>
-              <th>User</th>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Status</th>
-              <th>Joined</th>
+              <th>{t('User')}</th>
+              <th>{t('Email')}</th>
+              <th>{t('Role')}</th>
+              <th>{t('Status')}</th>
+              <th>{t('Joined')}</th>
             </tr>
           </thead>
           <tbody>
@@ -163,7 +169,7 @@ export function UsersPage() {
                   </div>
                 </td>
                 <td className="small">{u.email}</td>
-                <td>{ROLE_LABELS[u.role]}</td>
+                <td>{t(ROLE_LABELS[u.role])}</td>
                 <td>
                   <StatusBadge status={u.status} />
                 </td>

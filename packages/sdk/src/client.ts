@@ -146,6 +146,8 @@ export interface OvlClientOptions {
   fetch?: typeof fetch;
   /** Called when the session ends (refresh failed or logout). */
   onSignedOut?: () => void;
+  /** The language people picked ('en', 'ru'): sent as Accept-Language, so errors come back in it. */
+  locale?: () => string | undefined;
 }
 
 type Query = Record<string, string | number | boolean | undefined | null>;
@@ -165,6 +167,7 @@ export class OvlClient {
   private readonly apiKey?: string;
   private readonly fetchImpl: typeof fetch;
   private readonly onSignedOut?: () => void;
+  private readonly locale?: () => string | undefined;
   private refreshing: Promise<boolean> | null = null;
 
   constructor(options: OvlClientOptions) {
@@ -173,6 +176,7 @@ export class OvlClient {
     this.apiKey = options.apiKey;
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.onSignedOut = options.onSignedOut;
+    this.locale = options.locale;
   }
 
   get isSignedIn(): boolean {
@@ -194,6 +198,8 @@ export class OvlClient {
     const tokens = this.tokens.get();
     if (tokens) headers.authorization = `Bearer ${tokens.accessToken}`;
     if (this.apiKey) headers['x-api-key'] = this.apiKey;
+    const locale = this.locale?.();
+    if (locale) headers['accept-language'] = locale;
     // A Blob (a file upload) goes as it is, with its own type; everything else is JSON.
     const raw = typeof Blob !== 'undefined' && body instanceof Blob;
     if (raw) headers['content-type'] = (body as Blob).type || 'application/octet-stream';

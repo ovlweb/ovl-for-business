@@ -1,5 +1,6 @@
 /** Web Push on this browser: subscribe with the server's VAPID key and register the device. */
 import { api } from './api';
+import { t } from '@ovl/ui';
 
 const KEY = 'ovl.push.device';
 
@@ -69,11 +70,11 @@ function browserLabel(): string {
 }
 
 export async function enablePush(userId: string): Promise<void> {
-  if (!pushSupported()) throw new Error('This browser cannot receive push notifications');
+  if (!pushSupported()) throw new Error(t('This browser cannot receive push notifications'));
   if ((await Notification.requestPermission()) !== 'granted')
-    throw new Error('Allow notifications for this site in your browser first');
+    throw new Error(t('Allow notifications for this site in your browser first'));
   const { webPushKey } = await api.notifications.pushConfig();
-  if (!webPushKey) throw new Error('This server does not send push notifications');
+  if (!webPushKey) throw new Error(t('This server does not send push notifications'));
   await navigator.serviceWorker.register('./sw.js');
   const registration = await navigator.serviceWorker.ready;
   const existing = await registration.pushManager.getSubscription();

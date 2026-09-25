@@ -10,6 +10,7 @@ import '../theme/theme.dart';
 import '../ui/format.dart';
 import '../ui/widgets.dart';
 import 'contacts.dart';
+import '../i18n/i18n.dart';
 
 const _financeRoles = {'owner', 'director', 'accountant'};
 
@@ -68,13 +69,13 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
           children: [
             PageTitle(
               icon: LucideIcons.receipt,
-              title: 'Invoices',
-              subtitle: 'Bill people and companies, and pay what you are billed.',
+              title: tr('Invoices'),
+              subtitle: tr('Bill people and companies, and pay what you are billed.'),
               actions: [
                 FilledButton.icon(
                   onPressed: () => openNewInvoice(context),
                   icon: const Icon(LucideIcons.plus, size: 17),
-                  label: const Text('New invoice'),
+                  label: Text(tr('New invoice')),
                 ),
               ],
             ),
@@ -93,7 +94,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                   children: [
                     _SummaryCard(
                       icon: LucideIcons.arrowUpRight,
-                      label: 'To pay',
+                      label: tr('To pay'),
                       value: _totals(toPay),
                       caption: [
                         plural(toPay.length, 'open invoice'),
@@ -103,7 +104,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                     ),
                     _SummaryCard(
                       icon: LucideIcons.arrowDownLeft,
-                      label: 'To receive',
+                      label: tr('To receive'),
                       value: _totals(toReceive),
                       caption: plural(toReceive.length, 'open invoice'),
                     ),
@@ -124,7 +125,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                 if (_direction != 'recurring') ...[
                   const SizedBox(width: 10),
                   FilterChip(
-                    label: const Text('Open only'),
+                    label: Text(tr('Open only')),
                     selected: _onlyOpen,
                     onSelected: (v) => setState(() => _onlyOpen = v),
                   ),
@@ -145,10 +146,10 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                   if (list.isEmpty) {
                     return EmptyState(
                       icon: LucideIcons.receipt,
-                      title: _onlyOpen ? 'Nothing open' : 'No invoices yet',
+                      title: _onlyOpen ? tr('Nothing open') : tr('No invoices yet'),
                       text: _direction == 'incoming'
-                          ? 'Invoices people and companies send you appear here.'
-                          : 'Create an invoice to bill a person or a company.',
+                          ? tr('Invoices people and companies send you appear here.')
+                          : tr('Create an invoice to bill a person or a company.'),
                     );
                   }
                   return OvlCard(
@@ -236,13 +237,13 @@ class _InvoiceTile extends StatelessWidget {
         color: i.overdue ? c.danger : c.accent,
       ),
       title: Text(i.counterparty.name, style: context.text.titleSmall, overflow: TextOverflow.ellipsis),
-      subtitle: Text('${i.number} · due ${date(i.dueDate)}', overflow: TextOverflow.ellipsis),
+      subtitle: Text(tr('{0} · due {1}', [i.number, date(i.dueDate)]), overflow: TextOverflow.ellipsis),
       trailing: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Text(
-            i.partlyPaid ? '${money(i.amountDue, i.currency)} due' : money(i.total, i.currency),
+            i.partlyPaid ? tr('{0} due', [money(i.amountDue, i.currency)]) : money(i.total, i.currency),
             style: font(body, 14, FontWeight.w700, color: c.text),
           ),
           const SizedBox(height: 4),
@@ -327,7 +328,7 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
           children: [
             Row(
               children: [
-                Expanded(child: Text('Invoice ${i.number}', style: context.text.headlineSmall)),
+                Expanded(child: Text(tr('Invoice {0}', [i.number]), style: context.text.headlineSmall)),
                 StatusPill(i.displayStatus),
               ],
             ),
@@ -371,7 +372,7 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
                   Divider(color: c.border),
                   Row(
                     children: [
-                      Expanded(child: Text('Total', style: context.text.titleMedium)),
+                      Expanded(child: Text(tr('Total'), style: context.text.titleMedium)),
                       Text(money(i.total, i.currency), style: font(display, 20, FontWeight.w800, color: c.text)),
                     ],
                   ),
@@ -379,13 +380,13 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        Expanded(child: Text('Paid so far', style: context.text.bodyMedium)),
+                        Expanded(child: Text(tr('Paid so far'), style: context.text.bodyMedium)),
                         Text(money(i.amountPaid, i.currency), style: context.text.bodyMedium),
                       ],
                     ),
                     Row(
                       children: [
-                        Expanded(child: Text('Still due', style: context.text.titleSmall)),
+                        Expanded(child: Text(tr('Still due'), style: context.text.titleSmall)),
                         Text(money(i.amountDue, i.currency), style: context.text.titleSmall),
                       ],
                     ),
@@ -395,7 +396,7 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
             ),
             if (i.payments.length > 1 || (i.payments.isNotEmpty && i.isOpen)) ...[
               const SizedBox(height: 12),
-              Text('Payments', style: context.text.labelLarge),
+              Text(tr('Payments'), style: context.text.labelLarge),
               for (final p in i.payments)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
@@ -414,7 +415,9 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
                   Icon(LucideIcons.repeat, size: 14, color: c.text3),
                   const SizedBox(width: 6),
                   Text(
-                    'Recurring invoice · ${(_every[i.recurringInterval] ?? i.recurringInterval!).toLowerCase()}',
+                    tr('Recurring invoice · {0}', [
+                      (_every[i.recurringInterval] ?? i.recurringInterval!).toLowerCase(),
+                    ]),
                     style: context.text.bodySmall,
                   ),
                 ],
@@ -430,9 +433,12 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
             ],
             const SizedBox(height: 12),
             if (i.status == 'paid' && i.paidAt != null)
-              Text('Paid on ${dateTime(i.paidAt!)} by ${i.paidBy ?? ''}.', style: context.text.bodySmall),
+              Text(tr('Paid on {0} by {1}.', [dateTime(i.paidAt!), i.paidBy ?? '']), style: context.text.bodySmall),
             if (i.status == 'cancelled')
-              Text('Cancelled${i.cancelReason != null ? ': ${i.cancelReason}' : ''}.', style: context.text.bodySmall),
+              Text(
+                tr('Cancelled{0}.', [i.cancelReason != null ? ': ${i.cancelReason}' : '']),
+                style: context.text.bodySmall,
+              ),
             if (_error != null) ...[const SizedBox(height: 12), ErrorBox(_error)],
             if (i.incoming && i.isOpen) ...[const SizedBox(height: 12), _payment(session, i)],
             if (!i.incoming && i.isOpen && !i.partlyPaid) ...[
@@ -440,7 +446,7 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
               OutlinedButton.icon(
                 onPressed: _busy ? null : () => _confirmCancel(session, i),
                 icon: const Icon(LucideIcons.x, size: 17),
-                label: const Text('Cancel invoice'),
+                label: Text(tr('Cancel invoice')),
               ),
             ],
           ],
@@ -460,7 +466,7 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
         final matching = s.data!.where((w) => w.currency == i.currency).toList();
         if (matching.isEmpty) {
           return Text(
-            'To pay, open a ${i.currency} balance and ask for a deposit on the wallet page.',
+            tr('To pay, open a {0} balance and ask for a deposit on the wallet page.', [i.currency]),
             style: context.text.bodyMedium,
           );
         }
@@ -468,7 +474,7 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Pay from', style: context.text.labelLarge),
+            Text(tr('Pay from'), style: context.text.labelLarge),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -477,7 +483,10 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
                 for (final w in matching)
                   ChoiceChip(
                     label: Text(
-                      '${company ? i.recipient.name : 'Personal'} · ${money(w.available, w.currency)} available',
+                      tr('{0} · {1} available', [
+                        company ? i.recipient.name : tr('Personal'),
+                        money(w.available, w.currency),
+                      ]),
                     ),
                     selected: w.id == wallet.id,
                     onSelected: (_) => setState(() => _walletId = w.id),
@@ -487,7 +496,7 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
             if (_partial) ...[
               const SizedBox(height: 12),
               LabeledField(
-                label: 'Amount to pay now (of ${money(i.amountDue, i.currency)})',
+                label: tr('Amount to pay now (of {0})', [money(i.amountDue, i.currency)]),
                 controller: _part,
                 icon: LucideIcons.banknote,
                 keyboard: const TextInputType.numberWithOptions(decimal: true),
@@ -500,7 +509,7 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
                 final amount = _partial ? _part.text.trim().replaceAll(',', '.') : i.amountDue;
                 final valid = (double.tryParse(amount) ?? 0) > 0;
                 return GradientButton(
-                  label: valid ? 'Pay ${money(amount, i.currency)}' : 'Pay',
+                  label: valid ? tr('Pay {0}', [money(amount, i.currency)]) : tr('Pay'),
                   icon: LucideIcons.check,
                   busy: _busy,
                   onPressed: !valid
@@ -514,15 +523,15 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
                           if (mounted) setState(() => _partial = false);
                           _part.clear();
                           return approval != null
-                              ? 'Above the approval limit: another finance member has to approve this payment'
-                              : 'Paid ${money(amount, paid!.currency)} to ${paid.issuer.name}';
+                              ? tr('Above the approval limit: another finance member has to approve this payment')
+                              : tr('Paid {0} to {1}', [money(amount, paid!.currency), paid.issuer.name]);
                         }),
                 );
               },
             ),
             TextButton(
               onPressed: () => setState(() => _partial = !_partial),
-              child: Text(_partial ? 'Pay everything instead' : 'Pay part of it'),
+              child: Text(_partial ? tr('Pay everything instead') : tr('Pay part of it')),
             ),
           ],
         );
@@ -535,21 +544,21 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialog) => AlertDialog(
-        title: Text('Cancel ${i.number}?'),
+        title: Text(tr('Cancel {0}?', [i.number])),
         content: TextField(
           controller: reason,
-          decoration: const InputDecoration(hintText: 'Reason (optional, shown to the recipient)'),
+          decoration: InputDecoration(hintText: tr('Reason (optional, shown to the recipient)')),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('Keep')),
-          FilledButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('Cancel invoice')),
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: Text(tr('Keep'))),
+          FilledButton(onPressed: () => Navigator.pop(dialog, true), child: Text(tr('Cancel invoice'))),
         ],
       ),
     );
     if (ok != true) return;
     await _run(() async {
       await session.api.cancelInvoice(i.id, reason: reason.text.trim());
-      return 'Invoice cancelled';
+      return tr('Invoice cancelled');
     });
   }
 }
@@ -569,10 +578,10 @@ class _Schedules extends StatelessWidget {
       builder: (context, s) {
         if (!s.hasData) return const SkeletonList(rows: 3);
         if (s.data!.isEmpty) {
-          return const EmptyState(
+          return EmptyState(
             icon: LucideIcons.repeat,
-            title: 'No recurring invoices',
-            text: 'Set them up on the web: “Repeat” on a new invoice bills someone every week, month or year.',
+            title: tr('No recurring invoices'),
+            text: tr('Set them up on the web: “Repeat” on a new invoice bills someone every week, month or year.'),
           );
         }
         return OvlCard(
@@ -606,7 +615,7 @@ class _Schedules extends StatelessWidget {
                         ),
                         if (r.status != 'ended')
                           PopupMenuButton<String>(
-                            tooltip: 'Change',
+                            tooltip: tr('Change'),
                             onSelected: (status) async {
                               try {
                                 await session.api.setInvoiceScheduleStatus(r.id, status);
@@ -618,9 +627,9 @@ class _Schedules extends StatelessWidget {
                             itemBuilder: (_) => [
                               PopupMenuItem(
                                 value: r.status == 'active' ? 'paused' : 'active',
-                                child: Text(r.status == 'active' ? 'Pause' : 'Resume'),
+                                child: Text(r.status == 'active' ? tr('Pause') : tr('Resume')),
                               ),
-                              const PopupMenuItem(value: 'ended', child: Text('End')),
+                              PopupMenuItem(value: 'ended', child: Text(tr('End'))),
                             ],
                           ),
                       ],
@@ -649,10 +658,10 @@ class _Fact extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label.toUpperCase(), style: font(body, 11, FontWeight.w700, letterSpacing: 0.6, color: c.text3)),
+        Text(tr(label).toUpperCase(), style: font(body, 11, FontWeight.w700, letterSpacing: 0.6, color: c.text3)),
         const SizedBox(height: 3),
         Text(value, style: context.text.titleSmall),
-        if (detail != null) Text(detail!, style: context.text.bodySmall?.copyWith(color: alert ? c.danger : null)),
+        if (detail != null) Text(tr(detail!), style: context.text.bodySmall?.copyWith(color: alert ? c.danger : null)),
       ],
     );
   }
@@ -740,7 +749,7 @@ class _NewInvoiceScreenState extends State<NewInvoiceScreen> {
       session.queries.invalidate('invoices');
       if (!mounted) return;
       Navigator.pop(context);
-      toast(context, 'Invoice ${invoice.number} sent to ${invoice.recipient.name}');
+      toast(context, tr('Invoice {0} sent to {1}', [invoice.number, invoice.recipient.name]));
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -756,7 +765,7 @@ class _NewInvoiceScreenState extends State<NewInvoiceScreen> {
     final session = context.watch<Session>();
     final c = context.c;
     return Scaffold(
-      appBar: AppBar(title: const Text('New invoice')),
+      appBar: AppBar(title: Text(tr('New invoice'))),
       body: SafeArea(
         child: Query<List<Organization>>(
           client: session.queries,
@@ -771,13 +780,13 @@ class _NewInvoiceScreenState extends State<NewInvoiceScreen> {
               maxWidth: 760,
               children: [
                 if (_error != null) ...[ErrorBox(_error), const SizedBox(height: 12)],
-                Text('From', style: context.text.labelLarge),
+                Text(tr('From'), style: context.text.labelLarge),
                 const SizedBox(height: 7),
                 DropdownButtonFormField<String?>(
                   initialValue: _from,
                   isExpanded: true,
                   items: [
-                    const DropdownMenuItem(value: null, child: Text('Me (personal)')),
+                    DropdownMenuItem(value: null, child: Text(tr('Me (personal)'))),
                     for (final o in issuers) DropdownMenuItem(value: o.id, child: Text(o.name)),
                   ],
                   onChanged: (v) => setState(() {
@@ -786,7 +795,7 @@ class _NewInvoiceScreenState extends State<NewInvoiceScreen> {
                   }),
                 ),
                 const SizedBox(height: 14),
-                Text('Bill to', style: context.text.labelLarge),
+                Text(tr('Bill to'), style: context.text.labelLarge),
                 const SizedBox(height: 7),
                 Segmented<String>(
                   value: _toType,
@@ -797,7 +806,7 @@ class _NewInvoiceScreenState extends State<NewInvoiceScreen> {
                 TextField(
                   controller: _to,
                   decoration: InputDecoration(
-                    hintText: _toType == 'user' ? 'username' : 'company-handle',
+                    hintText: _toType == 'user' ? tr('username') : tr('company-handle'),
                     prefixIcon: Icon(_toType == 'user' ? LucideIcons.atSign : LucideIcons.building2, size: 18),
                   ),
                 ),
@@ -808,7 +817,7 @@ class _NewInvoiceScreenState extends State<NewInvoiceScreen> {
                       child: DropdownButtonFormField<String>(
                         initialValue: _currency,
                         isExpanded: true,
-                        decoration: const InputDecoration(labelText: 'Currency'),
+                        decoration: InputDecoration(labelText: tr('Currency')),
                         items: [
                           for (final e in currencies.entries)
                             DropdownMenuItem(
@@ -832,13 +841,13 @@ class _NewInvoiceScreenState extends State<NewInvoiceScreen> {
                           if (picked != null) setState(() => _due = picked);
                         },
                         icon: const Icon(LucideIcons.calendar, size: 17),
-                        label: Text('Due ${date(_due)}'),
+                        label: Text(tr('Due {0}', [date(_due)])),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 18),
-                Text('Lines', style: context.text.titleMedium),
+                Text(tr('Lines'), style: context.text.titleMedium),
                 const SizedBox(height: 8),
                 for (final (n, l) in _lines.indexed)
                   Padding(
@@ -849,7 +858,7 @@ class _NewInvoiceScreenState extends State<NewInvoiceScreen> {
                           flex: 5,
                           child: TextField(
                             controller: l.description,
-                            decoration: InputDecoration(hintText: 'Line ${n + 1}: what you are billing for'),
+                            decoration: InputDecoration(hintText: tr('Line {0}: what you are billing for', [n + 1])),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -858,7 +867,7 @@ class _NewInvoiceScreenState extends State<NewInvoiceScreen> {
                           child: TextField(
                             controller: l.quantity,
                             keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(hintText: 'Qty'),
+                            decoration: InputDecoration(hintText: tr('Qty')),
                             onChanged: (_) => setState(() {}),
                           ),
                         ),
@@ -868,12 +877,12 @@ class _NewInvoiceScreenState extends State<NewInvoiceScreen> {
                           child: TextField(
                             controller: l.unitPrice,
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            decoration: const InputDecoration(hintText: 'Unit price'),
+                            decoration: InputDecoration(hintText: tr('Unit price')),
                             onChanged: (_) => setState(() {}),
                           ),
                         ),
                         IconButton(
-                          tooltip: 'Remove line',
+                          tooltip: tr('Remove line'),
                           onPressed: _lines.length == 1 ? null : () => setState(() => _lines.removeAt(n).dispose()),
                           icon: Icon(LucideIcons.trash2, size: 18, color: c.text3),
                         ),
@@ -885,23 +894,23 @@ class _NewInvoiceScreenState extends State<NewInvoiceScreen> {
                     TextButton.icon(
                       onPressed: _lines.length >= 50 ? null : () => setState(() => _lines.add(_Line())),
                       icon: const Icon(LucideIcons.plus, size: 17),
-                      label: const Text('Add line'),
+                      label: Text(tr('Add line')),
                     ),
                     const Spacer(),
-                    Text('Total  ', style: context.text.bodyMedium),
+                    Text(tr('Total  '), style: context.text.bodyMedium),
                     Text(_total, style: font(display, 18, FontWeight.w800, color: c.text)),
                   ],
                 ),
                 const SizedBox(height: 12),
                 LabeledField(
-                  label: 'Note (optional)',
+                  label: tr('Note (optional)'),
                   controller: _note,
                   icon: LucideIcons.stickyNote,
                   maxLines: 2,
-                  hint: 'Payment terms, order number, thanks…',
+                  hint: tr('Payment terms, order number, thanks…'),
                 ),
                 const SizedBox(height: 20),
-                GradientButton(label: 'Send invoice', icon: LucideIcons.send, busy: _busy, onPressed: _send),
+                GradientButton(label: tr('Send invoice'), icon: LucideIcons.send, busy: _busy, onPressed: _send),
               ],
             );
           },

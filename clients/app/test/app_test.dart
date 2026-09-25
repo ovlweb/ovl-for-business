@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ovl_business/i18n/i18n.dart';
 import 'package:ovl_business/api/models.dart';
 import 'package:ovl_business/theme/theme.dart';
 import 'package:ovl_business/ui/chart.dart';
 import 'package:ovl_business/ui/format.dart';
 import 'package:ovl_business/ui/theme_gallery.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 Widget _themed(Widget child, [String theme = 'daylight']) => MaterialApp(
   theme: buildTheme(paletteById(theme)),
@@ -25,6 +27,54 @@ void main() {
       expect(plural(3, 'currency', 'currencies'), '3 currencies');
       expect(initials('Maria Petrova'), 'MP');
       expect(initials('owner'), 'OW');
+    });
+  });
+
+  group('languages', () {
+    late LocaleController locales;
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+      locales = LocaleController(await SharedPreferences.getInstance());
+      await locales.init();
+    });
+    tearDown(() => locales.set('en'));
+
+    test('Russian text, plural forms and number formats', () async {
+      expect(tr('Chats'), 'Chats');
+      await locales.set('ru');
+      expect(currentLocale, 'ru');
+      expect(tr('Chats'), 'Чаты');
+      expect(tr('Not in the catalog'), 'Not in the catalog');
+      expect(tr('Invoice {0}', ['INV-7']), 'Счёт INV-7');
+      expect(plural(1, 'share'), '1 акция');
+      expect(plural(3, 'share'), '3 акции');
+      expect(plural(12, 'share'), '12 акций');
+      expect(plural(21, 'share'), '21 акция');
+      expect(money('48500.5', 'EUR'), '48\u00a0500,50 EUR');
+      expect(timeAgo(DateTime.now()), 'только что');
+    });
+
+    test('system chat lines follow the reader', () async {
+      final line = Message.fromJson({
+        'id': 1,
+        'chatId': 'c1',
+        'sender': null,
+        'kind': 'system',
+        'body': 'Ann created the group "Team"',
+        'meta': {
+          'text': {
+            'key': '{0} created the group "{1}"',
+            'values': ['Ann', 'Team'],
+          },
+        },
+        'attachments': [],
+        'mentions': [],
+        'reactions': [],
+        'createdAt': DateTime.now().toIso8601String(),
+      });
+      expect(line.text, 'Ann created the group "Team"');
+      await locales.set('ru');
+      expect(line.text, 'Ann создал(а) группу «Team»');
     });
   });
 

@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { apiKeys } from '../db/schema';
 import { sha256 } from './crypto';
 import { forbidden, unauthorized } from './errors';
+import { text } from './i18n';
 
 function header(req: FastifyRequest, name: string): string | null {
   const value = req.headers[name];
@@ -40,7 +41,7 @@ export function apiKeyGuard(app: FastifyInstance, scope: string) {
       .from(apiKeys)
       .where(eq(apiKeys.keyHash, sha256(key)));
     if (!row || row.revokedAt) throw unauthorized('Invalid API key');
-    if (!row.scopes.includes(scope)) throw forbidden(`This API key lacks the ${scope} scope`);
+    if (!row.scopes.includes(scope)) throw forbidden(text`This API key lacks the ${scope} scope`);
     if (!row.lastUsedAt || Date.now() - row.lastUsedAt.getTime() > 60_000) {
       await app.db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, row.id));
     }

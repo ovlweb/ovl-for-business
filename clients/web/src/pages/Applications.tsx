@@ -29,6 +29,8 @@ import {
   StatusBadge,
   useToast,
   WorkflowStepper,
+  t,
+  msg,
 } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent, type ReactNode } from 'react';
@@ -175,20 +177,20 @@ function NewApplicationModal({
   if (type === 'company') {
     fields = (
       <>
-        <Field label="Company name">
+        <Field label={t('Company name')}>
           <input className="input" {...bind('name')} required maxLength={120} />
         </Field>
-        <Field label="Description">
+        <Field label={t('Description')}>
           <textarea className="textarea" {...bind('description')} required minLength={10} />
         </Field>
         <div className="grid-2">
-          <Field label="Website (optional)">
+          <Field label={t('Website (optional)')}>
             <input className="input" type="url" {...bind('website')} />
           </Field>
-          <Field label="Country / virtual country (optional)">
+          <Field label={t('Country / virtual country (optional)')}>
             <input className="input" {...bind('country')} />
           </Field>
-          <Field label="Base currency">
+          <Field label={t('Base currency')}>
             <select className="select" {...bind('baseCurrency')}>
               {CURRENCIES.map((c) => (
                 <option key={c.code} value={c.code}>
@@ -197,11 +199,11 @@ function NewApplicationModal({
               ))}
             </select>
           </Field>
-          <Field label="Contact email (optional)">
+          <Field label={t('Contact email (optional)')}>
             <input className="input" type="email" {...bind('contactEmail')} />
           </Field>
         </div>
-        <Field label="Business plan" hint="What the company does and how it earns money.">
+        <Field label={t('Business plan')} hint={t('What the company does and how it earns money.')}>
           <textarea
             className="textarea"
             {...bind('businessPlan')}
@@ -217,31 +219,33 @@ function NewApplicationModal({
             onChange={(e) => setValues({ ...values, listOnExchange: e.target.checked })}
           />
           <span>
-            List the company on the stock exchange so anyone can invest.
+            {t('List the company on the stock exchange so anyone can invest.')}
             {stock && (
               <span className="muted small">
-                {' '}
-                {stock.freezePercent}% of every investment stays frozen on your balance for {stock.lockDays}{' '}
-                days.
+                {t(
+                  '{0}% of every investment stays frozen on your balance for {1} days.',
+                  stock.freezePercent,
+                  stock.lockDays,
+                )}
               </span>
             )}
           </span>
         </label>
         {values.listOnExchange && (
           <div className="grid-3">
-            <Field label="Ticker">
+            <Field label={t('Ticker')}>
               <input
                 className="input"
                 {...bind('ticker')}
                 required
                 pattern="[A-Za-z][A-Za-z0-9]{1,5}"
-                placeholder="ACME"
+                placeholder={t('ACME')}
               />
             </Field>
-            <Field label={`Share price (${values.baseCurrency})`}>
+            <Field label={t('Share price ({0})', String(values.baseCurrency ?? ''))}>
               <input className="input" inputMode="decimal" {...bind('sharePrice')} required />
             </Field>
-            <Field label="Total shares">
+            <Field label={t('Total shares')}>
               <input className="input" type="number" min={1} {...bind('totalShares')} required />
             </Field>
           </div>
@@ -252,28 +256,28 @@ function NewApplicationModal({
     const eligible = orgs.data?.filter((o) => o.myRole === 'owner' || o.myRole === 'director') ?? [];
     fields = (
       <>
-        <Field label="License type" hint="Licenses cover virtual things only.">
+        <Field label={t('License type')} hint={t('Licenses cover virtual things only.')}>
           <select className="select" {...bind('licenseType')}>
-            {LICENSE_TYPES.filter((t) => t !== 'business').map((t) => (
-              <option key={t} value={t}>
-                {LICENSE_TYPE_LABELS[t]}
+            {LICENSE_TYPES.filter((t) => t !== 'business').map((kind) => (
+              <option key={kind} value={kind}>
+                {t(LICENSE_TYPE_LABELS[kind])}
               </option>
             ))}
           </select>
         </Field>
-        <Field label="Title">
+        <Field label={t('Title')}>
           <input className="input" {...bind('title')} required maxLength={200} />
         </Field>
-        <Field label="Description">
+        <Field label={t('Description')}>
           <textarea className="textarea" {...bind('description')} required minLength={10} />
         </Field>
-        <Field label="Website (optional)">
+        <Field label={t('Website (optional)')}>
           <input className="input" type="url" {...bind('website')} />
         </Field>
         {eligible.length > 0 && (
-          <Field label="Holder">
+          <Field label={t('Holder')}>
             <select className="select" {...bind('organizationId')}>
-              <option value="">Me personally</option>
+              <option value="">{t('Me personally')}</option>
               {eligible.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.name}
@@ -282,7 +286,7 @@ function NewApplicationModal({
             </select>
           </Field>
         )}
-        <Field label="Additional details (optional)">
+        <Field label={t('Additional details (optional)')}>
           <textarea className="textarea" {...bind('details')} />
         </Field>
       </>
@@ -290,13 +294,13 @@ function NewApplicationModal({
   } else if (type === 'news_channel') {
     fields = (
       <>
-        <Field label="Channel title">
+        <Field label={t('Channel title')}>
           <input className="input" {...bind('title')} required maxLength={128} />
         </Field>
-        <Field label="Handle" hint="Public address, e.g. market_news">
+        <Field label={t('Handle')} hint={t('Public address, e.g. market_news')}>
           <input className="input" {...bind('handle')} required pattern="[A-Za-z][A-Za-z0-9_]{3,31}" />
         </Field>
-        <Field label="Description">
+        <Field label={t('Description')}>
           <textarea className="textarea" {...bind('description')} required minLength={10} />
         </Field>
       </>
@@ -315,8 +319,8 @@ function NewApplicationModal({
           </span>
         </div>
         <Field
-          label="Note for the moderator (optional)"
-          hint="What changed since the last term, links to recent activity…"
+          label={t('Note for the moderator (optional)')}
+          hint={t('What changed since the last term, links to recent activity…')}
         >
           <textarea className="textarea" {...bind('note')} maxLength={2000} />
         </Field>
@@ -325,10 +329,10 @@ function NewApplicationModal({
   } else {
     fields = (
       <>
-        <Field label="Why do you want to join?" hint="At least 20 characters.">
+        <Field label={t('Why do you want to join?')} hint={t('At least 20 characters.')}>
           <textarea className="textarea" {...bind('motivation')} required minLength={20} />
         </Field>
-        <Field label="Relevant experience (optional)">
+        <Field label={t('Relevant experience (optional)')}>
           <textarea className="textarea" {...bind('experience')} />
         </Field>
       </>
@@ -336,17 +340,18 @@ function NewApplicationModal({
   }
 
   return (
-    <Modal title={resubmit ? `Edit: ${workflow.label}` : workflow.label} onClose={onClose} wide>
+    <Modal title={resubmit ? t('Edit: {0}', t(workflow.label)) : t(workflow.label)} onClose={onClose} wide>
       <form className="stack" onSubmit={onSubmit}>
         {type === 'company' && identityRequired && !me.identityVerified && (
           <div className="alert warning small">
             <Icon name="shield" size={16} />
             <span className="grow">
-              Company owners pass an identity check before approval. You can apply now; reviewers approve once
-              your identity is verified.
+              {t(
+                'Company owners pass an identity check before approval. You can apply now; reviewers approve once your identity is verified.',
+              )}
             </span>
             <Link className="btn sm" to="/settings?section=identity" onClick={onClose}>
-              Verify identity
+              {t('Verify identity')}
             </Link>
           </div>
         )}
@@ -354,15 +359,18 @@ function NewApplicationModal({
           <div className="alert warning small">
             <Icon name="info" size={16} />
             <span>
-              <b>Requested changes:</b> {resubmit.changesRequested}
+              <b>{t('Requested changes:')}</b> {resubmit.changesRequested}
             </span>
           </div>
         ) : (
-          <p className="small muted">{workflow.description}</p>
+          <p className="small muted">{t(workflow.description)}</p>
         )}
         <WorkflowStepper application={resubmit ?? { type, status: 'pending', stageIndex: -1 }} />
         {fields}
-        <Field label="Documents (optional)" hint="Business license, plans, IDs… Images, PDF or office files.">
+        <Field
+          label={t('Documents (optional)')}
+          hint={t('Business license, plans, IDs… Images, PDF or office files.')}
+        >
           <div className="stack-sm">
             {resubmit && <AttachmentList files={resubmit.attachments} href={api.files.url} />}
             <AttachmentPicker
@@ -377,7 +385,11 @@ function NewApplicationModal({
         </Field>
         <ErrorAlert error={submit.error} />
         <button className="btn primary" disabled={submit.isPending}>
-          {resubmit ? 'Send the changes' : type === 'renewal' ? 'Ask for a renewal' : 'Submit application'}
+          {resubmit
+            ? t('Send the changes')
+            : type === 'renewal'
+              ? t('Ask for a renewal')
+              : t('Submit application')}
         </button>
       </form>
     </Modal>
@@ -410,7 +422,7 @@ function CurrencyModal({ licence, onClose }: { licence: MyLicence; onClose: () =
       registerCurrencies([{ code: c.code, name: c.name, decimals: c.decimals, virtual: true }]);
       for (const key of ['licences', 'wallets', 'virtualCurrency'])
         queryClient.invalidateQueries({ queryKey: [key] });
-      toast.success(`${c.code} is ready: issue some to put it into circulation`);
+      toast.success(t('{0} is ready: issue some to put it into circulation', c.code));
     },
   });
   const change = useMutation({
@@ -429,7 +441,10 @@ function CurrencyModal({ licence, onClose }: { licence: MyLicence; onClose: () =
   });
   const c = info.data;
   return (
-    <Modal title={code ? `${code} · ${licence.title}` : `A currency for ${licence.title}`} onClose={onClose}>
+    <Modal
+      title={code ? `${code} · ${licence.title}` : t('A currency for {0}', licence.title)}
+      onClose={onClose}
+    >
       {!code ? (
         <form
           className="stack"
@@ -439,11 +454,12 @@ function CurrencyModal({ licence, onClose }: { licence: MyLicence; onClose: () =
           }}
         >
           <p className="small muted" style={{ margin: 0 }}>
-            A virtual country can issue one currency. Anyone can hold it, send it and be invoiced in it; you
-            decide how much is in circulation.
+            {t(
+              'A virtual country can issue one currency. Anyone can hold it, send it and be invoiced in it; you decide how much is in circulation.',
+            )}
           </p>
           <div className="grid-2">
-            <Field label="Code" hint="Three letters that are not a real-world currency">
+            <Field label={t('Code')} hint={t('Three letters that are not a real-world currency')}>
               <input
                 className="input mono"
                 value={form.code}
@@ -453,7 +469,7 @@ function CurrencyModal({ licence, onClose }: { licence: MyLicence; onClose: () =
                 onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
               />
             </Field>
-            <Field label="Decimals">
+            <Field label={t('Decimals')}>
               <select
                 className="select"
                 value={form.decimals}
@@ -461,26 +477,26 @@ function CurrencyModal({ licence, onClose }: { licence: MyLicence; onClose: () =
               >
                 {[0, 1, 2, 3, 4].map((d) => (
                   <option key={d} value={d}>
-                    {d === 0 ? 'Whole units' : `${d} (${(1 / 10 ** d).toFixed(d)})`}
+                    {d === 0 ? t('Whole units') : `${d} (${(1 / 10 ** d).toFixed(d)})`}
                   </option>
                 ))}
               </select>
             </Field>
           </div>
-          <Field label="Name">
+          <Field label={t('Name')}>
             <input
               className="input"
               value={form.name}
               minLength={2}
               maxLength={64}
               required
-              placeholder="Helios lira"
+              placeholder={t('Helios lira')}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
             />
           </Field>
           <ErrorAlert error={create.error} />
           <button className="btn primary" disabled={create.isPending}>
-            Create currency
+            {t('Create currency')}
           </button>
         </form>
       ) : (
@@ -491,16 +507,16 @@ function CurrencyModal({ licence, onClose }: { licence: MyLicence; onClose: () =
               <div className="row-wrap">
                 <StatusBadge status={c.status} />
                 <span className="small muted">
-                  {c.name} · issued by {c.country} ({c.registryNumber})
+                  {t('{0} · issued by {1} ({2})', c.name, c.country, c.registryNumber)}
                 </span>
               </div>
               <div className="grid-2">
                 <div className="card flat kpi">
-                  <span className="kpi-label">In circulation</span>
+                  <span className="kpi-label">{t('In circulation')}</span>
                   <span className="kpi-value compact">{formatMoney(c.supply, c.code)}</span>
                 </div>
                 <div className="card flat kpi">
-                  <span className="kpi-label">Balances holding it</span>
+                  <span className="kpi-label">{t('Balances holding it')}</span>
                   <span className="kpi-value compact">{c.holders}</span>
                 </div>
               </div>
@@ -508,7 +524,7 @@ function CurrencyModal({ licence, onClose }: { licence: MyLicence; onClose: () =
           )}
           <form className="stack" onSubmit={(e) => e.preventDefault()}>
             <div className="grid-2">
-              <Field label={`Amount (${code})`}>
+              <Field label={t('Amount ({0})', code)}>
                 <input
                   className="input"
                   inputMode="decimal"
@@ -517,7 +533,7 @@ function CurrencyModal({ licence, onClose }: { licence: MyLicence; onClose: () =
                   onChange={(e) => setAmount(e.target.value.replace(',', '.'))}
                 />
               </Field>
-              <Field label="Note (optional)">
+              <Field label={t('Note (optional)')}>
                 <input
                   className="input"
                   value={note}
@@ -527,9 +543,11 @@ function CurrencyModal({ licence, onClose }: { licence: MyLicence; onClose: () =
               </Field>
             </div>
             <p className="tiny muted" style={{ margin: 0 }}>
-              Issued money lands on the{' '}
-              {licence.holder.type === 'organization' ? `${licence.holder.name} ` : ''}
-              {code} balance; redeeming takes it back out of circulation from there.
+              {t(
+                'Issued money lands on the {0}{1} balance; redeeming takes it back out of circulation from there.',
+                licence.holder.type === 'organization' ? `${licence.holder.name} ` : '',
+                code,
+              )}
             </p>
             <ErrorAlert error={change.error} />
             <div className="row-wrap">
@@ -543,14 +561,14 @@ function CurrencyModal({ licence, onClose }: { licence: MyLicence; onClose: () =
                 }
                 onClick={() => change.mutate('issue')}
               >
-                Issue
+                {t('Issue')}
               </button>
               <button
                 className="btn"
                 disabled={change.isPending || !(Number(amount) > 0)}
                 onClick={() => change.mutate('redeem')}
               >
-                Redeem
+                {t('Redeem')}
               </button>
             </div>
           </form>
@@ -565,15 +583,15 @@ function Licences({ licences, onRenew }: { licences: MyLicence[]; onRenew: (l: M
   const [currencyFor, setCurrencyFor] = useState<MyLicence | null>(null);
   return (
     <div className="stack">
-      <h2>Your licences</h2>
+      <h2>{t('Your licences')}</h2>
       <div className="card pad-0 table-wrap">
         <table className="table">
           <thead>
             <tr>
-              <th>Licence</th>
-              <th>Holder</th>
-              <th>Valid until</th>
-              <th>Status</th>
+              <th>{t('Licence')}</th>
+              <th>{t('Holder')}</th>
+              <th>{t('Valid until')}</th>
+              <th>{t('Status')}</th>
               <th />
             </tr>
           </thead>
@@ -588,13 +606,13 @@ function Licences({ licences, onRenew }: { licences: MyLicence[]; onRenew: (l: M
                     <b>{l.title}</b>
                     <div className="small muted">
                       <code>{l.number}</code> ·{' '}
-                      {l.licenseType ? LICENSE_TYPE_LABELS[l.licenseType] : 'Licence'}
+                      {l.licenseType ? LICENSE_TYPE_LABELS[l.licenseType] : t('Licence')}
                     </div>
                   </td>
-                  <td className="small">{l.holder.type === 'organization' ? l.holder.name : 'You'}</td>
+                  <td className="small">{l.holder.type === 'organization' ? l.holder.name : t('You')}</td>
                   <td className={`small nowrap${days !== null && days <= 30 ? ' neg' : ''}`}>
-                    {l.expiresAt ? formatDate(l.expiresAt, false) : 'No expiry'}
-                    {days !== null && days > 0 && days <= 60 && <div>in {days} days</div>}
+                    {l.expiresAt ? formatDate(l.expiresAt, false) : t('No expiry')}
+                    {days !== null && days > 0 && days <= 60 && <div>{t('in {0} days', days)}</div>}
                   </td>
                   <td>
                     <StatusBadge status={l.renewalApplicationId ? 'renewal_pending' : l.status} />
@@ -606,16 +624,16 @@ function Licences({ licences, onRenew }: { licences: MyLicence[]; onRenew: (l: M
                       target="_blank"
                       rel="noreferrer"
                     >
-                      Certificate
+                      {t('Certificate')}
                     </a>
                     {l.kind === 'virtual_country' && (l.currency || l.status === 'active') && (
                       <button className="btn ghost sm" onClick={() => setCurrencyFor(l)}>
-                        {l.currency ?? 'Issue a currency'}
+                        {l.currency ?? t('Issue a currency')}
                       </button>
                     )}
                     {!l.renewalApplicationId && canRenew(l) && (
                       <button className="btn primary sm" onClick={() => onRenew(l)}>
-                        Renew
+                        {t('Renew')}
                       </button>
                     )}
                   </td>
@@ -635,15 +653,15 @@ function ResultLinks({ application }: { application: Application }) {
   return (
     <div className="row-wrap small">
       {typeof r.organizationSlug === 'string' && (
-        <Link to={`/companies/${r.organizationSlug}`}>Open company</Link>
+        <Link to={`/companies/${r.organizationSlug}`}>{t('Open company')}</Link>
       )}
       {typeof r.ticker === 'string' && r.ticker && (
-        <Link to={`/exchange/${r.ticker}`}>{r.ticker} on the exchange</Link>
+        <Link to={`/exchange/${r.ticker}`}>{t('{0} on the exchange', r.ticker)}</Link>
       )}
       {typeof r.registryNumber === 'string' && <code>{r.registryNumber}</code>}
       {typeof r.licenseNumber === 'string' && <code>{r.licenseNumber}</code>}
-      {typeof r.expiresAt === 'string' && <span>Valid until {formatDate(r.expiresAt, false)}</span>}
-      {typeof r.chatId === 'string' && <Link to={`/chats/${r.chatId}`}>Open channel</Link>}
+      {typeof r.expiresAt === 'string' && <span>{t('Valid until {0}', formatDate(r.expiresAt, false))}</span>}
+      {typeof r.chatId === 'string' && <Link to={`/chats/${r.chatId}`}>{t('Open channel')}</Link>}
     </div>
   );
 }
@@ -651,25 +669,25 @@ function ResultLinks({ application }: { application: Application }) {
 const NEW_TYPES: { type: ApplicationType; title: string; text: string; staff?: boolean }[] = [
   {
     type: 'company',
-    title: 'Company / business account',
-    text: 'Register a company with its business license and optional stock listing.',
+    title: msg('Company / business account'),
+    text: msg('Register a company with its business license and optional stock listing.'),
   },
   {
     type: 'license',
     title: 'License',
-    text: 'Projects, fan-projects, TV & radio channels, websites, virtual countries…',
+    text: msg('Projects, fan-projects, TV & radio channels, websites, virtual countries…'),
   },
-  { type: 'news_channel', title: 'News channel', text: 'Channels are created through moderation.' },
+  { type: 'news_channel', title: msg('News channel'), text: msg('Channels are created through moderation.') },
   {
     type: 'moderator',
-    title: 'Join the moderation team',
-    text: 'Review applications and answer tech support.',
+    title: msg('Join the moderation team'),
+    text: msg('Review applications and answer tech support.'),
     staff: true,
   },
   {
     type: 'council',
-    title: 'Join the council',
-    text: 'Vote on companies, licenses and new members.',
+    title: msg('Join the council'),
+    text: msg('Vote on companies, licenses and new members.'),
     staff: true,
   },
 ];
@@ -696,23 +714,25 @@ export function ApplicationsPage() {
     <div className="page stack-lg">
       <PageHeader
         icon="file"
-        title="Applications"
-        subtitle="Register companies and licenses or join the moderation team or the council. Every application goes through moderation and confirmations."
+        title={t('Applications')}
+        subtitle={t(
+          'Register companies and licenses or join the moderation team or the council. Every application goes through moderation and confirmations.',
+        )}
       />
       <div className="grid-3">
         {NEW_TYPES.filter(
           (t) => !t.staff || me.role === 'user' || (t.type === 'council' && me.role === 'moderator'),
-        ).map((t) => (
+        ).map((tpl) => (
           <button
-            key={t.type}
+            key={tpl.type}
             className="card stack-sm"
             style={{ textAlign: 'left', cursor: 'pointer', font: 'inherit', color: 'inherit' }}
-            onClick={() => setParams({ new: t.type })}
+            onClick={() => setParams({ new: tpl.type })}
           >
-            <h3>{t.title}</h3>
-            <span className="small muted">{t.text}</span>
+            <h3>{t(tpl.title)}</h3>
+            <span className="small muted">{t(tpl.text)}</span>
             <span className="small bold" style={{ color: 'var(--accent)' }}>
-              Apply →
+              {t('Apply →')}
             </span>
           </button>
         ))}
@@ -723,31 +743,33 @@ export function ApplicationsPage() {
       )}
 
       <div className="stack">
-        <h2>Your applications</h2>
+        <h2>{t('Your applications')}</h2>
         {mine.isLoading && <Spinner center />}
         <ErrorAlert error={mine.error} />
         {mine.data?.length === 0 && (
           <div className="card">
-            <Empty title="You have not submitted anything yet" />
+            <Empty title={t('You have not submitted anything yet')} />
           </div>
         )}
         {mine.data?.map((a) => (
           <div key={a.id} className="card stack-sm" onClick={() => setOpen(a)} style={{ cursor: 'pointer' }}>
             <div className="spread">
               <div className="row-wrap">
-                <h3>{WORKFLOWS[a.type].label}</h3>
+                <h3>{t(WORKFLOWS[a.type].label)}</h3>
                 <span className="muted small">{String(a.payload.name ?? a.payload.title ?? '')}</span>
               </div>
               <StatusBadge status={a.status} />
             </div>
             <WorkflowStepper application={a} />
             {a.status === 'rejected' && a.rejectionReason && (
-              <div className="alert error small">Rejected: {a.rejectionReason}</div>
+              <div className="alert error small">{t('Rejected: {0}', a.rejectionReason)}</div>
             )}
             {a.status === 'changes_requested' && (
               <div className="alert warning small">
                 <Icon name="info" size={16} />
-                <span className="grow">Changes requested: {a.changesRequested}</span>
+                <span className="grow">
+                  {t('Changes requested:')} {a.changesRequested}
+                </span>
                 <button
                   className="btn sm"
                   onClick={(e) => {
@@ -755,12 +777,12 @@ export function ApplicationsPage() {
                     setEditing(a);
                   }}
                 >
-                  Edit and resubmit
+                  {t('Edit and resubmit')}
                 </button>
               </div>
             )}
             {a.status === 'approved' && <ResultLinks application={a} />}
-            <span className="tiny muted">Submitted {formatDate(a.createdAt)}</span>
+            <span className="tiny muted">{t('Submitted {0}', formatDate(a.createdAt))}</span>
           </div>
         ))}
       </div>
@@ -773,19 +795,19 @@ export function ApplicationsPage() {
         <NewApplicationModal type={editing.type} resubmit={editing} onClose={() => setEditing(null)} />
       )}
       {open && (
-        <Modal title={WORKFLOWS[open.type].label} onClose={() => setOpen(null)} wide>
+        <Modal title={t(WORKFLOWS[open.type].label)} onClose={() => setOpen(null)} wide>
           <div className="stack">
             <WorkflowStepper application={open} />
             <PayloadView payload={open.payload} />
             {open.attachments.length > 0 && (
               <div className="stack-sm">
-                <h3>Documents</h3>
+                <h3>{t('Documents')}</h3>
                 <AttachmentList files={open.attachments} href={api.files.url} />
               </div>
             )}
             {open.reviews.length > 0 && (
               <div className="stack-sm">
-                <h3>Decisions</h3>
+                <h3>{t('Decisions')}</h3>
                 {open.reviews.map((r) => (
                   <div key={r.id} className="small">
                     <DecisionBadge decision={r.decision} /> {r.reviewer.displayName} ({r.reviewerRole}) ·{' '}
@@ -804,12 +826,12 @@ export function ApplicationsPage() {
                   setOpen(null);
                 }}
               >
-                Edit and resubmit
+                {t('Edit and resubmit')}
               </button>
             )}
             {(open.status === 'pending' || open.status === 'changes_requested') && (
               <button className="btn danger" onClick={() => withdraw.mutate(open.id)}>
-                Withdraw application
+                {t('Withdraw application')}
               </button>
             )}
           </div>

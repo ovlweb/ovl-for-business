@@ -31,6 +31,15 @@
   file, and CI fails if the generated code is stale. The chosen theme and onboarding state are
   stored as account preferences (`PATCH /me/preferences`), so they follow the person across
   devices.
+- **One set of translations everywhere.** English text is the key: `t('Send money')` in React,
+  `tr('Send money')` in Dart, `t('Bought {0} shares', n)` with values, and `plural(n, 'share')`
+  with each language's plural forms. The Russian catalog is built from `scripts/i18n/ru/*.json`
+  into `packages/shared/src/locales/ru.ts` (web, admin panel, server) and
+  `clients/app/lib/i18n/ru.g.dart` (apps). The server translates what it says (errors into the
+  request's `Accept-Language`, which the apps send; notifications and emails into the language
+  the account keeps in `preferences.locale`). System lines in chats carry their text and values in
+  `meta.text`, so every member reads them in their own language; names in them are never
+  translated, only values marked with `label()`. A missing translation falls back to English.
 - **The admin panel is a separate app** (`admin/`) with its own build, container, address and
   session storage. It talks to the same API; staff endpoints are protected by permissions on the
   server, never only by the UI.

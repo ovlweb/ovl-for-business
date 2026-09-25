@@ -1,6 +1,7 @@
 import { THEMES, type Theme } from '@ovl/shared';
 import { motion } from 'motion/react';
 import { Icon } from './icons';
+import { t } from './i18n';
 
 function Preview({ theme }: { theme: Theme }) {
   const c = theme.colors;
@@ -49,16 +50,21 @@ export function ThemeGallery({
       ? [
           {
             id: 'system',
-            name: 'Match system',
-            description: 'Daylight or Midnight, following your device.',
+            name: t('Match system'),
+            description: t('Daylight or Midnight, following your device.'),
             preview: [THEMES[0]!, THEMES[1]!] as [Theme, Theme],
           },
         ]
       : []),
-    ...THEMES.map((t) => ({ id: t.id, name: t.name, description: t.description, preview: t })),
+    ...THEMES.map((theme) => ({
+      id: theme.id,
+      name: theme.name,
+      description: theme.description,
+      preview: theme,
+    })),
   ];
   return (
-    <div className="grid-3" role="radiogroup" aria-label="Theme">
+    <div className="grid-3" role="radiogroup" aria-label={t('Theme')}>
       {options.map((o, i) => (
         <motion.button
           key={o.id}
@@ -67,7 +73,7 @@ export function ThemeGallery({
           role="radio"
           aria-checked={value === o.id}
           aria-label={o.name}
-          title={o.description}
+          title={t(o.description)}
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.03, duration: 0.35 }}
@@ -85,7 +91,7 @@ export function ThemeGallery({
           )}
           <div style={{ padding: '0 4px 2px' }}>
             <div className="bold">{o.name}</div>
-            <div className="tiny muted">{o.description}</div>
+            <div className="tiny muted">{t(o.description)}</div>
           </div>
           {value === o.id && (
             <motion.span
@@ -114,16 +120,22 @@ export function ThemeMenu({
 }) {
   const options = [
     ...(includeSystem
-      ? [{ id: 'system', name: 'Match system', swatch: 'linear-gradient(135deg, #f8fafc 50%, #0b1220 50%)' }]
+      ? [
+          {
+            id: 'system',
+            name: t('Match system'),
+            swatch: 'linear-gradient(135deg, #f8fafc 50%, #0b1220 50%)',
+          },
+        ]
       : []),
-    ...THEMES.map((t) => ({
-      id: t.id,
-      name: t.name,
-      swatch: `linear-gradient(135deg, ${t.colors.sidebarBg} 0 45%, ${t.colors.gradFrom} 45% 72%, ${t.colors.gradTo} 72%)`,
+    ...THEMES.map((theme) => ({
+      id: theme.id,
+      name: theme.name,
+      swatch: `linear-gradient(135deg, ${theme.colors.sidebarBg} 0 45%, ${theme.colors.gradFrom} 45% 72%, ${theme.colors.gradTo} 72%)`,
     })),
   ];
   return (
-    <div role="radiogroup" aria-label="Theme">
+    <div role="radiogroup" aria-label={t('Theme')}>
       {options.map((o) => (
         <button
           key={o.id}

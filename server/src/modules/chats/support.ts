@@ -6,7 +6,16 @@ import { z } from 'zod';
 import { chatMembers, chats } from '../../db/schema';
 import { badRequest, forbidden } from '../../lib/errors';
 import { currentUser } from '../../plugins/auth';
-import { chatDtos, insertMessage, loadChat, publishMessage, sendToChat, sortChats } from './service';
+import {
+  chatDtos,
+  insertMessage,
+  loadChat,
+  publishMessage,
+  sendToChat,
+  sortChats,
+  systemText,
+} from './service';
+import { text } from '../../lib/i18n';
 
 /**
  * Tech support: every ticket is a `support` chat between the requester and the support team.
@@ -101,7 +110,11 @@ export async function supportRoutes(fastify: FastifyInstance) {
         chatId: chat.id,
         senderId: null,
         kind: 'system',
-        body: `${me.displayName} ${req.body.status === 'closed' ? 'closed' : 'reopened'} the ticket`,
+        ...systemText(
+          req.body.status === 'closed'
+            ? text`${me.displayName} closed the ticket`
+            : text`${me.displayName} reopened the ticket`,
+        ),
       });
       await publishMessage(app, updated!, message);
       await sendToChat(app, updated!, { type: 'chat.updated', chatId: chat.id });

@@ -81,7 +81,10 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
 
 - ✅ Horizontal scaling of realtime (Postgres `LISTEN/NOTIFY` behind `RealtimeHub`, shared
   presence) and shared rate-limit storage (0.2).
-- Localisation (English, Russian, …).
+- ✅ Localisation: English and Russian in the web client, the admin panel and the apps, with
+  Russian plural forms and dates, numbers and money in the language's format; the server answers
+  errors, notifications, emails and chat events in each person's language. The choice is saved
+  with the account for every device (0.2).
 - ✅ Observability: Prometheus metrics, W3C trace context in logs, structured audit export
   (CSV / NDJSON); automated backups with retention and a restore script (0.2).
 - ✅ Governance settings: quorum, majority or two-thirds council voting, council terms that end on

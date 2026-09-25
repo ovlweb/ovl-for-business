@@ -44,6 +44,7 @@ import {
   orgRoleOf,
   type WalletRow,
 } from '../wallets/service';
+import { text } from '../../lib/i18n';
 
 type DividendRow = typeof dividends.$inferSelect;
 type ProposalRow = typeof proposals.$inferSelect;
@@ -122,7 +123,7 @@ async function executeDividend(tx: Db, dividend: DividendRow, listing: ListingRo
 export async function approveDividend(tx: Db, dividendId: string, actorId: string) {
   const [dividend] = await tx.select().from(dividends).where(eq(dividends.id, dividendId)).for('update');
   if (!dividend) throw notFound('Dividend');
-  if (dividend.status !== 'pending') throw conflict(`This dividend is already ${dividend.status}`);
+  if (dividend.status !== 'pending') throw conflict(text`This dividend is already ${dividend.status}`);
   const [listing] = await tx.select().from(stockListings).where(eq(stockListings.id, dividend.listingId));
   return executeDividend(tx, dividend, listing!, actorId);
 }
@@ -357,7 +358,8 @@ export async function shareholderRoutes(fastify: FastifyInstance) {
       const listing = await listingOfOrg(req.params.id);
       const [wallet] = await app.db.select().from(wallets).where(eq(wallets.id, req.body.walletId));
       if (!wallet || wallet.organizationId !== req.params.id) throw notFound('Company balance');
-      if (wallet.currency !== listing.currency) throw badRequest(`Pay from the ${listing.currency} balance`);
+      if (wallet.currency !== listing.currency)
+        throw badRequest(text`Pay from the ${listing.currency} balance`);
       await assertWalletAccess(app.db, wallet, me, true);
       const perShare = parseAmount(req.body.perShare, listing.currency);
       if (perShare <= 0n) throw badRequest('The amount per share must be positive');

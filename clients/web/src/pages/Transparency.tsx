@@ -1,5 +1,5 @@
 import { COUNCIL_VOTING_LABELS, type TransparencyReport } from '@ovl/shared';
-import { Empty, ErrorAlert, formatDate, Logo, PageHeader, plural, Spinner, UserName } from '@ovl/ui';
+import { Empty, ErrorAlert, formatDate, Logo, PageHeader, plural, Spinner, UserName, t } from '@ovl/ui';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api';
 
@@ -26,71 +26,71 @@ function Report({ report: r }: { report: TransparencyReport }) {
         <div>
           <h3>{r.title}</h3>
           <div className="small muted">
-            {day(r.periodStart)} – {day(r.periodEnd)} · published {day(r.publishedAt)}
-            {r.publishedBy && ` by ${r.publishedBy.displayName}`}
+            {day(r.periodStart)} – {day(r.periodEnd)} {t('· published')} {day(r.publishedAt)}
+            {r.publishedBy && ` ${t('by {0}', r.publishedBy.displayName)}`}
           </div>
         </div>
       </div>
       {r.notes && <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{r.notes}</p>}
       <div className="grid-3">
         <div className="stack-sm">
-          <b className="small">Applications</b>
+          <b className="small">{t('Applications')}</b>
           <Numbers
             rows={[
-              ['Received', s.applications.received],
-              ['Approved', s.applications.approved],
-              ['Not approved', s.applications.rejected],
-              ['Sent back for changes', s.applications.changesRequested],
+              [t('Received'), s.applications.received],
+              [t('Approved'), s.applications.approved],
+              [t('Not approved'), s.applications.rejected],
+              [t('Sent back for changes'), s.applications.changesRequested],
               [
-                'Median time to decide',
+                t('Median time to decide'),
                 s.applications.medianDecisionHours === null
                   ? null
-                  : `${s.applications.medianDecisionHours} h`,
+                  : t('{0} h', s.applications.medianDecisionHours),
               ],
             ]}
           />
         </div>
         <div className="stack-sm">
-          <b className="small">Council</b>
+          <b className="small">{t('Council')}</b>
           <Numbers
             rows={[
-              ['Members', s.council.members],
-              ['Votes cast', s.council.votes],
-              ['For', s.council.approvals],
-              ['Against', s.council.rejections],
+              [t('Members'), s.council.members],
+              [t('Votes cast'), s.council.votes],
+              [t('For'), s.council.approvals],
+              [t('Against'), s.council.rejections],
             ]}
           />
         </div>
         <div className="stack-sm">
-          <b className="small">Moderation and support</b>
+          <b className="small">{t('Moderation and support')}</b>
           <Numbers
             rows={[
-              ['Accounts suspended', s.moderation.accountsSuspended],
-              ['Identities verified', s.moderation.identityApproved],
-              ['Identity checks declined', s.moderation.identityRejected],
-              ['Licences revoked or suspended', s.moderation.registryRevoked],
-              ['Support tickets opened', s.support.ticketsOpened],
+              [t('Accounts suspended'), s.moderation.accountsSuspended],
+              [t('Identities verified'), s.moderation.identityApproved],
+              [t('Identity checks declined'), s.moderation.identityRejected],
+              [t('Licences revoked or suspended'), s.moderation.registryRevoked],
+              [t('Support tickets opened'), s.support.ticketsOpened],
             ]}
           />
         </div>
         <div className="stack-sm">
-          <b className="small">Registry</b>
+          <b className="small">{t('Registry')}</b>
           <Numbers
             rows={[
-              ['Entries added', s.registry.added],
-              ['Expired', s.registry.expired],
-              ['Active', s.registry.active],
+              [t('Entries added'), s.registry.added],
+              [t('Expired'), s.registry.expired],
+              [t('Active'), s.registry.active],
             ]}
           />
         </div>
         <div className="stack-sm">
-          <b className="small">Economy</b>
+          <b className="small">{t('Economy')}</b>
           <Numbers
             rows={[
-              ['New accounts', s.economy.newAccounts],
-              ['Companies listed', s.economy.companiesListed],
-              ['Investments', s.economy.investments],
-              ['Trades', s.economy.trades],
+              [t('New accounts'), s.economy.newAccounts],
+              [t('Companies listed'), s.economy.companiesListed],
+              [t('Investments'), s.economy.investments],
+              [t('Trades'), s.economy.trades],
             ]}
           />
         </div>
@@ -99,19 +99,19 @@ function Report({ report: r }: { report: TransparencyReport }) {
         <table className="table small">
           <thead>
             <tr>
-              <th>Application</th>
-              <th className="right">Received</th>
-              <th className="right">Approved</th>
-              <th className="right">Not approved</th>
+              <th>{t('Application')}</th>
+              <th className="right">{t('Received')}</th>
+              <th className="right">{t('Approved')}</th>
+              <th className="right">{t('Not approved')}</th>
             </tr>
           </thead>
           <tbody>
-            {s.applications.byType.map((t) => (
-              <tr key={t.type}>
-                <td>{t.label}</td>
-                <td className="right num">{t.received}</td>
-                <td className="right num">{t.approved}</td>
-                <td className="right num">{t.rejected}</td>
+            {s.applications.byType.map((row) => (
+              <tr key={row.type}>
+                <td>{t(row.label)}</td>
+                <td className="right num">{row.received}</td>
+                <td className="right num">{row.approved}</td>
+                <td className="right num">{row.rejected}</td>
               </tr>
             ))}
           </tbody>
@@ -130,19 +130,27 @@ function TransparencyContent() {
       <ErrorAlert error={governance.error ?? reports.error} />
       {g && (
         <div className="card stack">
-          <h3>How decisions are made</h3>
+          <h3>{t('How decisions are made')}</h3>
           <p className="small" style={{ margin: 0 }}>
-            Applications pass moderation, then a council vote, then the owner's confirmation. A council vote
-            needs <b>{plural(g.votesNeeded, 'vote')}</b> of {plural(g.activeCouncilMembers, 'member')} (
-            {COUNCIL_VOTING_LABELS[g.councilVoting].toLowerCase()}). Council seats{' '}
-            {g.councilTermMonths ? `last ${plural(g.councilTermMonths, 'month')}` : 'have no fixed term'}.
+            {t(
+              "Applications pass moderation, then a council vote, then the owner's confirmation. A council vote needs",
+            )}{' '}
+            <b>{plural(g.votesNeeded, 'vote')}</b>{' '}
+            {t(
+              'of {0} ({1}). Council seats {2}.',
+              plural(g.activeCouncilMembers, 'member'),
+              t(COUNCIL_VOTING_LABELS[g.councilVoting]).toLowerCase(),
+              g.councilTermMonths
+                ? t('last {0}', plural(g.councilTermMonths, 'month'))
+                : t('have no fixed term'),
+            )}
           </p>
           {g.council.length > 0 && (
             <div className="row-wrap small">
               {g.council.map((c) => (
                 <span key={c.user.id} className="chip">
                   <UserName user={c.user} />
-                  {c.termEndsAt && <span className="muted"> · until {day(c.termEndsAt)}</span>}
+                  {c.termEndsAt && <span className="muted">{t('· until {0}', day(c.termEndsAt))}</span>}
                 </span>
               ))}
             </div>
@@ -151,8 +159,8 @@ function TransparencyContent() {
       )}
       {reports.isLoading && <Spinner center />}
       {reports.data?.length === 0 && (
-        <Empty title="No reports yet">
-          The platform publishes a report on how it was governed after each period.
+        <Empty title={t('No reports yet')}>
+          {t('The platform publishes a report on how it was governed after each period.')}
         </Empty>
       )}
       {reports.data?.map((r) => (
@@ -168,8 +176,10 @@ export function TransparencyPage() {
     <div className="page stack-lg">
       <PageHeader
         icon="award"
-        title="Transparency"
-        subtitle="How the platform is governed: council rules, members, and regular reports on decisions."
+        title={t('Transparency')}
+        subtitle={t(
+          'How the platform is governed: council rules, members, and regular reports on decisions.',
+        )}
       />
       <TransparencyContent />
     </div>
@@ -184,8 +194,8 @@ export function PublicTransparencyPage() {
         <div className="row">
           <Logo size={40} />
           <div>
-            <b>OVL For Business</b>
-            <div className="small muted">Transparency</div>
+            <b>{t('OVL For Business')}</b>
+            <div className="small muted">{t('Transparency')}</div>
           </div>
         </div>
         <TransparencyContent />

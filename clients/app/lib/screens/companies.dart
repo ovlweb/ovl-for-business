@@ -12,6 +12,7 @@ import '../ui/widgets.dart';
 import 'contacts.dart';
 import 'home.dart';
 import 'wallet.dart';
+import '../i18n/i18n.dart';
 
 class CompaniesScreen extends StatelessWidget {
   const CompaniesScreen({super.key});
@@ -31,13 +32,13 @@ class CompaniesScreen extends StatelessWidget {
             children: [
               PageTitle(
                 icon: LucideIcons.building2,
-                title: 'Companies',
-                subtitle: 'Business accounts you own or work for.',
+                title: tr('Companies'),
+                subtitle: tr('Business accounts you own or work for.'),
                 actions: [
                   FilledButton.icon(
                     onPressed: () => context.go('/applications/new/company'),
                     icon: const Icon(LucideIcons.plus, size: 17),
-                    label: const Text('Register a company'),
+                    label: Text(tr('Register a company')),
                   ),
                 ],
               ),
@@ -47,11 +48,13 @@ class CompaniesScreen extends StatelessWidget {
               else if (s.data!.isEmpty)
                 EmptyState(
                   icon: LucideIcons.building2,
-                  title: 'No companies yet',
-                  text: 'Apply for a business account — moderation and the council review it, then it appears in the registry.',
+                  title: tr('No companies yet'),
+                  text: tr(
+                    'Apply for a business account — moderation and the council review it, then it appears in the registry.',
+                  ),
                   action: FilledButton(
                     onPressed: () => context.go('/applications/new/company'),
-                    child: const Text('Start an application'),
+                    child: Text(tr('Start an application')),
                   ),
                 )
               else
@@ -113,7 +116,7 @@ class _CompanyCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${org.registryNumber ?? 'Not registered'} · ${humanize(org.myRole ?? 'member')} · ${plural(org.memberCount, 'member')}',
+                  '${org.registryNumber ?? tr('Not registered')} · ${humanize(org.myRole ?? 'member')} · ${plural(org.memberCount, 'member')}',
                   style: context.text.bodySmall,
                 ),
                 if (org.description.isNotEmpty) ...[
@@ -165,7 +168,7 @@ class CompanyScreen extends StatelessWidget {
                         children: [
                           Text(o.name, style: context.text.headlineLarge),
                           Text(
-                            '${o.registryNumber ?? ''} · owner @${o.owner.username}',
+                            tr('{0} · owner @{1}', [o.registryNumber ?? '', o.owner.username]),
                             style: context.text.bodyMedium,
                           ),
                           if (o.verified) ...[const SizedBox(height: 6), const VerifiedBadge()],
@@ -181,7 +184,7 @@ class CompanyScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('About', style: context.text.titleLarge),
+                    Text(tr('About'), style: context.text.titleLarge),
                     const SizedBox(height: 8),
                     Text(o.description, style: context.text.bodyLarge),
                     const SizedBox(height: 14),
@@ -191,9 +194,9 @@ class CompanyScreen extends StatelessWidget {
                       children: [
                         if (o.website != null) _Fact(LucideIcons.globe, o.website!),
                         if (o.country != null && o.country!.isNotEmpty) _Fact(LucideIcons.mapPin, o.country!),
-                        _Fact(LucideIcons.coins, 'Base currency ${o.baseCurrency}'),
+                        _Fact(LucideIcons.coins, tr('Base currency {0}', [o.baseCurrency])),
                         _Fact(LucideIcons.users, plural(o.memberCount, 'member')),
-                        _Fact(LucideIcons.calendar, 'Since ${date(o.createdAt)}'),
+                        _Fact(LucideIcons.calendar, tr('Since {0}', [date(o.createdAt)])),
                       ],
                     ),
                     if (o.ticker != null) ...[
@@ -201,7 +204,7 @@ class CompanyScreen extends StatelessWidget {
                       OutlinedButton.icon(
                         onPressed: () => context.go('/exchange/${o.ticker}'),
                         icon: const Icon(LucideIcons.chartLine, size: 17),
-                        label: Text('${o.ticker} on the exchange'),
+                        label: Text(tr('{0} on the exchange', [o.ticker])),
                       ),
                     ],
                   ],
@@ -211,7 +214,7 @@ class CompanyScreen extends StatelessWidget {
                 _PaymentApprovals(org: o),
                 _Payroll(org: o),
                 const SizedBox(height: 18),
-                Text('Company balances', style: context.text.titleLarge),
+                Text(tr('Company balances'), style: context.text.titleLarge),
                 const SizedBox(height: 10),
                 Query<List<Wallet>>(
                   client: session.queries,
@@ -220,7 +223,7 @@ class CompanyScreen extends StatelessWidget {
                   builder: (context, w) => !w.hasData
                       ? const Skeleton(height: 170, radius: 22)
                       : w.data!.isEmpty
-                      ? Text('No balances yet.', style: context.text.bodyMedium)
+                      ? Text(tr('No balances yet.'), style: context.text.bodyMedium)
                       : _CompanyWallets(wallets: w.data!),
                 ),
               ],
@@ -259,17 +262,17 @@ class _CompanyWalletsState extends State<_CompanyWallets> {
             OutlinedButton.icon(
               onPressed: () => showCashRequestSheet(context, selected, 'deposit'),
               icon: const Icon(LucideIcons.arrowDownLeft, size: 17),
-              label: const Text('Deposit'),
+              label: Text(tr('Deposit')),
             ),
             OutlinedButton.icon(
               onPressed: () => showCashRequestSheet(context, selected, 'withdrawal'),
               icon: const Icon(LucideIcons.arrowUpRight, size: 17),
-              label: const Text('Withdraw'),
+              label: Text(tr('Withdraw')),
             ),
             OutlinedButton.icon(
               onPressed: () => showConvertSheet(context, selected),
               icon: const Icon(LucideIcons.arrowLeftRight, size: 17),
-              label: const Text('Convert'),
+              label: Text(tr('Convert')),
             ),
           ],
         ),
@@ -317,13 +320,15 @@ class _PaymentApprovals extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Payments waiting for approval', style: context.text.titleLarge),
+                      Text(tr('Payments waiting for approval'), style: context.text.titleLarge),
                       const SizedBox(height: 4),
                       Text(
                         org.approvalLimit == null
-                            ? 'The approval limit is off: payments go through at once.'
-                            : 'Payments of ${money(org.approvalLimit!, org.baseCurrency)} or more need a second owner, '
-                                  'director or accountant. The money is set aside meanwhile.',
+                            ? tr('The approval limit is off: payments go through at once.')
+                            : tr(
+                                'Payments of {0} or more need a second owner, director or accountant. The money is set aside meanwhile.',
+                                [money(org.approvalLimit!, org.baseCurrency)],
+                              ),
                         style: context.text.bodySmall,
                       ),
                     ],
@@ -332,7 +337,7 @@ class _PaymentApprovals extends StatelessWidget {
                 if (s.hasData && waiting.isEmpty)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 6, 14, 8),
-                    child: Text('Nothing is waiting.', style: context.text.bodyMedium),
+                    child: Text(tr('Nothing is waiting.'), style: context.text.bodyMedium),
                   ),
                 for (final (i, a) in waiting.indexed)
                   FadeSlideIn(
@@ -341,7 +346,7 @@ class _PaymentApprovals extends StatelessWidget {
                       leading: IconTile(_kindIcon[a.kind] ?? LucideIcons.banknote, size: 38, color: c.warning),
                       title: Text(a.description, style: context.text.titleSmall, maxLines: 2),
                       subtitle: Text(
-                        '${a.requestedById == session.me?.id ? 'You' : a.requestedBy} · ${date(a.createdAt)}',
+                        '${a.requestedById == session.me?.id ? tr('You') : a.requestedBy} · ${date(a.createdAt)}',
                       ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -353,12 +358,12 @@ class _PaymentApprovals extends StatelessWidget {
                           const SizedBox(width: 6),
                           if (a.requestedById != session.me?.id)
                             IconButton(
-                              tooltip: 'Approve',
+                              tooltip: tr('Approve'),
                               onPressed: () => _approve(context, a),
                               icon: Icon(LucideIcons.check, size: 19, color: c.success),
                             ),
                           IconButton(
-                            tooltip: a.requestedById == session.me?.id ? 'Withdraw' : 'Decline',
+                            tooltip: a.requestedById == session.me?.id ? tr('Withdraw') : tr('Decline'),
                             onPressed: () => _decline(context, a),
                             icon: Icon(LucideIcons.x, size: 18, color: c.text3),
                           ),
@@ -385,11 +390,11 @@ class _PaymentApprovals extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialog) => AlertDialog(
-        title: const Text('Approve this payment?'),
-        content: Text('${a.description}\n\n${money(a.amount, a.currency)} leaves the company balance now.'),
+        title: Text(tr('Approve this payment?')),
+        content: Text(tr('{0}\n\n{1} leaves the company balance now.', [a.description, money(a.amount, a.currency)])),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('Not now')),
-          FilledButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('Approve')),
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: Text(tr('Not now'))),
+          FilledButton(onPressed: () => Navigator.pop(dialog, true), child: Text(tr('Approve'))),
         ],
       ),
     );
@@ -397,7 +402,7 @@ class _PaymentApprovals extends StatelessWidget {
     try {
       await session.api.approvePayment(org.id, a.id);
       _refresh(session);
-      if (context.mounted) toast(context, 'Approved: ${a.description}');
+      if (context.mounted) toast(context, tr('Approved: {0}', [a.description]));
     } catch (e) {
       if (context.mounted) toast(context, errorText(e), error: true);
     }
@@ -410,15 +415,18 @@ class _PaymentApprovals extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialog) => AlertDialog(
-        title: Text(mine ? 'Withdraw this payment?' : 'Decline this payment?'),
+        title: Text(mine ? tr('Withdraw this payment?') : tr('Decline this payment?')),
         content: TextField(
           controller: reason,
           autofocus: true,
-          decoration: const InputDecoration(hintText: 'Reason (at least 3 characters)'),
+          decoration: InputDecoration(hintText: tr('Reason (at least 3 characters)')),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('Keep')),
-          FilledButton(onPressed: () => Navigator.pop(dialog, true), child: Text(mine ? 'Withdraw' : 'Decline')),
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: Text(tr('Keep'))),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialog, true),
+            child: Text(mine ? tr('Withdraw') : tr('Decline')),
+          ),
         ],
       ),
     );
@@ -426,7 +434,7 @@ class _PaymentApprovals extends StatelessWidget {
     try {
       await session.api.rejectPayment(org.id, a.id, reason.text.trim());
       _refresh(session);
-      if (context.mounted) toast(context, mine ? 'Payment withdrawn' : 'Payment declined');
+      if (context.mounted) toast(context, mine ? tr('Payment withdrawn') : tr('Payment declined'));
     } catch (e) {
       if (context.mounted) toast(context, errorText(e), error: true);
     }
@@ -459,7 +467,7 @@ class _Payroll extends StatelessWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
-                  child: Text('Payroll', style: context.text.titleLarge),
+                  child: Text(tr('Payroll'), style: context.text.titleLarge),
                 ),
                 for (final r in runs.take(5))
                   ListTile(

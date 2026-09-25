@@ -30,6 +30,7 @@ import {
   type WalletRow,
 } from './wallets/service';
 import { queueNotification } from '../lib/notify';
+import { text } from '../lib/i18n';
 
 /** Pending payouts hold the money until a manager pays it out or declines. */
 const WITHDRAWAL_HOLD = 'withdrawal_request';
@@ -146,7 +147,7 @@ export async function releaseHold(tx: Db, requestId: string) {
 export async function lockPending(tx: Db, id: string) {
   const [request] = await tx.select().from(cashRequests).where(eq(cashRequests.id, id)).for('update');
   if (!request) throw notFound('Request');
-  if (request.status !== 'pending') throw conflict(`This request is already ${request.status}`);
+  if (request.status !== 'pending') throw conflict(text`This request is already ${request.status}`);
   return request;
 }
 
@@ -194,10 +195,18 @@ export async function cashRoutes(fastify: FastifyInstance) {
     if (status === 'completed' || status === 'declined') {
       const [request] = await app.db.select().from(cashRequests).where(eq(cashRequests.id, requestId));
       if (request) {
-        const what = `${request.type === 'deposit' ? 'Deposit' : 'Payout'} of ${formatAmount(request.amount, request.currency)} ${request.currency}`;
+        const amount = `${formatAmount(request.amount, request.currency)} ${request.currency}`;
+        const deposit = request.type === 'deposit';
         await queueNotification(app.db, [request.requestedBy], {
           type: 'cash_request',
-          title: `${what} ${status === 'completed' ? 'completed' : 'declined'}`,
+          title:
+            status === 'completed'
+              ? deposit
+                ? text`Deposit of ${amount} completed`
+                : text`Payout of ${amount} completed`
+              : deposit
+                ? text`Deposit of ${amount} declined`
+                : text`Payout of ${amount} declined`,
           body: status === 'declined' ? (request.declineReason ?? '') : 'Your balance is up to date.',
           link: '/wallet',
         });
@@ -234,7 +243,7 @@ export async function cashRoutes(fastify: FastifyInstance) {
           const frozen = (await frozenAmounts(tx, [wallet.id])).get(wallet.id) ?? 0n;
           if (locked.balance - frozen < amount) {
             throw insufficientFunds(
-              `Only ${formatAmount(locked.balance - frozen, wallet.currency)} ${wallet.currency} is available to pay out`,
+              text`Only ${formatAmount(locked.balance - frozen, wallet.currency)} ${wallet.currency} is available to pay out`,
             );
           }
         }

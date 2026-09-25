@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 
 import 'package:http/http.dart' as http;
 
+import '../i18n/i18n.dart';
 import 'models.dart';
 
 class Tokens {
@@ -71,6 +72,7 @@ class OvlApi {
     final headers = <String, String>{
       'accept': 'application/json',
       'user-agent': userAgent,
+      'accept-language': currentLocale,
       if (current != null) 'authorization': 'Bearer ${current.accessToken}',
       if (body != null) 'content-type': 'application/json',
     };
@@ -81,16 +83,16 @@ class OvlApi {
     try {
       res = await http.Response.fromStream(await _http.send(req).timeout(const Duration(seconds: 20)));
     } on TimeoutException {
-      throw ApiException(0, 'timeout', 'The server took too long to answer.');
+      throw ApiException(0, 'timeout', tr('The server took too long to answer.'));
     } catch (_) {
-      throw ApiException(0, 'network', 'Cannot reach the server. Check your connection or the server address.');
+      throw ApiException(0, 'network', tr('Cannot reach the server. Check your connection or the server address.'));
     }
 
     if (res.statusCode == 401 && retry && current != null && !path.startsWith('/auth/')) {
       if (await refresh()) return request(method, path, body: body, query: query, retry: false);
     }
     if (res.statusCode == 204 || res.body.isEmpty) {
-      if (res.statusCode >= 400) throw ApiException(res.statusCode, 'error', res.reasonPhrase ?? 'Request failed');
+      if (res.statusCode >= 400) throw ApiException(res.statusCode, 'error', res.reasonPhrase ?? tr('Request failed'));
       return null;
     }
     final data = jsonDecode(utf8.decode(res.bodyBytes));
@@ -99,7 +101,7 @@ class OvlApi {
       throw ApiException(
         res.statusCode,
         (j['error'] ?? 'error') as String,
-        (j['message'] ?? 'Request failed') as String,
+        (j['message'] ?? tr('Request failed')) as String,
       );
     }
     return data;

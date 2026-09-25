@@ -2,6 +2,7 @@ import { motion } from 'motion/react';
 import { useState } from 'react';
 import { ErrorAlert, Field } from './components';
 import { Icon } from './icons';
+import { t } from './i18n';
 
 const enter = {
   initial: { opacity: 0, x: 16 },
@@ -31,15 +32,17 @@ export function ForgotPasswordForm({
             <Icon name="send" size={19} />
           </span>
           <div>
-            <b>Check your inbox</b>
+            <b>{t('Check your inbox')}</b>
             <p className="small muted" style={{ margin: '2px 0 0' }}>
-              If an account uses {email}, we sent it a link to choose a new password. The link works for one
-              hour.
+              {t(
+                'If an account uses {0}, we sent it a link to choose a new password. The link works for one hour.',
+                email,
+              )}
             </p>
           </div>
         </div>
         <button type="button" className="btn block" onClick={onBack}>
-          <Icon name="back" size={16} /> Back to sign in
+          <Icon name="back" size={16} /> {t('Back to sign in')}
         </button>
       </motion.div>
     );
@@ -63,10 +66,10 @@ export function ForgotPasswordForm({
       }}
     >
       <p className="small muted" style={{ margin: 0 }}>
-        Enter the email address of your account and we will send you a link to choose a new password.
+        {t('Enter the email address of your account and we will send you a link to choose a new password.')}
       </p>
       <ErrorAlert error={error} />
-      <Field label="Email">
+      <Field label={t('Email')}>
         <input
           className="input"
           type="email"
@@ -78,10 +81,10 @@ export function ForgotPasswordForm({
         />
       </Field>
       <button className="btn gradient lg block" disabled={busy}>
-        {busy ? <span className="spinner light" /> : 'Send reset link'}
+        {busy ? <span className="spinner light" /> : t('Send reset link')}
       </button>
       <button type="button" className="btn ghost sm" style={{ alignSelf: 'flex-start' }} onClick={onBack}>
-        <Icon name="back" size={15} /> Back
+        <Icon name="back" size={15} /> {t('Back')}
       </button>
     </motion.form>
   );
@@ -110,7 +113,7 @@ export function ResetPasswordForm({ onSubmit }: { onSubmit: (password: string) =
       }}
     >
       <ErrorAlert error={error} />
-      <Field label="New password" hint="At least 8 characters.">
+      <Field label={t('New password')} hint={t('At least 8 characters.')}>
         <input
           className="input"
           type="password"
@@ -122,7 +125,10 @@ export function ResetPasswordForm({ onSubmit }: { onSubmit: (password: string) =
           required
         />
       </Field>
-      <Field label="Repeat the new password" error={mismatch ? 'The passwords do not match' : undefined}>
+      <Field
+        label={t('Repeat the new password')}
+        error={mismatch ? t('The passwords do not match') : undefined}
+      >
         <input
           className="input"
           type="password"
@@ -133,7 +139,7 @@ export function ResetPasswordForm({ onSubmit }: { onSubmit: (password: string) =
         />
       </Field>
       <button className="btn gradient lg block" disabled={busy || mismatch || password.length < 8}>
-        {busy ? <span className="spinner light" /> : 'Set new password'}
+        {busy ? <span className="spinner light" /> : t('Set new password')}
       </button>
     </form>
   );

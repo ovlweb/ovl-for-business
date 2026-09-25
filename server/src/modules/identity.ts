@@ -20,6 +20,7 @@ import { iso, isoOrNull, summaryColumns, toUserSummary } from '../lib/mappers';
 import { currentUser } from '../plugins/auth';
 import { attachFiles, fileDtos, filesOf } from './files';
 import { queueNotification } from '../lib/notify';
+import { text, userLocale, type Text } from '../lib/i18n';
 
 type CheckRow = typeof identityChecks.$inferSelect;
 
@@ -115,7 +116,7 @@ export async function identityRoutes(fastify: FastifyInstance) {
     if (!row) throw notFound('Identity check');
     return row;
   };
-  const tell = async (userId: string, status: string, subject: string, lines: string[]) => {
+  const tell = async (userId: string, status: string, subject: Text, lines: Text[]) => {
     app.hub.sendToUsers([userId], { type: 'identity.updated', status });
     await queueNotification(app.db, [userId], {
       type: 'identity',
@@ -126,7 +127,15 @@ export async function identityRoutes(fastify: FastifyInstance) {
     const [user] = await app.db.select().from(users).where(eq(users.id, userId));
     if (user) {
       await app.mailer
-        .send(actionEmail({ to: user.email, subject, greeting: `Hello ${user.displayName},`, lines }))
+        .send(
+          actionEmail({
+            to: user.email,
+            locale: userLocale(user.preferences),
+            subject,
+            greeting: text`Hello ${user.displayName},`,
+            lines,
+          }),
+        )
         .catch((err) => app.log.error({ err }, 'identity email failed'));
     }
   };
@@ -173,7 +182,7 @@ export async function identityRoutes(fastify: FastifyInstance) {
       const adult = new Date(born);
       adult.setUTCFullYear(born.getUTCFullYear() + MIN_AGE_YEARS);
       if (Number.isNaN(born.getTime()) || adult > new Date())
-        throw badRequest(`You must be at least ${MIN_AGE_YEARS} years old`);
+        throw badRequest(text`You must be at least ${MIN_AGE_YEARS} years old`);
       const id = await app.db.transaction(async (tx) => {
         const [open] = await tx
           .select({ status: identityChecks.status })
@@ -260,7 +269,7 @@ export async function identityRoutes(fastify: FastifyInstance) {
             .for('update');
           if (!check) throw notFound('Identity check');
           const from = action === 'revoke' ? 'approved' : 'pending';
-          if (check.status !== from) throw conflict(`This check is ${check.status}`);
+          if (check.status !== from) throw conflict(text`This check is ${check.status}`);
           if (check.userId === me.id) throw conflict('Another reviewer must check your own identity');
           const status = action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'revoked';
           const [updated] = await tx
@@ -288,11 +297,11 @@ export async function identityRoutes(fastify: FastifyInstance) {
         const messages = {
           approve: ['Your identity is verified. Companies you own now show the verified business badge.'],
           reject: [
-            `Your identity check was not accepted: ${reason}`,
+            text`Your identity check was not accepted: ${reason}`,
             'You can send a new one from Settings.',
           ],
           revoke: [
-            `Your verified status was removed: ${reason}`,
+            text`Your verified status was removed: ${reason}`,
             'Contact support if you think this is a mistake.',
           ],
         }[action];

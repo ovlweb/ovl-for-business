@@ -5,6 +5,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { api } from './api';
 import { useAuth } from './auth';
 import { showNotification } from './notifications';
+import { t } from '@ovl/ui';
 
 interface RealtimeState {
   status: RealtimeStatus;
@@ -62,9 +63,9 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             const route = chat ? `#/chats/${event.chatId}` : `#/support/${event.chatId}`;
             const mentioned = event.message.mentions.includes(me.id);
             const title =
-              (mentioned ? 'Mentioned by ' : '') +
+              (mentioned ? `${t('Mentioned by')} ` : '') +
               (chat && chat.type !== 'direct' ? `${sender.displayName} · ${chat.title}` : sender.displayName);
-            const body = event.message.body || (event.message.attachments.length ? 'Sent a file' : '');
+            const body = event.message.body || (event.message.attachments.length ? t('Sent a file') : '');
             showNotification(title, body, event.chatId, () => {
               location.hash = route;
             });

@@ -1,10 +1,11 @@
-import { can, formatAmount, ORG_FINANCE_ROLES, type Role, type Wallet } from '@ovl/shared';
+import { can, formatAmount, msg, ORG_FINANCE_ROLES, type Role, type Wallet } from '@ovl/shared';
 import { and, eq, gt, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client';
 import { fundLocks, ledgerEntries, organizationMembers, wallets } from '../../db/schema';
 import { badRequest, forbidden, HttpError, insufficientFunds, notFound } from '../../lib/errors';
 import { iso } from '../../lib/mappers';
 import { queueNotification } from '../../lib/notify';
+import { label, text } from '../../lib/i18n';
 
 export type WalletRow = typeof wallets.$inferSelect;
 export type WalletOwner = { type: 'user'; id: string } | { type: 'organization'; id: string };
@@ -93,10 +94,10 @@ export async function lockWallet(db: Db, walletId: string): Promise<WalletRow> {
 
 /** Money arriving on a personal balance that people hear about (invoices notify on their own). */
 const MONEY_NEWS: Partial<Record<LedgerKind, string>> = {
-  transfer_in: 'Money received',
-  payroll_in: 'Salary paid',
-  dividend_in: 'Dividend received',
-  trade_in: 'Shares sold',
+  transfer_in: msg('Money received'),
+  payroll_in: msg('Salary paid'),
+  dividend_in: msg('Dividend received'),
+  trade_in: msg('Shares sold'),
 };
 
 async function postEntry(db: Db, wallet: WalletRow, delta: bigint, kind: LedgerKind, options: EntryOptions) {
@@ -120,7 +121,7 @@ async function postEntry(db: Db, wallet: WalletRow, delta: bigint, kind: LedgerK
   if (delta > 0n && news && wallet.userId && options.referenceType !== 'invoice')
     await queueNotification(db, [wallet.userId], {
       type: 'money',
-      title: `${news}: ${formatAmount(delta, wallet.currency)} ${wallet.currency}`,
+      title: text`${label(news)}: ${formatAmount(delta, wallet.currency)} ${wallet.currency}`,
       body: options.description ?? '',
       link: '/wallet',
     });
@@ -152,7 +153,7 @@ export async function debit(
   const frozen = (await frozenAmounts(db, [walletId])).get(walletId) ?? 0n;
   if (wallet.balance - frozen < amount) {
     throw insufficientFunds(
-      `Insufficient available funds: ${formatAmount(wallet.balance - frozen, wallet.currency)} ${wallet.currency} available`,
+      text`Insufficient available funds: ${formatAmount(wallet.balance - frozen, wallet.currency)} ${wallet.currency} available`,
     );
   }
   return postEntry(db, wallet, -amount, kind, options);

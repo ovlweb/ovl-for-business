@@ -1,5 +1,5 @@
 import type { AuthResult, LoginInput, Me, Permission, Preferences, RegisterInput } from '@ovl/shared';
-import { applyTheme, getThemePreference, passkeyAssertion } from '@ovl/ui';
+import { applyTheme, getThemePreference, passkeyAssertion, syncLocale } from '@ovl/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   createContext,
@@ -50,9 +50,10 @@ function useAccounts(): StoredAccount[] {
   return useMemo(() => (snapshot ? accounts.list() : []), [snapshot]);
 }
 
-/** Apply the account's synced theme unless this device already shows it. */
-function syncTheme(theme: string | undefined) {
+/** Apply the account's synced theme and language unless this device already shows them. */
+function syncTheme(theme: string | undefined, locale?: string) {
   if (theme && theme !== getThemePreference()) applyTheme(theme);
+  syncLocale(locale);
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -71,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const user = await api.me.get();
       accounts.updateProfile(user);
-      syncTheme(user.preferences.theme);
+      syncTheme(user.preferences.theme, user.preferences.locale);
       setMe(user);
     } catch {
       setMe(null);
@@ -101,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (previous && previous.id !== result.user.id) startAtHome();
       accounts.signIn(result.user, { accessToken: result.accessToken, refreshToken: result.refreshToken });
       queryClient.clear();
-      syncTheme(result.user.preferences.theme);
+      syncTheme(result.user.preferences.theme, result.user.preferences.locale);
       setAddingAccount(false);
       setActiveId(result.user.id);
       setMe(result.user);

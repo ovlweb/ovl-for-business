@@ -11,6 +11,7 @@ import {
   Tabs,
   useDebounced,
   UserName,
+  t,
 } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -23,8 +24,8 @@ import { StoriesBar } from '../components/Stories';
 
 function preview(chat: Chat): string {
   const m = chat.lastMessage;
-  if (!m) return chat.type === 'channel' ? chat.description || 'News channel' : 'No messages yet';
-  if (m.deleted) return 'Message deleted';
+  if (!m) return chat.type === 'channel' ? chat.description || t('News channel') : t('No messages yet');
+  if (m.deleted) return t('Message deleted');
   const author = m.kind === 'system' || chat.type === 'direct' ? '' : `${m.sender?.displayName ?? ''}: `;
   return author + messageSummary(m, 200);
 }
@@ -47,7 +48,7 @@ function ChatRow({ chat, active }: { chat: Chat; active: boolean }) {
         <span className="row" style={{ gap: 4 }}>
           {chat.pinned && <Icon name="pin" size={13} />}
           {chat.unreadMentions > 0 && (
-            <span className="count mention-count" aria-label={`${chat.unreadMentions} mentions`}>
+            <span className="count mention-count" aria-label={t('{0} mentions', chat.unreadMentions)}>
               @
             </span>
           )}
@@ -96,7 +97,7 @@ function NewChatModal({ onClose }: { onClose: () => void }) {
   const createChannel = useMutation({ mutationFn: () => api.chats.createChannel(channel), onSuccess: open });
 
   return (
-    <Modal title="New conversation" onClose={onClose}>
+    <Modal title={t('New conversation')} onClose={onClose}>
       <Tabs<NewTab>
         value={tab}
         onChange={(t) => {
@@ -104,9 +105,9 @@ function NewChatModal({ onClose }: { onClose: () => void }) {
           setQ('');
         }}
         tabs={[
-          { value: 'direct', label: 'Direct message' },
-          { value: 'group', label: 'New group' },
-          { value: 'channels', label: 'News channels' },
+          { value: 'direct', label: t('Direct message') },
+          { value: 'group', label: t('New group') },
+          { value: 'channels', label: t('News channels') },
         ]}
       />
 
@@ -114,7 +115,7 @@ function NewChatModal({ onClose }: { onClose: () => void }) {
         <div className="stack">
           <input
             className="input"
-            placeholder="Search people by name or username"
+            placeholder={t('Search people by name or username')}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             autoFocus
@@ -127,7 +128,7 @@ function NewChatModal({ onClose }: { onClose: () => void }) {
                 <UserName user={u} showHandle />
               </button>
             ))}
-            {users.data?.length === 0 && <Empty title="Nobody found" />}
+            {users.data?.length === 0 && <Empty title={t('Nobody found')} />}
           </div>
         </div>
       )}
@@ -140,7 +141,7 @@ function NewChatModal({ onClose }: { onClose: () => void }) {
             group.mutate();
           }}
         >
-          <Field label="Group name">
+          <Field label={t('Group name')}>
             <input
               className="input"
               value={title}
@@ -149,7 +150,7 @@ function NewChatModal({ onClose }: { onClose: () => void }) {
               maxLength={128}
             />
           </Field>
-          <div className="label">Members (from your contacts)</div>
+          <div className="label">{t('Members (from your contacts)')}</div>
           <div className="list card flat pad-0" style={{ maxHeight: 260, overflow: 'auto' }}>
             {contacts.data?.map((c) => (
               <label key={c.id} className="list-item">
@@ -165,12 +166,14 @@ function NewChatModal({ onClose }: { onClose: () => void }) {
               </label>
             ))}
             {contacts.data?.length === 0 && (
-              <Empty title="No contacts yet">Add people on the Contacts page to invite them.</Empty>
+              <Empty title={t('No contacts yet')}>
+                {t('Add people on the Contacts page to invite them.')}
+              </Empty>
             )}
           </div>
           <ErrorAlert error={group.error} />
           <button className="btn primary" disabled={!title.trim() || group.isPending}>
-            Create group
+            {t('Create group')}
           </button>
         </form>
       )}
@@ -179,7 +182,7 @@ function NewChatModal({ onClose }: { onClose: () => void }) {
         <div className="stack">
           <input
             className="input"
-            placeholder="Search channels"
+            placeholder={t('Search channels')}
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -190,17 +193,17 @@ function NewChatModal({ onClose }: { onClose: () => void }) {
                 <div className="grow">
                   <div className="bold">{c.title}</div>
                   <div className="small muted">
-                    @{c.handle} · {c.memberCount} subscribers
+                    @{c.handle} · {c.memberCount} {t('subscribers')}
                   </div>
                 </div>
                 {c.myRole ? (
-                  <span className="badge ok">Subscribed</span>
+                  <span className="badge ok">{t('Subscribed')}</span>
                 ) : (
-                  <span className="badge info">View</span>
+                  <span className="badge info">{t('View')}</span>
                 )}
               </button>
             ))}
-            {channels.data?.length === 0 && <Empty title="No channels found" />}
+            {channels.data?.length === 0 && <Empty title={t('No channels found')} />}
           </div>
           {can('channels.create') ? (
             <form
@@ -210,35 +213,35 @@ function NewChatModal({ onClose }: { onClose: () => void }) {
                 createChannel.mutate();
               }}
             >
-              <h3>Create a news channel (moderation)</h3>
+              <h3>{t('Create a news channel (moderation)')}</h3>
               <input
                 className="input"
-                placeholder="Title"
+                placeholder={t('Title')}
                 value={channel.title}
                 onChange={(e) => setChannel({ ...channel, title: e.target.value })}
                 required
               />
               <input
                 className="input"
-                placeholder="handle"
+                placeholder={t('handle')}
                 value={channel.handle}
                 onChange={(e) => setChannel({ ...channel, handle: e.target.value })}
                 required
               />
               <input
                 className="input"
-                placeholder="Description"
+                placeholder={t('Description')}
                 value={channel.description}
                 onChange={(e) => setChannel({ ...channel, description: e.target.value })}
               />
               <ErrorAlert error={createChannel.error} />
-              <button className="btn primary">Create channel</button>
+              <button className="btn primary">{t('Create channel')}</button>
             </form>
           ) : (
             <p className="small muted">
-              Want your own news channel? News channels are created through moderation —{' '}
+              {t('Want your own news channel? News channels are created through moderation —')}{' '}
               <Link to="/applications" onClick={onClose}>
-                submit a news channel application
+                {t('submit a news channel application')}
               </Link>
               .
             </p>
@@ -254,7 +257,7 @@ function MessageResults({ q }: { q: string }) {
   const results = useQuery({ queryKey: ['search', q], queryFn: () => api.chats.search(q) });
   return (
     <div className="stack-sm" style={{ padding: '4px 0 8px' }}>
-      <div className="list-label">Messages</div>
+      <div className="list-label">{t('Messages')}</div>
       {results.isLoading && <Spinner center />}
       <ErrorAlert error={results.error} />
       {results.data?.map(({ chat, message }) => (
@@ -280,7 +283,7 @@ function MessageResults({ q }: { q: string }) {
       ))}
       {results.data?.length === 0 && (
         <p className="small muted" style={{ padding: '0 16px' }}>
-          No messages found
+          {t('No messages found')}
         </p>
       )}
     </div>
@@ -299,9 +302,9 @@ export function ChatsPage() {
     <div className={`messenger${chatId ? ' has-chat' : ''}`}>
       <aside className="chat-list-pane">
         <div className="pane-header">
-          <h2 className="grow">Chats</h2>
+          <h2 className="grow">{t('Chats')}</h2>
           <button className="btn primary sm" onClick={() => setCreating(true)}>
-            <Icon name="plus" size={16} /> New
+            <Icon name="plus" size={16} /> {t('New')}
           </button>
         </div>
         <StoriesBar />
@@ -309,8 +312,8 @@ export function ChatsPage() {
           <input
             className="input"
             type="search"
-            aria-label="Search chats and messages"
-            placeholder="Search chats and messages"
+            aria-label={t('Search chats and messages')}
+            placeholder={t('Search chats and messages')}
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
@@ -322,8 +325,8 @@ export function ChatsPage() {
             <ChatRow key={c.id} chat={c} active={c.id === chatId} />
           ))}
           {chats.data && list.length === 0 && !filter && (
-            <Empty title="No chats yet">
-              Start a conversation with someone or subscribe to a news channel.
+            <Empty title={t('No chats yet')}>
+              {t('Start a conversation with someone or subscribe to a news channel.')}
             </Empty>
           )}
           {search.length >= 2 && <MessageResults q={search} />}
@@ -334,8 +337,8 @@ export function ChatsPage() {
       ) : (
         <div className="conversation">
           <div className="center grow">
-            <Empty title="Select a chat">
-              Your conversations, groups, channels and staff chats live here.
+            <Empty title={t('Select a chat')}>
+              {t('Your conversations, groups, channels and staff chats live here.')}
             </Empty>
           </div>
         </div>

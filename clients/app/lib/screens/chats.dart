@@ -15,14 +15,16 @@ import '../state/session.dart';
 import '../theme/theme.dart';
 import '../ui/format.dart';
 import '../ui/widgets.dart';
+import '../i18n/i18n.dart';
 
 String chatSubtitle(Chat chat) => switch (chat.type) {
   'direct' => chat.peer == null ? '' : '@${chat.peer!.username}',
-  'group' => 'Group · ${plural(chat.memberCount, 'member')}',
-  'channel' => 'News channel · @${chat.handle} · ${plural(chat.memberCount, 'subscriber')}',
-  'council' => 'Council · ${plural(chat.memberCount, 'member')}',
-  'moderation' => 'Moderation team · ${plural(chat.memberCount, 'member')}',
-  'support' => chat.support == null ? 'Tech support' : 'Tech support · ${chat.support!.requester.displayName}',
+  'group' => tr('Group · {0}', [plural(chat.memberCount, 'member')]),
+  'channel' => tr('News channel · @{0} · {1}', [chat.handle, plural(chat.memberCount, 'subscriber')]),
+  'council' => tr('Council · {0}', [plural(chat.memberCount, 'member')]),
+  'moderation' => tr('Moderation team · {0}', [plural(chat.memberCount, 'member')]),
+  'support' =>
+    chat.support == null ? tr('Tech support') : tr('Tech support · {0}', [chat.support!.requester.displayName]),
   _ => '',
 };
 
@@ -65,9 +67,9 @@ class ChatTile extends StatelessWidget {
     final c = context.c;
     final m = chat.lastMessage;
     final preview = m == null
-        ? 'No messages yet'
+        ? tr('No messages yet')
         : m.deleted
-        ? 'Message deleted'
+        ? tr('Message deleted')
         : chat.type != 'direct' && m.sender != null && !m.isSystem
         ? '${m.sender!.displayName.split(' ').first}: ${m.summary}'
         : m.summary;
@@ -187,10 +189,10 @@ class ChatsScreen extends StatelessWidget {
             VerticalDivider(width: 1, color: context.c.border),
             Expanded(
               child: selectedId == null
-                  ? const EmptyState(
+                  ? EmptyState(
                       icon: LucideIcons.messagesSquare,
-                      title: 'Select a chat',
-                      text: 'Direct messages, groups, news channels and staff rooms live here.',
+                      title: tr('Select a chat'),
+                      text: tr('Direct messages, groups, news channels and staff rooms live here.'),
                     )
                   : ConversationView(key: ValueKey(selectedId), chatId: selectedId!, embedded: true),
             ),
@@ -232,11 +234,11 @@ class _ChatListState extends State<ChatList> {
           padding: const EdgeInsets.fromLTRB(18, 16, 12, 8),
           child: Row(
             children: [
-              Expanded(child: Text('Chats', style: context.text.headlineMedium)),
+              Expanded(child: Text(tr('Chats'), style: context.text.headlineMedium)),
               FilledButton.icon(
                 onPressed: () => showNewChatSheet(context),
                 icon: const Icon(LucideIcons.plus, size: 17),
-                label: const Text('New'),
+                label: Text(tr('New')),
                 style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
               ),
             ],
@@ -253,8 +255,8 @@ class _ChatListState extends State<ChatList> {
                 if (mounted) setState(() => _search = v.trim());
               });
             },
-            decoration: const InputDecoration(
-              hintText: 'Search chats and messages',
+            decoration: InputDecoration(
+              hintText: tr('Search chats and messages'),
               prefixIcon: Icon(LucideIcons.search, size: 17),
             ),
           ),
@@ -278,10 +280,10 @@ class _ChatListState extends State<ChatList> {
                 ..sort((a, b) => a.pinned != b.pinned ? (a.pinned ? -1 : 1) : b.activityAt.compareTo(a.activityAt));
               final searching = _search.length >= 2;
               if (chats.isEmpty && !searching) {
-                return const EmptyState(
+                return EmptyState(
                   icon: LucideIcons.messageCircle,
-                  title: 'No chats yet',
-                  text: 'Start one from your contacts.',
+                  title: tr('No chats yet'),
+                  text: tr('Start one from your contacts.'),
                 );
               }
               return RefreshIndicator(
@@ -327,7 +329,7 @@ class _MessageResults extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
-              child: Text('MESSAGES', style: font(body, 11.5, FontWeight.w800, color: context.c.text3)),
+              child: Text(tr('MESSAGES'), style: font(body, 11.5, FontWeight.w800, color: context.c.text3)),
             ),
             if (s.hasError) Padding(padding: const EdgeInsets.all(12), child: ErrorBox(s.error)),
             if (results == null && !s.hasError)
@@ -335,7 +337,7 @@ class _MessageResults extends StatelessWidget {
             if (results != null && results.isEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
-                child: Text('No messages found', style: context.text.bodySmall),
+                child: Text(tr('No messages found'), style: context.text.bodySmall),
               ),
             for (final r in results ?? const <MessageSearchResult>[])
               ListTile(
@@ -424,7 +426,7 @@ class _ConversationViewState extends State<ConversationView> {
         _markRead();
       } else if (e.type == 'typing' && e.userId != _session.me?.id) {
         _typingSenderId = e.userId;
-        setState(() => _typingName = 'Someone');
+        setState(() => _typingName = tr('Someone'));
         _typingClear?.cancel();
         _typingClear = Timer(const Duration(seconds: 4), () => mounted ? setState(() => _typingName = null) : null);
       } else if (e.type == 'chat.updated' || e.type == 'chat.read') {
@@ -563,7 +565,7 @@ class _ConversationViewState extends State<ConversationView> {
                   children: [
                     for (final emoji in quickReactions)
                       IconButton(
-                        tooltip: 'React $emoji',
+                        tooltip: tr('React {0}', [emoji]),
                         isSelected: m.reactions.any((r) => r.emoji == emoji && r.mine),
                         onPressed: () => Navigator.pop(sheet, 'react:$emoji'),
                         icon: Text(emoji, style: const TextStyle(fontSize: 22)),
@@ -574,31 +576,31 @@ class _ConversationViewState extends State<ConversationView> {
             if (_chat?.type == 'channel' && m.threadId == null)
               ListTile(
                 leading: const Icon(LucideIcons.messageSquareText, size: 19),
-                title: Text(m.commentCount > 0 ? plural(m.commentCount, 'comment') : 'Comments'),
+                title: Text(m.commentCount > 0 ? plural(m.commentCount, 'comment') : tr('Comments')),
                 onTap: () => Navigator.pop(sheet, 'comments'),
               ),
             if (_chat?.canPost ?? false)
               ListTile(
                 leading: const Icon(LucideIcons.reply, size: 19),
-                title: const Text('Reply'),
+                title: Text(tr('Reply')),
                 onTap: () => Navigator.pop(sheet, 'reply'),
               ),
             if (m.body.isNotEmpty)
               ListTile(
                 leading: const Icon(LucideIcons.copy, size: 19),
-                title: const Text('Copy text'),
+                title: Text(tr('Copy text')),
                 onTap: () => Navigator.pop(sheet, 'copy'),
               ),
             if (mine && m.body.isNotEmpty)
               ListTile(
                 leading: const Icon(LucideIcons.pencil, size: 19),
-                title: const Text('Edit'),
+                title: Text(tr('Edit')),
                 onTap: () => Navigator.pop(sheet, 'edit'),
               ),
             if (mine || canModerate)
               ListTile(
                 leading: Icon(LucideIcons.trash2, size: 19, color: sheet.c.danger),
-                title: Text('Delete', style: TextStyle(color: sheet.c.danger)),
+                title: Text(tr('Delete'), style: TextStyle(color: sheet.c.danger)),
                 onTap: () => Navigator.pop(sheet, 'delete'),
               ),
           ],
@@ -618,7 +620,7 @@ class _ConversationViewState extends State<ConversationView> {
         _focus.requestFocus();
       case 'copy':
         await Clipboard.setData(ClipboardData(text: m.body));
-        if (mounted) toast(context, 'Copied');
+        if (mounted) toast(context, tr('Copied'));
       case 'edit':
         setState(() {
           _editing = m;
@@ -663,7 +665,7 @@ class _ConversationViewState extends State<ConversationView> {
         children: [
           if (!widget.embedded)
             IconButton(
-              tooltip: 'Back',
+              tooltip: tr('Back'),
               onPressed: () => context.go(widget.backTo ?? '/chats'),
               icon: const Icon(LucideIcons.arrowLeft),
             ),
@@ -680,7 +682,7 @@ class _ConversationViewState extends State<ConversationView> {
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 200),
                       child: Text(
-                        _typingName != null ? 'typing…' : chatSubtitle(chat),
+                        _typingName != null ? tr('typing…') : chatSubtitle(chat),
                         key: ValueKey(_typingName),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -693,7 +695,7 @@ class _ConversationViewState extends State<ConversationView> {
             ),
             ...?widget.headerActions?.call(chat, _refreshChat),
             IconButton(
-              tooltip: 'Chat details',
+              tooltip: tr('Chat details'),
               onPressed: () => showChatInfo(context, chat),
               icon: const Icon(LucideIcons.info, size: 20),
             ),
@@ -714,8 +716,8 @@ class _ConversationViewState extends State<ConversationView> {
     } else if (_messages.isEmpty) {
       body = EmptyState(
         icon: LucideIcons.messageCircle,
-        title: 'Say hello',
-        text: chat?.type == 'support' ? 'Our team answers here.' : 'No messages here yet.',
+        title: tr('Say hello'),
+        text: chat?.type == 'support' ? tr('Our team answers here.') : tr('No messages here yet.'),
       );
     } else {
       body = LayoutBuilder(
@@ -779,7 +781,7 @@ class _ConversationViewState extends State<ConversationView> {
               border: Border(top: BorderSide(color: c.border)),
             ),
             child: Text(
-              'Only channel admins can post here.',
+              tr('Only channel admins can post here.'),
               textAlign: TextAlign.center,
               style: context.text.bodySmall,
             ),
@@ -788,7 +790,7 @@ class _ConversationViewState extends State<ConversationView> {
             controller: _composer,
             focus: _focus,
             sending: _sending,
-            hint: widget.composerHint ?? 'Write a message…',
+            hint: widget.composerHint ?? tr('Write a message…'),
             replyTo: _replyTo,
             editing: _editing,
             onCancel: () => setState(() {
@@ -822,7 +824,7 @@ class _ConversationViewState extends State<ConversationView> {
               : Container(
                   width: double.infinity,
                   padding: const EdgeInsets.fromLTRB(18, 4, 18, 4),
-                  child: Text('Someone is typing…', style: context.text.bodySmall?.copyWith(color: c.accent)),
+                  child: Text(tr('Someone is typing…'), style: context.text.bodySmall?.copyWith(color: c.accent)),
                 ),
         ),
         composer,
@@ -997,7 +999,7 @@ class MessageBubble extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             decoration: BoxDecoration(color: c.surface2, borderRadius: BorderRadius.circular(99)),
-            child: Text(m.body, textAlign: TextAlign.center, style: context.text.bodySmall),
+            child: Text(m.text, textAlign: TextAlign.center, style: context.text.bodySmall),
           ),
         ),
       );
@@ -1058,7 +1060,7 @@ class MessageBubble extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    replyTo!.sender?.displayName ?? 'System',
+                    replyTo!.sender?.displayName ?? tr('System'),
                     style: font(body, 12, FontWeight.w700, color: mine ? Colors.white : c.accent),
                   ),
                   Text(
@@ -1073,7 +1075,7 @@ class MessageBubble extends StatelessWidget {
           if (!m.deleted && m.attachments.isNotEmpty) _files(context),
           if (m.deleted)
             Text(
-              'Message deleted',
+              tr('Message deleted'),
               style: TextStyle(fontSize: 14.5, height: 1.4, color: c.text3, fontStyle: FontStyle.italic),
             )
           else if (m.body.isNotEmpty)
@@ -1096,7 +1098,7 @@ class MessageBubble extends StatelessWidget {
                   Icon(
                     receipt == 'read' ? LucideIcons.checkCheck : LucideIcons.check,
                     size: 13,
-                    semanticLabel: receipt == 'read' ? 'Read' : 'Sent',
+                    semanticLabel: receipt == 'read' ? tr('Read') : tr('Sent'),
                     color: Colors.white70,
                   ),
                 ],
@@ -1173,7 +1175,7 @@ class MessageBubble extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 6),
                     ),
                     icon: const Icon(LucideIcons.messageSquareText, size: 15),
-                    label: Text(m.commentCount > 0 ? plural(m.commentCount, 'comment') : 'Comment'),
+                    label: Text(m.commentCount > 0 ? plural(m.commentCount, 'comment') : tr('Comment')),
                   ),
               ],
             ),
@@ -1208,19 +1210,19 @@ class _ApplicationCard extends StatelessWidget {
                   children: [
                     Icon(LucideIcons.fileText, size: 16, color: c.accent),
                     const SizedBox(width: 6),
-                    Caption('Application update', color: c.accent),
+                    Caption(tr('Application update'), color: c.accent),
                     const Spacer(),
                     Text(shortTime(message.createdAt), style: context.text.bodySmall),
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text(message.body, style: context.text.bodyLarge?.copyWith(fontSize: 14)),
+                Text(message.text, style: context.text.bodyLarge?.copyWith(fontSize: 14)),
                 if (staff) ...[
                   const SizedBox(height: 8),
                   TextButton.icon(
                     onPressed: () => context.go('/review/${message.meta['applicationId']}'),
                     icon: const Icon(LucideIcons.arrowRight, size: 16),
-                    label: const Text('Open in review queue'),
+                    label: Text(tr('Open in review queue')),
                   ),
                 ],
               ],
@@ -1291,7 +1293,9 @@ class _Composer extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  editing != null ? 'Edit message' : 'Reply to ${replyTo!.sender?.displayName ?? ''}',
+                                  editing != null
+                                      ? tr('Edit message')
+                                      : tr('Reply to {0}', [replyTo!.sender?.displayName ?? '']),
                                   style: font(body, 12.5, FontWeight.w700, color: c.accent),
                                 ),
                                 Text(
@@ -1356,7 +1360,7 @@ class _Composer extends StatelessWidget {
                           color: ready ? null : c.surface3,
                         ),
                         child: IconButton(
-                          tooltip: 'Send',
+                          tooltip: tr('Send'),
                           onPressed: ready ? onSend : null,
                           icon: Icon(
                             editing != null ? LucideIcons.check : LucideIcons.send,
@@ -1470,10 +1474,10 @@ class _CommentsSheetState extends State<_CommentsSheet> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (d) => AlertDialog(
-        title: const Text('Delete this comment?'),
+        title: Text(tr('Delete this comment?')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Delete')),
+          TextButton(onPressed: () => Navigator.pop(d, false), child: Text(tr('Cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(d, true), child: Text(tr('Delete'))),
         ],
       ),
     );
@@ -1505,7 +1509,7 @@ class _CommentsSheetState extends State<_CommentsSheet> {
           padding: const EdgeInsets.fromLTRB(18, 16, 8, 8),
           child: Row(
             children: [
-              Expanded(child: Text('Comments', style: context.text.titleLarge)),
+              Expanded(child: Text(tr('Comments'), style: context.text.titleLarge)),
               IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(LucideIcons.x)),
             ],
           ),
@@ -1528,7 +1532,7 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                   child: ErrorBox(_error, onRetry: _load),
                 )
               : _comments.isEmpty
-              ? const EmptyState(icon: LucideIcons.messageSquareText, title: 'No comments yet')
+              ? EmptyState(icon: LucideIcons.messageSquareText, title: tr('No comments yet'))
               : ListView.builder(
                   reverse: true,
                   padding: const EdgeInsets.all(14),
@@ -1563,12 +1567,12 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                       maxLines: 4,
                       textInputAction: TextInputAction.send,
                       onSubmitted: (_) => _send(),
-                      decoration: const InputDecoration(hintText: 'Write a comment…'),
+                      decoration: InputDecoration(hintText: tr('Write a comment…')),
                     ),
                   ),
                   const SizedBox(width: 8),
                   IconButton.filled(
-                    tooltip: 'Send comment',
+                    tooltip: tr('Send comment'),
                     onPressed: _sending ? null : _send,
                     icon: const Icon(LucideIcons.send, size: 18),
                   ),
@@ -1580,7 +1584,7 @@ class _CommentsSheetState extends State<_CommentsSheet> {
           Padding(
             padding: const EdgeInsets.all(16),
             child: Text(
-              chat.myRole == null ? 'Subscribe to the channel to comment.' : 'Comments are turned off here.',
+              chat.myRole == null ? tr('Subscribe to the channel to comment.') : tr('Comments are turned off here.'),
               style: context.text.bodySmall,
             ),
           ),
@@ -1619,7 +1623,7 @@ void showChatInfo(BuildContext context, Chat chat) {
             ],
             const SizedBox(height: 18),
             if (snap.hasData && snap.data!.isNotEmpty) ...[
-              Caption('Members'),
+              Caption(tr('Members')),
               const SizedBox(height: 6),
               for (final m in snap.data!)
                 ListTile(
@@ -1646,7 +1650,7 @@ void showChatInfo(BuildContext context, Chat chat) {
                   if (context.mounted) context.go('/chats');
                 },
                 icon: const Icon(LucideIcons.logOut, size: 17),
-                label: const Text('Leave group'),
+                label: Text(tr('Leave group')),
               ),
             ],
           ],
@@ -1687,9 +1691,9 @@ void showNewChatSheet(BuildContext context) {
                 const SizedBox(height: 14),
                 if (error != null) ...[ErrorBox(error), const SizedBox(height: 10)],
                 if (group) ...[
-                  LabeledField(label: 'Group name', controller: title, icon: LucideIcons.users),
+                  LabeledField(label: tr('Group name'), controller: title, icon: LucideIcons.users),
                   const SizedBox(height: 8),
-                  Text('Groups can only include people from your contacts.', style: sheet.text.bodySmall),
+                  Text(tr('Groups can only include people from your contacts.'), style: sheet.text.bodySmall),
                   const SizedBox(height: 8),
                 ],
                 if (!snap.hasData)
@@ -1697,14 +1701,14 @@ void showNewChatSheet(BuildContext context) {
                 else if (contacts.isEmpty)
                   EmptyState(
                     icon: LucideIcons.users,
-                    title: 'No contacts yet',
-                    text: 'Add people in Contacts first.',
+                    title: tr('No contacts yet'),
+                    text: tr('Add people in Contacts first.'),
                     action: FilledButton(
                       onPressed: () {
                         Navigator.pop(sheet);
                         context.go('/contacts');
                       },
-                      child: const Text('Open contacts'),
+                      child: Text(tr('Open contacts')),
                     ),
                   )
                 else
@@ -1743,7 +1747,7 @@ void showNewChatSheet(BuildContext context) {
                 if (group) ...[
                   const SizedBox(height: 12),
                   GradientButton(
-                    label: 'Create group',
+                    label: tr('Create group'),
                     busy: busy,
                     onPressed: title.text.trim().isEmpty && picked.isEmpty
                         ? null

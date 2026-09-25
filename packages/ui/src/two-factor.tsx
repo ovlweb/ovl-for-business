@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ErrorAlert, Field } from './components';
 import { Icon } from './icons';
 import { useToast } from './toast';
+import { t } from './i18n';
 
 /** True for the server's "this account needs a second factor" answer. */
 export function needsTwoFactor(error: unknown): boolean {
@@ -44,16 +45,16 @@ export function TwoFactorPrompt({
           <Icon name="shield" size={20} />
         </span>
         <div>
-          <b>Two-step verification</b>
+          <b>{t('Two-step verification')}</b>
           <p className="small muted" style={{ margin: '2px 0 0' }}>
             {recovery
-              ? 'Enter one of the recovery codes you saved when you turned this on. Each code works once.'
-              : 'Open your authenticator app and enter the 6-digit code for OVL For Business.'}
+              ? t('Enter one of the recovery codes you saved when you turned this on. Each code works once.')
+              : t('Open your authenticator app and enter the 6-digit code for OVL For Business.')}
           </p>
         </div>
       </div>
       <ErrorAlert error={needsTwoFactor(error) ? null : error} />
-      <Field label={recovery ? 'Recovery code' : 'Authentication code'}>
+      <Field label={recovery ? t('Recovery code') : t('Authentication code')}>
         <input
           key={recovery ? 'recovery' : 'totp'}
           className="input code-input"
@@ -61,19 +62,19 @@ export function TwoFactorPrompt({
           onChange={(e) => setCode(recovery ? e.target.value : e.target.value.replace(/\D/g, '').slice(0, 6))}
           inputMode={recovery ? 'text' : 'numeric'}
           autoComplete="one-time-code"
-          placeholder={recovery ? 'xxxxx-xxxxx' : '123 456'}
+          placeholder={recovery ? t('xxxxx-xxxxx') : '123 456'}
           maxLength={recovery ? 20 : 6}
           autoFocus
           required
         />
       </Field>
       <button className="btn gradient lg block" disabled={busy || (!recovery && code.length !== 6)}>
-        {busy ? <span className="spinner light" /> : <>Verify</>}
+        {busy ? <span className="spinner light" /> : <>{t('Verify')}</>}
         {!busy && <Icon name="check" size={18} />}
       </button>
       <div className="spread">
         <button type="button" className="btn ghost sm" onClick={onBack}>
-          <Icon name="back" size={15} /> Back
+          <Icon name="back" size={15} /> {t('Back')}
         </button>
         <button
           type="button"
@@ -83,7 +84,7 @@ export function TwoFactorPrompt({
             setCode('');
           }}
         >
-          {recovery ? 'Use the authenticator app' : 'Use a recovery code'}
+          {recovery ? t('Use the authenticator app') : t('Use a recovery code')}
         </button>
       </div>
     </motion.form>
@@ -99,8 +100,9 @@ export function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () =
       <div className="alert warning small">
         <Icon name="info" size={17} />
         <span>
-          Save these codes somewhere safe. Each one signs you in once if you lose your phone. They are shown
-          only now.
+          {t(
+            'Save these codes somewhere safe. Each one signs you in once if you lose your phone. They are shown only now.',
+          )}
         </span>
       </div>
       <div className="recovery-grid">
@@ -113,20 +115,20 @@ export function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () =
           type="button"
           className="btn"
           onClick={() =>
-            navigator.clipboard?.writeText(text).then(() => toast.success('Recovery codes copied'))
+            navigator.clipboard?.writeText(text).then(() => toast.success(t('Recovery codes copied')))
           }
         >
-          <Icon name="copy" size={16} /> Copy
+          <Icon name="copy" size={16} /> {t('Copy')}
         </button>
         <a
           className="btn"
           download="ovl-recovery-codes.txt"
           href={`data:text/plain;charset=utf-8,${encodeURIComponent(text)}`}
         >
-          <Icon name="download" size={16} /> Download
+          <Icon name="download" size={16} /> {t('Download')}
         </a>
         <button type="button" className="btn primary" onClick={onDone}>
-          I saved them
+          {t('I saved them')}
         </button>
       </div>
     </div>
@@ -181,17 +183,19 @@ export function TwoFactorSetupForm({
     >
       <ol className="steps small">
         <li>
-          Install an authenticator app — Google Authenticator, 1Password, Authy, Microsoft Authenticator…
+          {t(
+            'Install an authenticator app — Google Authenticator, 1Password, Authy, Microsoft Authenticator…',
+          )}
         </li>
-        <li>Scan this QR code with it, or type the key.</li>
-        <li>Enter the 6-digit code the app shows.</li>
+        <li>{t('Scan this QR code with it, or type the key.')}</li>
+        <li>{t('Enter the 6-digit code the app shows.')}</li>
       </ol>
       <div className="qr-row">
         {setup ? (
           <img
             className="qr"
             src={setup.qr}
-            alt="QR code for your authenticator app"
+            alt={t('QR code for your authenticator app')}
             width={180}
             height={180}
           />
@@ -199,11 +203,11 @@ export function TwoFactorSetupForm({
           <div className="qr skeleton" />
         )}
         <div className="stack-sm grow">
-          <span className="small muted">Key for manual entry</span>
+          <span className="small muted">{t('Key for manual entry')}</span>
           <code className="secret">{setup?.secret.match(/.{1,4}/g)?.join(' ') ?? '…'}</code>
         </div>
       </div>
-      <Field label="Code from the app">
+      <Field label={t('Code from the app')}>
         <input
           className="input code-input"
           inputMode="numeric"
@@ -216,7 +220,7 @@ export function TwoFactorSetupForm({
       </Field>
       <ErrorAlert error={error} />
       <button className="btn primary" disabled={code.length !== 6 || busy || !setup}>
-        {busy ? <span className="spinner light" /> : 'Turn on'}
+        {busy ? <span className="spinner light" /> : t('Turn on')}
       </button>
     </form>
   );

@@ -9,6 +9,7 @@ import {
   Spinner,
   StatusBadge,
   useDebounced,
+  t,
 } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -48,13 +49,13 @@ export function RegistryPage() {
     <div className="page">
       <PageHeader
         icon="book"
-        title="Registry"
-        subtitle="Licenses, organizations and virtual countries rolled out to the public registry."
+        title={t('Registry')}
+        subtitle={t('Licenses, organizations and virtual countries rolled out to the public registry.')}
       />
       <div className="filters">
         <input
           className="input"
-          placeholder="Search"
+          placeholder={t('Search')}
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
@@ -63,7 +64,7 @@ export function RegistryPage() {
         />
         <select
           className="select"
-          aria-label="Status filter"
+          aria-label={t('Status filter')}
           value={status}
           onChange={(e) => {
             setStatus(e.target.value as RegistryEntry['status']);
@@ -83,14 +84,14 @@ export function RegistryPage() {
         <table className="table">
           <thead>
             <tr>
-              <th>Number</th>
-              <th>Title</th>
-              <th>Type</th>
-              <th>Holder</th>
-              <th>Issued</th>
-              <th>Valid until</th>
-              <th>Status</th>
-              {can('registry.manage') && <th>Change status</th>}
+              <th>{t('Number')}</th>
+              <th>{t('Title')}</th>
+              <th>{t('Type')}</th>
+              <th>{t('Holder')}</th>
+              <th>{t('Issued')}</th>
+              <th>{t('Valid until')}</th>
+              <th>{t('Status')}</th>
+              {can('registry.manage') && <th>{t('Change status')}</th>}
             </tr>
           </thead>
           <tbody>
@@ -101,7 +102,7 @@ export function RegistryPage() {
                     href={api.registry.certificateUrl(e.number)}
                     target="_blank"
                     rel="noreferrer"
-                    title="Certificate (PDF)"
+                    title={t('Certificate (PDF)')}
                   >
                     <code>{e.number}</code>
                   </a>
@@ -127,11 +128,11 @@ export function RegistryPage() {
                     <button
                       className="btn ghost sm"
                       style={{ marginLeft: 6 }}
-                      title="Extend by one year"
+                      title={t('Extend by one year')}
                       disabled={extend.isPending}
                       onClick={() => extend.mutate(e)}
                     >
-                      +1 year
+                      {t('+1 year')}
                     </button>
                   )}
                 </td>
@@ -188,15 +189,15 @@ function CurrencyModal({ code, onClose }: { code: string; onClose: () => void })
         <ErrorAlert error={info.error ?? toggle.error} />
         {c && (
           <dl className="dl">
-            <dt>Issued by</dt>
+            <dt>{t('Issued by')}</dt>
             <dd>
               {c.country} (<code>{c.registryNumber}</code>)
             </dd>
-            <dt>In circulation</dt>
+            <dt>{t('In circulation')}</dt>
             <dd>{formatMoney(c.supply, c.code)}</dd>
-            <dt>Balances holding it</dt>
+            <dt>{t('Balances holding it')}</dt>
             <dd>{c.holders}</dd>
-            <dt>Status</dt>
+            <dt>{t('Status')}</dt>
             <dd>
               <StatusBadge status={c.status} />
             </dd>
@@ -208,7 +209,7 @@ function CurrencyModal({ code, onClose }: { code: string; onClose: () => void })
             disabled={toggle.isPending}
             onClick={() => toggle.mutate(c.status === 'active' ? 'suspended' : 'active')}
           >
-            {c.status === 'active' ? 'Suspend new issuance' : 'Allow issuance again'}
+            {c.status === 'active' ? t('Suspend new issuance') : t('Allow issuance again')}
           </button>
         )}
       </div>

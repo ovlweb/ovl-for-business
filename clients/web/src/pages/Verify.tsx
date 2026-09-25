@@ -1,5 +1,15 @@
 import { LICENSE_TYPE_LABELS } from '@ovl/shared';
-import { ErrorAlert, formatDate, Icon, Logo, Spinner, StatusBadge, VerifiedBadge } from '@ovl/ui';
+import {
+  ErrorAlert,
+  formatDate,
+  Icon,
+  Logo,
+  humanize,
+  Spinner,
+  StatusBadge,
+  VerifiedBadge,
+  t,
+} from '@ovl/ui';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'motion/react';
 import { Link, useParams } from 'react-router-dom';
@@ -22,9 +32,9 @@ export function VerifyPage() {
   const valid = e?.status === 'active';
   const kind = e
     ? e.kind === 'organization'
-      ? 'Company registration'
+      ? t('Company registration')
       : e.kind === 'virtual_country'
-        ? 'Virtual country'
+        ? t('Virtual country')
         : `${e.licenseType ? LICENSE_TYPE_LABELS[e.licenseType] : 'Virtual'} licence`
     : '';
   return (
@@ -38,16 +48,17 @@ export function VerifyPage() {
         <div className="row">
           <Logo size={40} />
           <div>
-            <b>OVL For Business</b>
-            <div className="small muted">Public registry · verification</div>
+            <b>{t('OVL For Business')}</b>
+            <div className="small muted">{t('Public registry · verification')}</div>
           </div>
         </div>
         {entry.isLoading && <Spinner center />}
         {entry.error && (
           <div className="stack">
-            <h1 className="auth-title">Not in the registry</h1>
+            <h1 className="auth-title">{t('Not in the registry')}</h1>
             <p className="muted">
-              No entry has the number <code>{number}</code>. A certificate showing it is not genuine.
+              {t('No entry has the number')} <code>{number}</code>
+              {t('. A certificate showing it is not genuine.')}
             </p>
             <ErrorAlert error={entry.error} />
           </div>
@@ -57,11 +68,13 @@ export function VerifyPage() {
             <div className={`verify-result ${valid ? 'ok' : 'bad'}`}>
               <Icon name={valid ? 'check' : 'x'} size={22} />
               <div>
-                <b>{valid ? 'Valid' : `Not valid: ${e.status}`}</b>
+                <b>{valid ? t('Valid') : t('Not valid: {0}', humanize(e.status).toLowerCase())}</b>
                 <div className="small">
                   {valid
-                    ? `This ${e.kind === 'organization' ? 'registration' : 'licence'} is active in the registry.`
-                    : 'The registry no longer recognises it; the certificate is void.'}
+                    ? e.kind === 'organization'
+                      ? t('This registration is active in the registry.')
+                      : t('This licence is active in the registry.')
+                    : t('The registry no longer recognises it; the certificate is void.')}
                 </div>
               </div>
             </div>
@@ -69,29 +82,29 @@ export function VerifyPage() {
               {e.title}
             </h1>
             <dl className="dl">
-              <dt>Registry number</dt>
+              <dt>{t('Registry number')}</dt>
               <dd>
                 <code>{e.number}</code>
               </dd>
-              <dt>Type</dt>
+              <dt>{t('Type')}</dt>
               <dd>{kind}</dd>
-              <dt>Holder</dt>
+              <dt>{t('Holder')}</dt>
               <dd>
                 {e.holder.name} {e.holder.verified && <VerifiedBadge />}
               </dd>
-              <dt>Status</dt>
+              <dt>{t('Status')}</dt>
               <dd>
                 <StatusBadge status={e.status} />
               </dd>
-              <dt>Issued</dt>
+              <dt>{t('Issued')}</dt>
               <dd>{formatDate(e.issuedAt, false)}</dd>
               {e.expiresAt && (
                 <>
-                  <dt>Valid until</dt>
+                  <dt>{t('Valid until')}</dt>
                   <dd>{formatDate(e.expiresAt, false)}</dd>
                 </>
               )}
-              <dt>Last change</dt>
+              <dt>{t('Last change')}</dt>
               <dd>{formatDate(e.updatedAt)}</dd>
             </dl>
             <div className="row-wrap">
@@ -101,10 +114,10 @@ export function VerifyPage() {
                 target="_blank"
                 rel="noreferrer"
               >
-                <Icon name="award" size={16} /> Certificate (PDF)
+                <Icon name="award" size={16} /> {t('Certificate (PDF)')}
               </a>
               <Link className="btn ghost" to={me ? `/registry?q=${e.number}` : '/'}>
-                {me ? 'Open in the registry' : 'Sign in to OVL For Business'}
+                {me ? t('Open in the registry') : t('Sign in to OVL For Business')}
               </Link>
             </div>
           </div>

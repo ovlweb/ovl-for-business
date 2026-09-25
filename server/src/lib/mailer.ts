@@ -1,6 +1,8 @@
 import type { FastifyBaseLogger } from 'fastify';
 import nodemailer from 'nodemailer';
+import type { Locale } from '@ovl/shared';
 import type { Config } from '../config';
+import { say, type Text } from './i18n';
 
 export interface MailMessage {
   to: string;
@@ -52,17 +54,28 @@ export function createMailer(config: Config, log: FastifyBaseLogger): Mailer {
 const escape = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
-/** A plain, readable email with one call-to-action button. */
-export function actionEmail(opts: {
+/** A plain, readable email with one call-to-action button, in the recipient's language. */
+export function actionEmail(email: {
   to: string;
-  subject: string;
-  greeting: string;
-  lines: string[];
-  action?: { label: string; url: string };
+  /** The recipient's language (userLocale(user.preferences)); English by default. */
+  locale?: Locale;
+  subject: Text;
+  greeting: Text;
+  lines: Text[];
+  action?: { label: Text; url: string };
   /** Extra links listed under the text (e.g. one download per document). */
   links?: { label: string; url: string }[];
-  footer?: string;
+  footer?: Text;
 }): MailMessage {
+  const locale = email.locale ?? 'en';
+  const opts = {
+    subject: say(locale, email.subject),
+    greeting: say(locale, email.greeting),
+    lines: email.lines.map((l) => say(locale, l)),
+    action: email.action && { label: say(locale, email.action.label), url: email.action.url },
+    links: email.links,
+    footer: email.footer === undefined ? undefined : say(locale, email.footer),
+  };
   const text = [
     opts.greeting,
     '',
@@ -75,7 +88,7 @@ export function actionEmail(opts: {
   ].join('\n');
   const button = opts.action
     ? `<p style="margin:24px 0"><a href="${escape(opts.action.url)}" style="background:#2563eb;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600">${escape(opts.action.label)}</a></p>
-       <p style="color:#64748b;font-size:13px">Or open this link: <br><a href="${escape(opts.action.url)}" style="color:#2563eb;word-break:break-all">${escape(opts.action.url)}</a></p>`
+       <p style="color:#64748b;font-size:13px">${escape(say(locale, 'Or open this link:'))} <br><a href="${escape(opts.action.url)}" style="color:#2563eb;word-break:break-all">${escape(opts.action.url)}</a></p>`
     : '';
   const html = `<!doctype html><html><body style="margin:0;background:#f4f6fa;font-family:Inter,system-ui,sans-serif;color:#0f172a">
   <div style="max-width:520px;margin:32px auto;background:#fff;border:1px solid #e3e8f0;border-radius:16px;padding:28px">
@@ -92,5 +105,5 @@ export function actionEmail(opts: {
     ${button}
     ${opts.footer ? `<p style="color:#64748b;font-size:13px">${escape(opts.footer)}</p>` : ''}
   </div></body></html>`;
-  return { to: opts.to, subject: opts.subject, text, html };
+  return { to: email.to, subject: opts.subject, text, html };
 }

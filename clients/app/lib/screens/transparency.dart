@@ -9,6 +9,7 @@ import '../theme/theme.dart';
 import '../ui/format.dart';
 import '../ui/widgets.dart';
 import 'contacts.dart';
+import '../i18n/i18n.dart';
 
 const _sections = <String, String>{
   'applications': 'Applications',
@@ -57,10 +58,10 @@ class TransparencyScreen extends StatelessWidget {
         child: PageBody(
           onRefresh: () async => session.queries.invalidate('transparency'),
           children: [
-            const PageTitle(
+            PageTitle(
               icon: LucideIcons.award,
-              title: 'Transparency',
-              subtitle: 'Council rules, members, and regular reports on how decisions were made.',
+              title: tr('Transparency'),
+              subtitle: tr('Council rules, members, and regular reports on how decisions were made.'),
             ),
             const SizedBox(height: 16),
             Query<GovernanceInfo>(
@@ -74,12 +75,17 @@ class TransparencyScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('How decisions are made', style: context.text.titleMedium),
+                      Text(tr('How decisions are made'), style: context.text.titleMedium),
                       const SizedBox(height: 6),
                       Text(
-                        'A council vote needs ${plural(g.votesNeeded, 'vote')} of '
-                        '${plural(g.activeCouncilMembers, 'member')} (${g.votingLabel}). Council seats '
-                        '${g.councilTermMonths > 0 ? 'last ${plural(g.councilTermMonths, 'month')}' : 'have no fixed term'}.',
+                        tr('A council vote needs {0} of {1} ({2}). Council seats {3}.', [
+                          plural(g.votesNeeded, 'vote'),
+                          plural(g.activeCouncilMembers, 'member'),
+                          g.votingLabel,
+                          g.councilTermMonths > 0
+                              ? 'last ${plural(g.councilTermMonths, 'month')}'
+                              : tr('have no fixed term'),
+                        ]),
                       ),
                       const SizedBox(height: 10),
                       Wrap(
@@ -91,7 +97,7 @@ class TransparencyScreen extends StatelessWidget {
                               label: Text(
                                 c.termEndsAt == null
                                     ? c.user.displayName
-                                    : '${c.user.displayName} · until ${dayLabel(c.termEndsAt!)}',
+                                    : tr('{0} · until {1}', [c.user.displayName, dayLabel(c.termEndsAt!)]),
                               ),
                             ),
                         ],
@@ -110,10 +116,10 @@ class TransparencyScreen extends StatelessWidget {
                 final reports = s.data;
                 if (reports == null) return s.error != null ? ErrorBox(s.error) : const SkeletonList(rows: 3);
                 if (reports.isEmpty) {
-                  return const EmptyState(
+                  return EmptyState(
                     icon: LucideIcons.fileText,
-                    title: 'No reports yet',
-                    text: 'Reports on how the platform was governed appear here.',
+                    title: tr('No reports yet'),
+                    text: tr('Reports on how the platform was governed appear here.'),
                   );
                 }
                 return Column(children: [for (final r in reports) _ReportCard(r)]);
@@ -160,7 +166,7 @@ class _ReportCard extends StatelessWidget {
                             if (e.value is num || e.value == null)
                               Row(
                                 children: [
-                                  Expanded(child: Text(_labels[e.key] ?? e.key, style: context.text.bodySmall)),
+                                  Expanded(child: Text(tr(_labels[e.key] ?? e.key), style: context.text.bodySmall)),
                                   Text('${e.value ?? '—'}', style: TextStyle(color: context.c.text)),
                                 ],
                               ),

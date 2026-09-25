@@ -3,12 +3,15 @@ import {
   Field,
   ForgotPasswordForm,
   Icon,
+  LanguagePicker,
   Logo,
   needsTwoFactor,
   passkeyCancelled,
   passkeysSupported,
   TwoFactorPrompt,
   type IconName,
+  t,
+  msg,
 } from '@ovl/ui';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'motion/react';
@@ -19,10 +22,22 @@ import { useAdminAuth } from '../auth';
 const ease = [0.22, 1, 0.36, 1] as const;
 
 const DUTIES: { icon: IconName; title: string; text: string }[] = [
-  { icon: 'review', title: 'Review queue', text: 'Moderation checklists, council votes and owner sign-off.' },
-  { icon: 'wallet', title: 'Cash desk', text: 'Deposits and withdrawals in any currency, fully journaled.' },
-  { icon: 'book', title: 'Public registry', text: 'Suspend or revoke licenses and organizations.' },
-  { icon: 'shield', title: 'Audit trail', text: 'Every privileged action, who did it and from where.' },
+  {
+    icon: 'review',
+    title: msg('Review queue'),
+    text: msg('Moderation checklists, council votes and owner sign-off.'),
+  },
+  {
+    icon: 'wallet',
+    title: msg('Cash desk'),
+    text: msg('Deposits and withdrawals in any currency, fully journaled.'),
+  },
+  { icon: 'book', title: msg('Public registry'), text: msg('Suspend or revoke licenses and organizations.') },
+  {
+    icon: 'shield',
+    title: msg('Audit trail'),
+    text: msg('Every privileged action, who did it and from where.'),
+  },
 ];
 
 export function LoginPage() {
@@ -61,10 +76,10 @@ export function LoginPage() {
             transition={{ duration: 0.7, ease }}
           >
             <span className="admin-chip">
-              <Icon name="lock" size={13} /> Restricted area
+              <Icon name="lock" size={13} /> {t('Restricted area')}
             </span>
-            <h1>The control room of OVL For Business.</h1>
-            <p>Approvals, money, the registry and support — everything staff need, in one console.</p>
+            <h1>{t('The control room of OVL For Business.')}</h1>
+            <p>{t('Approvals, money, the registry and support — everything staff need, in one console.')}</p>
           </motion.div>
           <div className="admin-duties">
             {DUTIES.map((d, i) => (
@@ -79,8 +94,8 @@ export function LoginPage() {
                   <Icon name={d.icon} size={18} />
                 </span>
                 <div>
-                  <b>{d.title}</b>
-                  <span>{d.text}</span>
+                  <b>{t(d.title)}</b>
+                  <span>{t(d.text)}</span>
                 </div>
               </motion.div>
             ))}
@@ -122,9 +137,14 @@ export function LoginPage() {
             }}
           >
             <div className="stack-sm">
-              <Logo size={48} animated />
-              <h2 style={{ marginTop: 10 }}>Admin console</h2>
-              <p className="small muted">Staff only: moderators, finance managers, admins and the owner.</p>
+              <div className="spread">
+                <Logo size={48} animated />
+                <LanguagePicker compact />
+              </div>
+              <h2 style={{ marginTop: 10 }}>{t('Admin console')}</h2>
+              <p className="small muted">
+                {t('Staff only: moderators, finance managers, admins and the owner.')}
+              </p>
             </div>
             <ErrorAlert error={error ?? ssoError} />
             {sso.data?.enabled && (
@@ -145,10 +165,10 @@ export function LoginPage() {
                 >
                   <Icon name="shield" size={17} /> {sso.data.label}
                 </button>
-                <div className="or-divider small muted">or with a password</div>
+                <div className="or-divider small muted">{t('or with a password')}</div>
               </>
             )}
-            <Field label="Username or email">
+            <Field label={t('Username or email')}>
               <div className="input-with-icon">
                 <Icon name="user" size={17} />
                 <input
@@ -160,7 +180,7 @@ export function LoginPage() {
                 />
               </div>
             </Field>
-            <Field label="Password">
+            <Field label={t('Password')}>
               <div className="input-with-icon">
                 <Icon name="key" size={17} />
                 <input
@@ -175,7 +195,7 @@ export function LoginPage() {
                   type="button"
                   className="input-action"
                   onClick={() => setShow(!show)}
-                  aria-label="Show characters"
+                  aria-label={t('Show characters')}
                   aria-pressed={show}
                 >
                   <Icon name={show ? 'eyeOff' : 'eye'} size={17} />
@@ -183,10 +203,10 @@ export function LoginPage() {
               </div>
             </Field>
             <button type="button" className="link-button small" onClick={() => setForgot(true)}>
-              Forgot password?
+              {t('Forgot password?')}
             </button>
             <button className="btn gradient lg block" disabled={busy}>
-              {busy ? 'Signing in…' : 'Sign in'}
+              {busy ? t('Signing in…') : t('Sign in')}
               {!busy && <Icon name="arrowRight" size={18} />}
             </button>
             {passkeysSupported() && (
@@ -205,11 +225,11 @@ export function LoginPage() {
                   }
                 }}
               >
-                <Icon name="key" size={17} /> Sign in with a passkey
+                <Icon name="key" size={17} /> {t('Sign in with a passkey')}
               </button>
             )}
             <p className="tiny muted center-text">
-              Sessions end when this tab closes. Every action is audited.
+              {t('Sessions end when this tab closes. Every action is audited.')}
             </p>
           </motion.form>
         )}

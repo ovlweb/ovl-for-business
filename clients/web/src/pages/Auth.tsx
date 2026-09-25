@@ -15,6 +15,9 @@ import {
   passkeysSupported,
   Segmented,
   TwoFactorPrompt,
+  t,
+  LanguagePicker,
+  msg,
 } from '@ovl/ui';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState, type FormEvent } from 'react';
@@ -25,8 +28,8 @@ import { apiUrl, customServer, setCustomServer } from '../config';
 const ease = [0.22, 1, 0.36, 1] as const;
 
 const FEATURES = [
-  { icon: 'globe', text: 'Business balances in 155 world currencies' },
-  { icon: 'shield', text: 'Licenses approved by moderation, council and the owner' },
+  { icon: 'globe', text: msg('Business balances in 155 world currencies') },
+  { icon: 'shield', text: msg('Licenses approved by moderation, council and the owner') },
   { icon: 'chart', text: 'A stock exchange that grows your business balance' },
   { icon: 'book', text: 'A public registry other services can query' },
 ] as const;
@@ -62,9 +65,9 @@ function Floating({
 
 function ChatTicker() {
   const lines = [
-    { who: 'Council', text: 'License OVL-LIC-000128 approved', tone: 'council' },
+    { who: t('Council'), text: t('License OVL-LIC-000128 approved'), tone: 'council' },
     { who: 'Maria', text: 'Q3 investor update is live 📈', tone: 'accent' },
-    { who: 'Support', text: 'Your deposit was credited', tone: 'support' },
+    { who: t('Support'), text: t('Your deposit was credited'), tone: 'support' },
   ];
   const [count, setCount] = useState(1);
   useEffect(() => {
@@ -86,7 +89,7 @@ function ChatTicker() {
           >
             <span className={`ticker-dot ${l.tone}`} />
             <b>{l.who}</b>
-            <span className="ellipsis">{l.text}</span>
+            <span className="ellipsis">{t(l.text)}</span>
           </motion.div>
         ))}
       </AnimatePresence>
@@ -117,28 +120,29 @@ function BrandPanel() {
       >
         <Logo size={40} animated />
         <div>
-          <div className="brand-name">OVL For Business</div>
-          <div className="brand-sub">Corporate platform</div>
+          <div className="brand-name">{t('OVL For Business')}</div>
+          <div className="brand-sub">{t('Corporate platform')}</div>
         </div>
       </motion.div>
 
       <div className="brand-stage">
         <Floating delay={0.3} className="fc-balance">
           <div className="fc-label">
-            <Icon name="wallet" size={15} /> Business balance
+            <Icon name="wallet" size={15} /> {t('Business balance')}
           </div>
           <div className="fc-amount">
             <AnimatedNumber value="128420.50" duration={2200} format={(v) => formatMoney(v, 'EUR')} />
           </div>
           <div className="fc-meta">
-            <span className="up">▲ 12.4%</span> this quarter · <Icon name="lock" size={12} /> 30% frozen
+            <span className="up">▲ 12.4%</span> {t('this quarter ·')} <Icon name="lock" size={12} />{' '}
+            {t('30% frozen')}
           </div>
         </Floating>
         <Floating delay={0.55} className="fc-stock">
           <div className="spread">
             <div>
-              <div className="fc-label">AURA · Aurora Media</div>
-              <div className="fc-price">12.50 EUR</div>
+              <div className="fc-label">{t('AURA · Aurora Media')}</div>
+              <div className="fc-price">{t('12.50 EUR')}</div>
             </div>
             <span className="fc-pill">+4.2%</span>
           </div>
@@ -146,12 +150,12 @@ function BrandPanel() {
             values={[8, 9.1, 8.7, 9.8, 10.4, 10.1, 11.2, 11.8, 12.5]}
             height={64}
             color="#34D399"
-            label="AURA"
+            label={t('AURA')}
           />
         </Floating>
         <Floating delay={0.8} className="fc-chat">
           <div className="fc-label">
-            <Icon name="chat" size={15} /> Live activity
+            <Icon name="chat" size={15} /> {t('Live activity')}
           </div>
           <ChatTicker />
         </Floating>
@@ -162,18 +166,18 @@ function BrandPanel() {
             animate={{ scale: 1, opacity: 1, rotate: -8 }}
             transition={{ delay: 1.6, type: 'spring', stiffness: 260, damping: 14 }}
           >
-            <Icon name="check" size={16} /> Approved
+            <Icon name="check" size={16} /> {t('Approved')}
           </motion.div>
-          <div className="fc-label">Registry</div>
-          <div className="mono small">OVL-ORG-000042</div>
+          <div className="fc-label">{t('Registry')}</div>
+          <div className="mono small">{t('OVL-ORG-000042')}</div>
         </Floating>
       </div>
 
       <div className="brand-bottom">
         <h2 className="brand-headline">
-          Run your company,
+          {t('Run your company,')}
           <br />
-          <span className="gradient-text-light">money and licenses</span> in one place.
+          <span className="gradient-text-light">{t('money and licenses')}</span> {t('in one place.')}
         </h2>
         <div className="feature-rotator">
           <AnimatePresence mode="wait">
@@ -186,7 +190,7 @@ function BrandPanel() {
               transition={{ duration: 0.35 }}
             >
               <Icon name={current.icon} size={18} />
-              {current.text}
+              {t(current.text)}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -233,7 +237,7 @@ function PasswordInput({
         className="btn ghost icon sm"
         style={{ position: 'absolute', right: 5, top: 5 }}
         onClick={() => setVisible(!visible)}
-        aria-label="Show characters"
+        aria-label={t('Show characters')}
         aria-pressed={visible}
       >
         <Icon name={visible ? 'eyeOff' : 'eye'} size={17} />
@@ -290,7 +294,7 @@ function SignInForm({ onDone }: { onDone: () => void }) {
   return (
     <form className="stack" onSubmit={submit}>
       <ErrorAlert error={error} />
-      <Field label="Username or email">
+      <Field label={t('Username or email')}>
         <div className="input-with-icon">
           <Icon name="user" size={17} />
           <input
@@ -303,7 +307,7 @@ function SignInForm({ onDone }: { onDone: () => void }) {
           />
         </div>
       </Field>
-      <Field label="Password">
+      <Field label={t('Password')}>
         <PasswordInput
           value={form.password}
           onChange={(password) => setForm({ ...form, password })}
@@ -311,10 +315,10 @@ function SignInForm({ onDone }: { onDone: () => void }) {
         />
       </Field>
       <button type="button" className="link-button small" onClick={() => setForgot(true)}>
-        Forgot password?
+        {t('Forgot password?')}
       </button>
       <button className="btn gradient lg block" disabled={busy}>
-        {busy ? <span className="spinner light" /> : <>Sign in</>}
+        {busy ? <span className="spinner light" /> : <>{t('Sign in')}</>}
         {!busy && <Icon name="arrowRight" size={18} />}
       </button>
       {passkeysSupported() && (
@@ -334,7 +338,7 @@ function SignInForm({ onDone }: { onDone: () => void }) {
             }
           }}
         >
-          <Icon name="key" size={17} /> Sign in with a passkey
+          <Icon name="key" size={17} /> {t('Sign in with a passkey')}
         </button>
       )}
     </form>
@@ -367,7 +371,7 @@ function RegisterForm({ onDone }: { onDone: () => void }) {
   return (
     <form className="stack" onSubmit={submit}>
       <ErrorAlert error={error} />
-      <Field label="Display name">
+      <Field label={t('Display name')}>
         <input
           className="input"
           value={form.displayName}
@@ -378,7 +382,7 @@ function RegisterForm({ onDone }: { onDone: () => void }) {
         />
       </Field>
       <div className="grid-2" style={{ gap: 12 }}>
-        <Field label="Username">
+        <Field label={t('Username')}>
           <input
             className="input"
             autoComplete="username"
@@ -386,10 +390,10 @@ function RegisterForm({ onDone }: { onDone: () => void }) {
             onChange={set('username')}
             required
             pattern="[A-Za-z][A-Za-z0-9_]{2,31}"
-            title="3–32 characters: letters, digits and underscore"
+            title={t('3–32 characters: letters, digits and underscore')}
           />
         </Field>
-        <Field label="Email">
+        <Field label={t('Email')}>
           <input
             className="input"
             type="email"
@@ -400,7 +404,7 @@ function RegisterForm({ onDone }: { onDone: () => void }) {
           />
         </Field>
       </div>
-      <Field label="Password" hint="At least 8 characters.">
+      <Field label={t('Password')} hint={t('At least 8 characters.')}>
         <PasswordInput
           value={form.password}
           onChange={(password) => setForm({ ...form, password })}
@@ -418,12 +422,13 @@ function RegisterForm({ onDone }: { onDone: () => void }) {
         ))}
       </div>
       <button className="btn gradient lg block" disabled={busy}>
-        {busy ? <span className="spinner light" /> : <>Create account</>}
+        {busy ? <span className="spinner light" /> : <>{t('Create account')}</>}
         {!busy && <Icon name="arrowRight" size={18} />}
       </button>
       <p className="tiny muted">
-        This creates your personal account. Companies, licenses and staff roles are requested from inside the
-        app.
+        {t(
+          'This creates your personal account. Companies, licenses and staff roles are requested from inside the app.',
+        )}
       </p>
     </form>
   );
@@ -463,7 +468,7 @@ function SavedAccounts({
         ))}
       </div>
       <button className="btn block" onClick={onOther}>
-        <Icon name="userPlus" size={17} /> Use another account
+        <Icon name="userPlus" size={17} /> {t('Use another account')}
       </button>
     </div>
   );
@@ -481,10 +486,13 @@ function ServerSettings() {
   }
   return (
     <div className="stack-sm" style={{ width: '100%' }}>
-      <Field label="Server address" hint="For self-hosted deployments. Leave empty for this website.">
+      <Field
+        label={t('Server address')}
+        hint={t('For self-hosted deployments. Leave empty for this website.')}
+      >
         <input
           className="input"
-          placeholder="https://business.example.com"
+          placeholder={t('https://business.example.com')}
           value={value}
           onChange={(e) => setValue(e.target.value)}
         />
@@ -497,7 +505,7 @@ function ServerSettings() {
           location.reload();
         }}
       >
-        Save and reload
+        {t('Save and reload')}
       </button>
     </div>
   );
@@ -512,19 +520,19 @@ export function LoginPage({ initialMode = 'signin' }: { initialMode?: Mode }) {
   const [done, setDone] = useState(false);
 
   const title = done
-    ? 'You are in'
+    ? t('You are in')
     : choosing
-      ? 'Choose an account'
+      ? t('Choose an account')
       : addingAccount
-        ? 'Add another account'
+        ? t('Add another account')
         : mode === 'signin'
-          ? 'Welcome back'
-          : 'Create your account';
+          ? t('Welcome back')
+          : t('Create your account');
   const subtitle = choosing
-    ? 'Accounts signed in on this device.'
+    ? t('Accounts signed in on this device.')
     : mode === 'signin'
-      ? 'Sign in to continue to your workspace.'
-      : 'Start with a personal account — it takes a minute.';
+      ? t('Sign in to continue to your workspace.')
+      : t('Start with a personal account — it takes a minute.');
 
   return (
     <div className="auth-shell">
@@ -541,7 +549,7 @@ export function LoginPage({ initialMode = 'signin' }: { initialMode?: Mode }) {
           </div>
           {addingAccount && (
             <button className="btn ghost sm" style={{ alignSelf: 'flex-start' }} onClick={cancelAddAccount}>
-              <Icon name="back" size={16} /> Back to {me?.displayName ?? 'the app'}
+              <Icon name="back" size={16} /> {t('Back to {0}', me?.displayName ?? 'the app')}
             </button>
           )}
           <AnimatePresence mode="wait">
@@ -595,14 +603,19 @@ export function LoginPage({ initialMode = 'signin' }: { initialMode?: Mode }) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
               >
-                <Segmented<Mode>
-                  value={mode}
-                  onChange={setMode}
-                  options={[
-                    { value: 'signin', label: 'Sign in' },
-                    { value: 'register', label: 'Create account' },
-                  ]}
-                />
+                <div className="row">
+                  <div className="grow">
+                    <Segmented<Mode>
+                      value={mode}
+                      onChange={setMode}
+                      options={[
+                        { value: 'signin', label: t('Sign in') },
+                        { value: 'register', label: t('Create account') },
+                      ]}
+                    />
+                  </div>
+                  <LanguagePicker compact />
+                </div>
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.div
                     key={mode}
@@ -620,7 +633,7 @@ export function LoginPage({ initialMode = 'signin' }: { initialMode?: Mode }) {
                 </AnimatePresence>
                 {accounts.length > 0 && !addingAccount && !me && (
                   <button className="btn ghost sm" onClick={() => setChoosing(true)}>
-                    <Icon name="users" size={15} /> Saved accounts ({accounts.length})
+                    <Icon name="users" size={15} /> {t('Saved accounts ({0})', accounts.length)}
                   </button>
                 )}
               </motion.div>

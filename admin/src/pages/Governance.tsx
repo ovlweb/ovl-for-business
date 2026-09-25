@@ -1,5 +1,5 @@
 import { COUNCIL_VOTING, COUNCIL_VOTING_LABELS, type CouncilVoting, type Governance } from '@ovl/shared';
-import { ErrorAlert, Field, formatDate, PageHeader, plural, Spinner, useToast } from '@ovl/ui';
+import { ErrorAlert, Field, formatDate, PageHeader, plural, Spinner, useToast, t, intlLocale } from '@ovl/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { api } from '../api';
@@ -15,8 +15,10 @@ export function GovernancePage() {
     <div className="page stack-lg">
       <PageHeader
         icon="award"
-        title="Governance"
-        subtitle="How the council decides, how long seats last, and the transparency reports the platform publishes."
+        title={t('Governance')}
+        subtitle={t(
+          'How the council decides, how long seats last, and the transparency reports the platform publishes.',
+        )}
       />
       <ErrorAlert error={governance.error} />
       {governance.isLoading && <Spinner center />}
@@ -53,28 +55,28 @@ function Rules({ governance: g, editable }: { governance: Governance; editable: 
       }),
     onSuccess: (data) => {
       queryClient.setQueryData(['governance'], data);
-      toast.success('Governance rules saved');
+      toast.success(t('Governance rules saved'));
     },
   });
   return (
     <form
       className="card stack"
-      aria-label="Council rules"
+      aria-label={t('Council rules')}
       onSubmit={(e) => {
         e.preventDefault();
         save.mutate();
       }}
     >
       <div>
-        <h3>Council rules</h3>
+        <h3>{t('Council rules')}</h3>
         <p className="small muted" style={{ margin: 0 }}>
-          Right now a council stage needs {plural(g.votesNeeded, 'vote')} of{' '}
+          {t('Right now a council stage needs')} {plural(g.votesNeeded, 'vote')} {t('of')}{' '}
           {plural(g.activeCouncilMembers, 'active member')}.
-          {!editable && ' Only the owner changes these rules.'}
+          {!editable && ` ${t('Only the owner changes these rules.')}`}
         </p>
       </div>
       <div className="grid-3">
-        <Field label="A council stage passes with">
+        <Field label={t('A council stage passes with')}>
           <select
             className="input"
             value={form.voting}
@@ -83,12 +85,12 @@ function Rules({ governance: g, editable }: { governance: Governance; editable: 
           >
             {COUNCIL_VOTING.map((v) => (
               <option key={v} value={v}>
-                {COUNCIL_VOTING_LABELS[v]}
+                {t(COUNCIL_VOTING_LABELS[v])}
               </option>
             ))}
           </select>
         </Field>
-        <Field label="Quorum (votes)" hint="Used in quorum mode; never more than the council has">
+        <Field label={t('Quorum (votes)')} hint={t('Used in quorum mode; never more than the council has')}>
           <input
             className="input"
             inputMode="numeric"
@@ -97,7 +99,7 @@ function Rules({ governance: g, editable }: { governance: Governance; editable: 
             onChange={(e) => setForm({ ...form, quorum: e.target.value.replace(/\D/g, '') })}
           />
         </Field>
-        <Field label="Council term (months)" hint="0: no term limit. Applies to new seats">
+        <Field label={t('Council term (months)')} hint={t('0: no term limit. Applies to new seats')}>
           <input
             className="input"
             inputMode="numeric"
@@ -110,7 +112,7 @@ function Rules({ governance: g, editable }: { governance: Governance; editable: 
       <ErrorAlert error={save.error} />
       {editable && (
         <button className="btn primary" style={{ alignSelf: 'flex-start' }} disabled={save.isPending}>
-          Save rules
+          {t('Save rules')}
         </button>
       )}
     </form>
@@ -126,18 +128,18 @@ function Council({ governance: g, canRenew }: { governance: Governance; canRenew
       queryClient.invalidateQueries({ queryKey: ['governance'] });
       toast.success(
         g.councilTermMonths
-          ? `New term of ${plural(g.councilTermMonths, 'month')} started`
-          : 'Term limit removed',
+          ? t('New term of {0} started', plural(g.councilTermMonths, 'month'))
+          : t('Term limit removed'),
       );
     },
   });
   return (
-    <div className="card pad-0 table-wrap" aria-label="Council members">
+    <div className="card pad-0 table-wrap" aria-label={t('Council members')}>
       <table className="table">
         <thead>
           <tr>
-            <th>Council member</th>
-            <th>Term ends</th>
+            <th>{t('Council member')}</th>
+            <th>{t('Term ends')}</th>
             <th />
           </tr>
         </thead>
@@ -147,7 +149,7 @@ function Council({ governance: g, canRenew }: { governance: Governance; canRenew
               <td>
                 <b>{c.user.displayName}</b> <span className="small muted">@{c.user.username}</span>
               </td>
-              <td className="small">{c.termEndsAt ? formatDate(c.termEndsAt, false) : 'No term limit'}</td>
+              <td className="small">{c.termEndsAt ? formatDate(c.termEndsAt, false) : t('No term limit')}</td>
               <td className="right">
                 {canRenew && (
                   <button
@@ -155,7 +157,7 @@ function Council({ governance: g, canRenew }: { governance: Governance; canRenew
                     disabled={renew.isPending}
                     onClick={() => renew.mutate(c.user.id)}
                   >
-                    {g.councilTermMonths ? 'Start a new term' : 'Remove the limit'}
+                    {g.councilTermMonths ? t('Start a new term') : t('Remove the limit')}
                   </button>
                 )}
               </td>
@@ -164,7 +166,7 @@ function Council({ governance: g, canRenew }: { governance: Governance; canRenew
           {!g.council.length && (
             <tr>
               <td colSpan={3} className="small muted">
-                Nobody is on the council yet.
+                {t('Nobody is on the council yet.')}
               </td>
             </tr>
           )}
@@ -184,7 +186,7 @@ function Reports() {
   const [form, setForm] = useState({
     from: dayInput(firstOfLast),
     to: dayInput(firstOfMonth),
-    title: firstOfLast.toLocaleDateString('en', { month: 'long', year: 'numeric', timeZone: 'UTC' }),
+    title: firstOfLast.toLocaleDateString(intlLocale(), { month: 'long', year: 'numeric', timeZone: 'UTC' }),
     notes: '',
   });
   const range = { from: `${form.from}T00:00:00Z`, to: `${form.to}T00:00:00Z` };
@@ -204,7 +206,7 @@ function Reports() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transparency'] });
-      toast.success('Report published');
+      toast.success(t('Report published'));
       setForm({ ...form, notes: '' });
     },
   });
@@ -217,15 +219,15 @@ function Reports() {
     <div className="grid-2">
       <form
         className="card stack"
-        aria-label="New transparency report"
+        aria-label={t('New transparency report')}
         onSubmit={(e) => {
           e.preventDefault();
           publish.mutate();
         }}
       >
-        <h3>New transparency report</h3>
+        <h3>{t('New transparency report')}</h3>
         <div className="grid-2" style={{ gap: 12 }}>
-          <Field label="From">
+          <Field label={t('From')}>
             <input
               className="input"
               type="date"
@@ -233,7 +235,7 @@ function Reports() {
               onChange={(e) => setForm({ ...form, from: e.target.value })}
             />
           </Field>
-          <Field label="Until (not included)">
+          <Field label={t('Until (not included)')}>
             <input
               className="input"
               type="date"
@@ -242,7 +244,7 @@ function Reports() {
             />
           </Field>
         </div>
-        <Field label="Title">
+        <Field label={t('Title')}>
           <input
             className="input"
             value={form.title}
@@ -251,7 +253,7 @@ function Reports() {
             onChange={(e) => setForm({ ...form, title: e.target.value })}
           />
         </Field>
-        <Field label="Notes (optional)">
+        <Field label={t('Notes (optional)')}>
           <textarea
             className="textarea"
             value={form.notes}
@@ -261,27 +263,42 @@ function Reports() {
         <ErrorAlert error={preview.error ?? publish.error} />
         {s && (
           <dl className="dl small">
-            <dt>Applications</dt>
+            <dt>{t('Applications')}</dt>
             <dd>
-              {s.applications.received} received · {s.applications.approved} approved ·{' '}
-              {s.applications.rejected} not approved
+              {t(
+                '{0} received · {1} approved · {2} not approved',
+                s.applications.received,
+                s.applications.approved,
+                s.applications.rejected,
+              )}
             </dd>
-            <dt>Council</dt>
+            <dt>{t('Council')}</dt>
             <dd>
-              {plural(s.council.votes, 'vote')} ({s.council.approvals} for, {s.council.rejections} against)
+              {t(
+                '{0} ({1} for, {2} against)',
+                plural(s.council.votes, 'vote'),
+                s.council.approvals,
+                s.council.rejections,
+              )}
             </dd>
-            <dt>Moderation</dt>
+            <dt>{t('Moderation')}</dt>
             <dd>
-              {s.moderation.accountsSuspended} suspended · {s.moderation.identityApproved} identities verified
+              {t(
+                '{0} suspended · {1} identities verified',
+                s.moderation.accountsSuspended,
+                s.moderation.identityApproved,
+              )}
             </dd>
-            <dt>Registry</dt>
+            <dt>{t('Registry')}</dt>
+            <dd>{t('{0} added · {1} expired', s.registry.added, s.registry.expired)}</dd>
+            <dt>{t('Economy')}</dt>
             <dd>
-              {s.registry.added} added · {s.registry.expired} expired
-            </dd>
-            <dt>Economy</dt>
-            <dd>
-              {s.economy.newAccounts} new accounts · {s.economy.investments} investments · {s.economy.trades}{' '}
-              trades
+              {t(
+                '{0} new accounts · {1} investments · {2} trades',
+                s.economy.newAccounts,
+                s.economy.investments,
+                s.economy.trades,
+              )}
             </dd>
           </dl>
         )}
@@ -290,15 +307,15 @@ function Reports() {
           style={{ alignSelf: 'flex-start' }}
           disabled={publish.isPending || !s}
         >
-          Publish report
+          {t('Publish report')}
         </button>
         <p className="tiny muted" style={{ margin: 0 }}>
-          The numbers are frozen when you publish; the report is public at /transparency.
+          {t('The numbers are frozen when you publish; the report is public at /transparency.')}
         </p>
       </form>
       <div className="card stack">
-        <h3>Published</h3>
-        {reports.data?.length === 0 && <p className="small muted">No reports yet.</p>}
+        <h3>{t('Published')}</h3>
+        {reports.data?.length === 0 && <p className="small muted">{t('No reports yet.')}</p>}
         {reports.data?.map((r) => (
           <div key={r.id} className="spread small">
             <span>
@@ -310,9 +327,9 @@ function Reports() {
             </span>
             <button
               className="btn sm ghost danger-text"
-              onClick={() => confirm(`Take "${r.title}" down?`) && retract.mutate(r.id)}
+              onClick={() => confirm(t('Take "{0}" down?', r.title)) && retract.mutate(r.id)}
             >
-              Retract
+              {t('Retract')}
             </button>
           </div>
         ))}

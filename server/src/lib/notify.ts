@@ -2,13 +2,15 @@ import type { Notification, NotificationType } from '@ovl/shared';
 import { inArray, isNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { Db } from '../db/client';
-import { notifications } from '../db/schema';
+import { notifications, users } from '../db/schema';
+import { say, userLocale, type Text } from './i18n';
 import { iso } from './mappers';
 
 export interface NotificationInput {
   type: NotificationType;
-  title: string;
-  body?: string;
+  /** Plain English or text`…${value}`: each person gets it in their language. */
+  title: Text;
+  body?: Text;
   /** App route, e.g. /invoices or /chats/<id>. */
   link?: string | null;
 }
@@ -44,14 +46,22 @@ export async function queueNotification(
 ) {
   const ids = [...new Set([...userIds].filter((id): id is string => !!id))];
   if (!ids.length) return;
+  const people = await db
+    .select({ id: users.id, preferences: users.preferences })
+    .from(users)
+    .where(inArray(users.id, ids));
+  const locales = new Map(people.map((p) => [p.id, userLocale(p.preferences)]));
   await db.insert(notifications).values(
-    ids.map((userId) => ({
-      userId,
-      type: input.type,
-      title: clip(input.title, 200),
-      body: clip(input.body ?? '', 500),
-      link: input.link ?? null,
-    })),
+    ids.map((userId) => {
+      const locale = locales.get(userId) ?? 'en';
+      return {
+        userId,
+        type: input.type,
+        title: clip(say(locale, input.title), 200),
+        body: clip(input.body === undefined ? '' : say(locale, input.body), 500),
+        link: input.link ?? null,
+      };
+    }),
   );
   queued = true;
 }

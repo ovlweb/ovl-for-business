@@ -61,6 +61,7 @@ import { listingDtos } from './stock/service';
 import { emitEvent } from '../lib/webhooks';
 import { walletAudience } from './wallets/routes';
 import { getOrCreateWallet, listOwnerWallets } from './wallets/service';
+import { text } from '../lib/i18n';
 
 const like = (q: string) => `%${q.replace(/[%_\\]/g, '\\$&')}%`;
 
@@ -262,10 +263,10 @@ export async function adminRoutes(fastify: FastifyInstance) {
       if (target.id === me.id) throw badRequest('You cannot change your own account here');
       const { role, status } = req.body;
       if (role && role !== target.role && !canAssignRole(me.role, target.role, role)) {
-        throw forbidden(`You cannot change a ${target.role} into a ${role}`);
+        throw forbidden(text`You cannot change a ${target.role} into a ${role}`);
       }
       if (status && status !== target.status && !canAssignRole(me.role, target.role, target.role)) {
-        throw forbidden(`You cannot suspend a ${target.role}`);
+        throw forbidden(text`You cannot suspend a ${target.role}`);
       }
       const updated = await app.db.transaction(async (tx) => {
         if (role && role !== target.role) await changeRole(tx, target.id, role);
@@ -321,7 +322,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       const [target] = await app.db.select().from(users).where(eq(users.id, req.params.id));
       if (!target) throw notFound('User');
       if (target.id !== me.id && !canAssignRole(me.role, target.role, target.role)) {
-        throw forbidden(`You cannot sign out a ${target.role}`);
+        throw forbidden(text`You cannot sign out a ${target.role}`);
       }
       const ids = await revokeSessions(app, eq(sessions.userId, target.id));
       await audit(app.db, {
@@ -610,7 +611,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         (lockDays < app.config.STOCK_LOCK_DAYS_MIN || lockDays > app.config.STOCK_LOCK_DAYS_MAX)
       ) {
         throw badRequest(
-          `Lock period must be between ${app.config.STOCK_LOCK_DAYS_MIN} and ${app.config.STOCK_LOCK_DAYS_MAX} days`,
+          text`Lock period must be between ${app.config.STOCK_LOCK_DAYS_MIN} and ${app.config.STOCK_LOCK_DAYS_MAX} days`,
         );
       }
       const price = sharePrice !== undefined ? parseAmount(sharePrice, listing.currency) : undefined;

@@ -1,5 +1,5 @@
 import type { Me, Permission } from '@ovl/shared';
-import { signInWithPasskey } from '@ovl/ui';
+import { signInWithPasskey, syncLocale, t } from '@ovl/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api } from './api';
@@ -41,6 +41,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     if (!api.isSignedIn) return setMe(null);
     try {
       const user = await api.me.get();
+      syncLocale(user.preferences.locale);
       setMe(user.permissions.includes('admin.panel') ? user : null);
     } catch {
       setMe(null);
@@ -64,7 +65,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       const user = await api.auth.login({ login, password, code });
       if (!user.permissions.includes('admin.panel')) {
         await api.auth.logout();
-        throw new Error('This account has no access to the admin panel.');
+        throw new Error(t('This account has no access to the admin panel.'));
       }
       setMe(user);
     },
@@ -72,7 +73,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       const user = await signInWithPasskey(api);
       if (!user.permissions.includes('admin.panel')) {
         await api.auth.logout();
-        throw new Error('This account has no access to the admin panel.');
+        throw new Error(t('This account has no access to the admin panel.'));
       }
       setMe(user);
     },

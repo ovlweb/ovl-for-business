@@ -23,6 +23,7 @@ import { currentUser, type AuthUser } from '../plugins/auth';
 import { emitRegistryEvent } from './registry';
 import { walletAudience } from './wallets/routes';
 import { assertWalletAccess, credit, debit, getOrCreateWallet, type WalletRow } from './wallets/service';
+import { text } from '../lib/i18n';
 
 type CurrencyRow = typeof virtualCurrencies.$inferSelect;
 type EntryRow = typeof registryEntries.$inferSelect;
@@ -196,18 +197,18 @@ export async function virtualCurrencyRoutes(fastify: FastifyInstance) {
         .where(eq(registryEntries.id, req.params.id));
       if (!entry || entry.kind !== 'virtual_country') throw notFound('Virtual country');
       await assertManager(app.db, entry, me);
-      if (entry.status !== 'active') throw conflict(`This virtual country is ${entry.status}`);
+      if (entry.status !== 'active') throw conflict(text`This virtual country is ${entry.status}`);
       const { code, name, decimals } = req.body;
       if (ISO_CURRENCY_CODES.has(code))
-        throw badRequest(`${code} is an ISO 4217 currency; pick another code`);
+        throw badRequest(text`${code} is an ISO 4217 currency; pick another code`);
       const row = await app.db.transaction(async (tx) => {
         const [existing] = await tx
           .select({ code: virtualCurrencies.code })
           .from(virtualCurrencies)
           .where(eq(virtualCurrencies.registryEntryId, entry.id));
-        if (existing) throw conflict(`This virtual country already issues ${existing.code}`);
+        if (existing) throw conflict(text`This virtual country already issues ${existing.code}`);
         const [taken] = await tx.select().from(virtualCurrencies).where(eq(virtualCurrencies.code, code));
-        if (taken) throw conflict(`${code} is already taken`);
+        if (taken) throw conflict(text`${code} is already taken`);
         const [row] = await tx
           .insert(virtualCurrencies)
           .values({ code, name, decimals, registryEntryId: entry.id, createdBy: me.id })

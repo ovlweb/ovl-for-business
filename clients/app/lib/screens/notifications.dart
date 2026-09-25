@@ -10,6 +10,7 @@ import '../theme/theme.dart';
 import '../ui/format.dart';
 import '../ui/widgets.dart';
 import 'contacts.dart';
+import '../i18n/i18n.dart';
 
 const _icons = <String, IconData>{
   'mention': LucideIcons.atSign,
@@ -61,8 +62,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               children: [
                 PageTitle(
                   icon: LucideIcons.bell,
-                  title: 'Notifications',
-                  subtitle: 'Mentions, replies, payments, invoices, approvals and news about your applications.',
+                  title: tr('Notifications'),
+                  subtitle: tr('Mentions, replies, payments, invoices, approvals and news about your applications.'),
                   actions: [
                     OutlinedButton.icon(
                       onPressed: (page?.unreadCount ?? 0) == 0
@@ -72,7 +73,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               session.queries.invalidate('notifications');
                             },
                       icon: const Icon(LucideIcons.checkCheck, size: 17),
-                      label: const Text('Mark all as read'),
+                      label: Text(tr('Mark all as read')),
                     ),
                   ],
                 ),
@@ -81,10 +82,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   alignment: Alignment.centerLeft,
                   child: SegmentedButton<bool>(
                     segments: [
-                      const ButtonSegment(value: false, label: Text('All')),
+                      ButtonSegment(value: false, label: Text(tr('All'))),
                       ButtonSegment(
                         value: true,
-                        label: Text((page?.unreadCount ?? 0) > 0 ? 'Unread (${page!.unreadCount})' : 'Unread'),
+                        label: Text(
+                          (page?.unreadCount ?? 0) > 0 ? tr('Unread ({0})', [page!.unreadCount]) : tr('Unread'),
+                        ),
                       ),
                     ],
                     selected: {_unreadOnly},
@@ -97,8 +100,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 if (page != null && page.items.isEmpty)
                   EmptyState(
                     icon: LucideIcons.bellOff,
-                    title: _unreadOnly ? 'All caught up' : 'Nothing yet',
-                    text: 'Mentions, payments and approvals show up here.',
+                    title: _unreadOnly ? tr('All caught up') : tr('Nothing yet'),
+                    text: tr('Mentions, payments and approvals show up here.'),
                   ),
                 if (page != null && page.items.isNotEmpty)
                   OvlCard(

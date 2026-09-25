@@ -15,6 +15,7 @@ import { forbidden, notFound } from '../../lib/errors';
 import { iso, isoOrNull, summaryColumns, toUserSummary } from '../../lib/mappers';
 import { fileDtos } from '../files';
 import { queueNotification } from '../../lib/notify';
+import { english, text, type LocalText, type Text } from '../../lib/i18n';
 
 export type ChatRow = typeof chats.$inferSelect;
 export type MessageRow = typeof messages.$inferSelect;
@@ -455,6 +456,12 @@ const summaryOf = (m: MessageRow) =>
  * After a message is sent: mentions, replies and comments on someone's post go to the
  * notification center; everyone else in a direct chat, group or ticket who is away gets a push.
  */
+/**
+ * A system line in a chat ("Maria added Oleg"): English in the body (previews, search), the text
+ * with its values in meta.text, so every app shows it in its own language.
+ */
+export const systemText = (value: LocalText) => ({ body: english(value), meta: { text: value } });
+
 export async function notifyNewMessage(
   app: FastifyInstance,
   chat: ChatRow,
@@ -462,7 +469,6 @@ export async function notifyNewMessage(
   sender: { id: string; displayName: string },
 ) {
   if (message.kind !== 'text') return;
-  const where = chat.type === 'direct' ? '' : ` in ${chat.title}`;
   const link =
     chat.type === 'support'
       ? `/support/${chat.id}`
@@ -472,16 +478,30 @@ export async function notifyNewMessage(
   const tell = async (
     userIds: (string | null | undefined)[],
     type: 'mention' | 'reply' | 'comment',
-    title: string,
+    title: Text,
   ) => {
     const fresh = userIds.filter((id): id is string => !!id && !told.has(id));
     fresh.forEach((id) => told.add(id));
     await queueNotification(app.db, fresh, { type, title, body, link });
   };
-  await tell(message.mentions, 'mention', `${sender.displayName} mentioned you${where}`);
+  const direct = chat.type === 'direct';
+  const name = sender.displayName;
+  await tell(
+    message.mentions,
+    'mention',
+    direct ? text`${name} mentioned you` : text`${name} mentioned you in ${chat.title}`,
+  );
   for (const [id, type, title] of [
-    [message.replyToId, 'reply', `${sender.displayName} replied to you${where}`],
-    [message.threadId, 'comment', `${sender.displayName} commented on your post${where}`],
+    [
+      message.replyToId,
+      'reply',
+      direct ? text`${name} replied to you` : text`${name} replied to you in ${chat.title}`,
+    ],
+    [
+      message.threadId,
+      'comment',
+      direct ? text`${name} commented on your post` : text`${name} commented on your post in ${chat.title}`,
+    ],
   ] as const) {
     if (!id) continue;
     const [original] = await app.db

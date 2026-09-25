@@ -32,6 +32,7 @@ import {
   walletOwnerId,
   type WalletRow,
 } from './wallets/service';
+import { text } from '../lib/i18n';
 
 export function quote(table: RateTable, fromCurrency: string, toCurrency: string, amount: bigint) {
   if (fromCurrency === toCurrency) throw badRequest('Pick a different currency to exchange into');
@@ -40,7 +41,7 @@ export function quote(table: RateTable, fromCurrency: string, toCurrency: string
   const receive = convert(amount - fee, fromCurrency, toCurrency, table);
   const rate = crossRate(fromCurrency, toCurrency, table);
   if (receive === null || rate === null)
-    throw badRequest(`There is no exchange rate for ${fromCurrency} → ${toCurrency} yet`);
+    throw badRequest(text`There is no exchange rate for ${fromCurrency} → ${toCurrency} yet`);
   if (receive <= 0n) throw badRequest('The amount is too small to exchange');
   return { fee, receive, rate };
 }
@@ -233,7 +234,7 @@ export async function exchangeRoutes(fastify: FastifyInstance) {
             });
         }
         for (const r of body.rates ?? []) {
-          if (!CURRENCY_CODES.includes(r.currency)) throw badRequest(`Unknown currency ${r.currency}`);
+          if (!CURRENCY_CODES.includes(r.currency)) throw badRequest(text`Unknown currency ${r.currency}`);
           if (r.rate === null || Number(r.rate) === 0) {
             await tx.delete(exchangeRates).where(eq(exchangeRates.currency, r.currency));
           } else {

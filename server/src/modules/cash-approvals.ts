@@ -14,6 +14,7 @@ import { currentUser } from '../plugins/auth';
 import { completeCashRequest, lockPending, recordCashOperation } from './cash';
 import { walletAudience } from './wallets/routes';
 import { frozenAmounts, lockWallet } from './wallets/service';
+import { text } from '../lib/i18n';
 
 /** Pending withdrawals keep their money aside until the second manager decides. */
 const APPROVAL_HOLD = 'withdrawal_approval';
@@ -55,7 +56,7 @@ export async function createApproval(tx: Db, input: NewApproval): Promise<Approv
     const frozen = (await frozenAmounts(tx, [wallet.id])).get(wallet.id) ?? 0n;
     if (wallet.balance - frozen < input.amount)
       throw insufficientFunds(
-        `Only ${formatAmount(wallet.balance - frozen, wallet.currency)} ${wallet.currency} is available`,
+        text`Only ${formatAmount(wallet.balance - frozen, wallet.currency)} ${wallet.currency} is available`,
       );
   }
   const [row] = await tx
@@ -167,7 +168,7 @@ export async function cashApprovalRoutes(fastify: FastifyInstance) {
   const lock = async (tx: Db, id: string) => {
     const [row] = await tx.select().from(cashApprovals).where(eq(cashApprovals.id, id)).for('update');
     if (!row) throw notFound('Approval');
-    if (row.status !== 'pending') throw conflict(`This operation is already ${row.status}`);
+    if (row.status !== 'pending') throw conflict(text`This operation is already ${row.status}`);
     return row;
   };
   const announce = async (walletId: string) => {

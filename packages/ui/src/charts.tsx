@@ -1,5 +1,6 @@
 import { motion } from 'motion/react';
 import { useEffect, useId, useRef, useState } from 'react';
+import { t } from './i18n';
 
 /**
  * Monotone cubic interpolation (Fritsch–Carlson): smooth like a spline, but it never
@@ -58,7 +59,7 @@ export function AreaChart({
   format,
   height = 120,
   color = 'var(--accent)',
-  label = 'Price history',
+  label = t('Price history'),
 }: {
   values: number[];
   labels?: string[];
@@ -74,7 +75,7 @@ export function AreaChart({
   if (values.length < 2) {
     return (
       <div className="muted small" style={{ height, display: 'flex', alignItems: 'center' }}>
-        Not enough history yet — the chart appears after the next price change.
+        {t('Not enough history yet — the chart appears after the next price change.')}
       </div>
     );
   }
@@ -217,7 +218,7 @@ export function ShareBar({ parts }: { parts: { value: number; color: string; lab
       {parts.map((p) => (
         <motion.div
           key={p.label}
-          title={p.label}
+          title={t(p.label)}
           style={{ background: p.color }}
           initial={{ width: 0 }}
           animate={{ width: `${(p.value / total) * 100}%` }}
