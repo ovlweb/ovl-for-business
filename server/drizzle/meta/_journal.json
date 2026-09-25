@@ -148,6 +148,13 @@
       "when": 1790335810895,
       "tag": "0020_investor_protection",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1790337089855,
+      "tag": "0021_messaging",
+      "breakpoints": true
     }
   ]
 }

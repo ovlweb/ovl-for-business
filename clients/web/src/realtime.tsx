@@ -37,15 +37,21 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       switch (event.type) {
         case 'message.created':
         case 'message.updated': {
-          queryClient.setQueryData<MessagePages>(['messages', event.chatId], (data) => {
-            if (!data) return data;
-            const [first = [], ...rest] = data.pages;
-            const exists = data.pages.some((p) => p.some((m) => m.id === event.message.id));
-            const pages = exists
-              ? data.pages.map((p) => p.map((m) => (m.id === event.message.id ? event.message : m)))
-              : [[event.message, ...first], ...rest];
-            return { ...data, pages };
-          });
+          const threadId = event.message.threadId;
+          // Comments under a channel post live in their own list, not in the channel feed.
+          queryClient.setQueryData<MessagePages>(
+            threadId ? ['comments', event.chatId, threadId] : ['messages', event.chatId],
+            (data) => {
+              if (!data) return data;
+              const [first = [], ...rest] = data.pages;
+              const exists = data.pages.some((p) => p.some((m) => m.id === event.message.id));
+              const pages = exists
+                ? data.pages.map((p) => p.map((m) => (m.id === event.message.id ? event.message : m)))
+                : [[event.message, ...first], ...rest];
+              return { ...data, pages };
+            },
+          );
+          if (threadId && !event.message.mentions.includes(me.id)) break;
           queryClient.invalidateQueries({ queryKey: ['chats'] });
           queryClient.invalidateQueries({ queryKey: ['support'] });
           // Application cards posted into the council / moderation chats: refresh the review queue.
@@ -54,9 +60,12 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
           if (event.type === 'message.created' && sender && sender.id !== me.id) {
             const chat = queryClient.getQueryData<Chat[]>(['chats'])?.find((c) => c.id === event.chatId);
             const route = chat ? `#/chats/${event.chatId}` : `#/support/${event.chatId}`;
+            const mentioned = event.message.mentions.includes(me.id);
             const title =
-              chat && chat.type !== 'direct' ? `${sender.displayName} · ${chat.title}` : sender.displayName;
-            showNotification(title, event.message.body, event.chatId, () => {
+              (mentioned ? 'Mentioned by ' : '') +
+              (chat && chat.type !== 'direct' ? `${sender.displayName} · ${chat.title}` : sender.displayName);
+            const body = event.message.body || (event.message.attachments.length ? 'Sent a file' : '');
+            showNotification(title, body, event.chatId, () => {
               location.hash = route;
             });
           }

@@ -17,7 +17,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
-import { Conversation } from '../components/Conversation';
+import { Conversation, messageSummary } from '../components/Conversation';
 import { Icon } from '../components/Icon';
 import { StoriesBar } from '../components/Stories';
 
@@ -26,7 +26,7 @@ function preview(chat: Chat): string {
   if (!m) return chat.type === 'channel' ? chat.description || 'News channel' : 'No messages yet';
   if (m.deleted) return 'Message deleted';
   const author = m.kind === 'system' || chat.type === 'direct' ? '' : `${m.sender?.displayName ?? ''}: `;
-  return author + m.body;
+  return author + messageSummary(m, 200);
 }
 
 function ChatRow({ chat, active }: { chat: Chat; active: boolean }) {
@@ -46,6 +46,11 @@ function ChatRow({ chat, active }: { chat: Chat; active: boolean }) {
         <span>{chat.lastMessage ? shortTime(chat.lastMessage.createdAt) : ''}</span>
         <span className="row" style={{ gap: 4 }}>
           {chat.pinned && <Icon name="pin" size={13} />}
+          {chat.unreadMentions > 0 && (
+            <span className="count mention-count" aria-label={`${chat.unreadMentions} mentions`}>
+              @
+            </span>
+          )}
           {chat.unreadCount > 0 && <span className="count">{chat.unreadCount}</span>}
         </span>
       </div>
@@ -244,10 +249,49 @@ function NewChatModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** Messages matching the search box, across all your chats. */
+function MessageResults({ q }: { q: string }) {
+  const results = useQuery({ queryKey: ['search', q], queryFn: () => api.chats.search(q) });
+  return (
+    <div className="stack-sm" style={{ padding: '4px 0 8px' }}>
+      <div className="list-label">Messages</div>
+      {results.isLoading && <Spinner center />}
+      <ErrorAlert error={results.error} />
+      {results.data?.map(({ chat, message }) => (
+        <Link
+          key={message.id}
+          className="chat-item"
+          to={`/chats/${chat.id}?message=${message.threadId ?? message.id}`}
+        >
+          <Avatar name={chat.title} size={38} />
+          <div className="grow">
+            <div className="row" style={{ gap: 6 }}>
+              <span className="bold ellipsis">{chat.title}</span>
+            </div>
+            <div className="preview ellipsis">
+              {message.sender && chat.type !== 'direct' ? `${message.sender.displayName}: ` : ''}
+              {messageSummary(message, 200)}
+            </div>
+          </div>
+          <div className="meta">
+            <span>{shortTime(message.createdAt)}</span>
+          </div>
+        </Link>
+      ))}
+      {results.data?.length === 0 && (
+        <p className="small muted" style={{ padding: '0 16px' }}>
+          No messages found
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function ChatsPage() {
   const { chatId } = useParams();
   const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState('');
+  const search = useDebounced(filter.trim(), 300);
   const chats = useQuery({ queryKey: ['chats'], queryFn: api.chats.list });
   const list = (chats.data ?? []).filter((c) => c.title.toLowerCase().includes(filter.toLowerCase()));
 
@@ -264,7 +308,9 @@ export function ChatsPage() {
         <div style={{ padding: '10px 14px' }}>
           <input
             className="input"
-            placeholder="Filter chats"
+            type="search"
+            aria-label="Search chats and messages"
+            placeholder="Search chats and messages"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
@@ -275,11 +321,12 @@ export function ChatsPage() {
           {list.map((c) => (
             <ChatRow key={c.id} chat={c} active={c.id === chatId} />
           ))}
-          {chats.data && list.length === 0 && (
+          {chats.data && list.length === 0 && !filter && (
             <Empty title="No chats yet">
               Start a conversation with someone or subscribe to a news channel.
             </Empty>
           )}
+          {search.length >= 2 && <MessageResults q={search} />}
         </div>
       </aside>
       {chatId ? (

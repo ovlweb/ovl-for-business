@@ -11,7 +11,11 @@ const LEAVABLE: Chat['type'][] = ['group', 'channel'];
 
 function EditDetails({ chat }: { chat: Chat }) {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({ title: chat.title, description: chat.description });
+  const [form, setForm] = useState({
+    title: chat.title,
+    description: chat.description,
+    ...(chat.type === 'channel' ? { commentsEnabled: chat.commentsEnabled } : {}),
+  });
   const save = useMutation({
     mutationFn: () => api.chats.update(chat.id, form),
     onSuccess: () => {
@@ -44,6 +48,16 @@ function EditDetails({ chat }: { chat: Chat }) {
           onChange={(e) => setForm({ ...form, description: e.target.value })}
         />
       </Field>
+      {chat.type === 'channel' && (
+        <label className="row small">
+          <input
+            type="checkbox"
+            checked={!!form.commentsEnabled}
+            onChange={(e) => setForm({ ...form, commentsEnabled: e.target.checked })}
+          />
+          Subscribers can comment on posts
+        </label>
+      )}
       <ErrorAlert error={save.error} />
       {save.isSuccess && <div className="alert success small">Saved</div>}
       <button className="btn" disabled={save.isPending}>

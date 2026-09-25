@@ -80,9 +80,23 @@ const PEOPLE: Person[] = [
   },
 ];
 
+/** Sign-in and registration are rate limited per minute: wait and try again instead of failing. */
+async function patiently<T>(call: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await call();
+    } catch (error) {
+      if (!(error instanceof OvlApiError) || error.status !== 429 || attempt >= 8) throw error;
+      const seconds = Number(/retry in (\d+)/.exec(error.message)?.[1] ?? 15);
+      console.log(`Rate limited, waiting ${seconds} s…`);
+      await new Promise((resolve) => setTimeout(resolve, (seconds + 1) * 1000));
+    }
+  }
+}
+
 async function signIn(login: string, password: string): Promise<{ client: OvlClient; me: Me }> {
   const client = new OvlClient({ baseUrl: API });
-  const me = await client.auth.login({ login, password });
+  const me = await patiently(() => client.auth.login({ login, password }));
   return { client, me };
 }
 
@@ -92,18 +106,20 @@ async function confirmEmail(client: OvlClient, email: string) {
   if (!res.ok) return;
   const mails = (await res.json()) as { to: string; text: string }[];
   const token = mails.find((m) => m.to === email)?.text.match(/verify-email\?token=([\w-]+)/)?.[1];
-  if (token) await client.auth.verifyEmail(token);
+  if (token) await patiently(() => client.auth.verifyEmail(token));
 }
 
 async function person(p: Person): Promise<{ client: OvlClient; me: Me }> {
   const client = new OvlClient({ baseUrl: API });
   try {
-    const me = await client.auth.register({
-      username: p.username,
-      email: `${p.username}@demo.ovl`,
-      password: PASSWORD,
-      displayName: p.displayName,
-    });
+    const me = await patiently(() =>
+      client.auth.register({
+        username: p.username,
+        email: `${p.username}@demo.ovl`,
+        password: PASSWORD,
+        displayName: p.displayName,
+      }),
+    );
     await confirmEmail(client, `${p.username}@demo.ovl`);
     await client.me.update({ bio: p.bio });
     await client.me.updatePreferences({
@@ -113,8 +129,11 @@ async function person(p: Person): Promise<{ client: OvlClient; me: Me }> {
     });
     return { client, me };
   } catch (error) {
-    if (error instanceof OvlApiError && error.status === 409) return signIn(p.username, PASSWORD);
-    throw error;
+    if (!(error instanceof OvlApiError) || error.status !== 409) throw error;
+    // Registered by an earlier, interrupted run: finish the email confirmation too.
+    const account = await signIn(p.username, PASSWORD);
+    if (!account.me.emailVerified) await confirmEmail(account.client, `${p.username}@demo.ovl`);
+    return account;
   }
 }
 
@@ -404,9 +423,15 @@ async function main() {
       title: 'Board — Aurora Media',
       memberIds: [u('ivan').me.id, u('chen').me.id, u('elena').me.id],
     });
-    await maria.chats.send(group.id, 'Agenda for Friday: Q3 results, radio license, hiring plan.');
+    const agenda = await maria.chats.send(
+      group.id,
+      'Agenda for Friday: Q3 results, radio license, hiring plan.',
+    );
     await u('chen').client.chats.send(group.id, 'I can present the cross-promotion with Northwind.');
     await u('elena').client.chats.send(group.id, 'Council will review the radio license on Thursday.');
+    await u('ivan').client.chats.react(group.id, agenda.id, '👍');
+    await u('chen').client.chats.react(group.id, agenda.id, '👍');
+    await maria.chats.send(group.id, '@ivan can you bring the Q3 numbers?');
   }
 
   const channels = await owner.client.chats.discoverChannels('ovl_news');
@@ -420,11 +445,19 @@ async function main() {
       channel.id,
       'The stock exchange now shows price history for every listing.',
     );
-    await u('arjun').client.chats.send(
+    const post = await u('arjun').client.chats.send(
       channel.id,
       'New: themes, multi-account and native apps for every platform.',
     );
     for (const name of ['maria', 'ivan', 'chen', 'amara']) await u(name).client.chats.join(channel.id);
+    await u('maria').client.chats.react(channel.id, post.id, '🎉');
+    await u('amara').client.chats.react(channel.id, post.id, '🔥');
+    await u('chen').client.chats.comment(channel.id, post.id, 'The desktop app is great, thanks!');
+    await u('ivan').client.chats.comment(
+      channel.id,
+      post.id,
+      'Is there a dark theme for the admin panel too?',
+    );
   }
 
   // --- Service stories -------------------------------------------------------------------

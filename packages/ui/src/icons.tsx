@@ -366,6 +366,36 @@ const PATHS = {
       <polyline points="12 6 12 12 16 14" />
     </>
   ),
+  paperclip: (
+    <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+  ),
+  smile: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+      <line x1="9" y1="9" x2="9.01" y2="9" />
+      <line x1="15" y1="9" x2="15.01" y2="9" />
+    </>
+  ),
+  comment: (
+    <>
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      <line x1="8" y1="9" x2="16" y2="9" />
+      <line x1="8" y1="13" x2="13" y2="13" />
+    </>
+  ),
+  checkCheck: (
+    <>
+      <path d="M18 6 7 17l-5-5" />
+      <path d="m22 10-7.5 7.5L13 16" />
+    </>
+  ),
+  at: (
+    <>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" />
+    </>
+  ),
 } as const;
 
 export type IconName = keyof typeof PATHS;

@@ -147,6 +147,27 @@ live.on((event) => {
 
 Server-to-server: `new OvlClient({ baseUrl, apiKey: 'ovl_…' })` and use `registry.*` / `stock.*`.
 
+## Messages
+
+- **Attachments**: upload with `POST /files`, then send
+  `POST /chats/:id/messages {body, fileIds}` (up to 10; the text may be empty). Messages carry
+  `attachments` with signed links that work in `<img>`; only people who can read the chat can open
+  them.
+- **Mentions**: `@username` of a chat member is stored in `mentions` (ids). `unreadMentions` in the
+  chat list counts unread messages that mention you.
+- **Reactions**: `POST /chats/:id/messages/:messageId/reactions {emoji}` and
+  `DELETE …/reactions?emoji=👍` (any single emoji, up to 20 different ones per message). Messages
+  carry `reactions: [{emoji, count, mine}]`.
+- **Read receipts**: direct chats have `peerReadMessageId`; `GET /chats/:id/receipts` shows how far
+  everyone in a group read, and `chat.read` events arrive live. Turning off the `readReceipts`
+  preference hides yours and theirs.
+- **Search**: `GET /chats/search?q=inv rep&chatId=` finds messages in your chats with every word as a
+  prefix, newest first.
+- **Channel comments**: subscribers comment with `POST /chats/:id/messages/:postId/comments` and read
+  them with `GET …/comments`. Comments have `threadId` (the post), stay out of the feed and the
+  unread count, and posts carry `commentCount`. Channel admins switch them off with
+  `PATCH /chats/:id {commentsEnabled: false}`.
+
 ## Realtime events
 
 Connect to `wss://…/api/v1/realtime?token=<accessToken>`. The server sends JSON events:
@@ -159,6 +180,7 @@ Connect to `wss://…/api/v1/realtime?token=<accessToken>`. The server sends JSO
 | `chat.updated`             | `chatId`                                 |
 | `chat.removed`             | `chatId`                                 |
 | `typing`                   | `chatId`, `userId`                       |
+| `chat.read`                | `chatId`, `userId`, `messageId`          |
 | `application.updated`      | `applicationId`, `status`, `stageIndex`  |
 | `story.created`            | `storyId`                                |
 | `wallet.updated`           | `walletId`                               |
@@ -365,7 +387,7 @@ team receives `payment_approval.updated` and `wallet.updated`.
 | Applications | `POST /applications`, `GET /applications/mine`, `/queue`, `/:id`, `POST /:id/review`, `/:id/withdraw`, `/:id/resubmit`; `POST /files`, `GET/DELETE /files/:id`                                                                                                                                                                                                                         |
 | Registry     | `GET /registry`, `GET /registry/:idOrNumber`, `GET /registry/:idOrNumber/certificate.pdf`, `GET /me/licences`, `POST /registry/:id/currency`, `GET /currencies`, `GET /virtual-currencies/:code`, `POST …/issue`, `POST …/redeem`                                                                                                                                                      |
 | Stock        | `GET /stock/listings`, `/stock/listings/:ticker`, `POST …/invest`, `GET /stock/portfolio`, `GET …/book`, `POST …/orders`, `GET /stock/orders`, `DELETE /stock/orders/:id`                                                                                                                                                                                                              |
-| Chats        | `GET /chats`, `POST /chats/direct`, `/chats/groups`, `/chats/channels`, `GET /channels`, messages, members, read, pin                                                                                                                                                                                                                                                                  |
+| Chats        | `GET /chats`, `POST /chats/direct`, `/chats/groups`, `/chats/channels`, `GET /channels`, messages, members, read, pin, `GET /chats/search`, reactions, receipts, comments                                                                                                                                                                                                              |
 | Support      | `POST/GET /support/tickets`, `GET /support/desk`, `POST /support/tickets/:id/status`                                                                                                                                                                                                                                                                                                   |
 | Stories      | `GET/POST /stories`, `POST /stories/:id/view`, `DELETE /stories/:id`                                                                                                                                                                                                                                                                                                                   |
 | Developer    | `GET/POST /api-keys`, `DELETE /api-keys/:id`, `GET/POST /webhooks`, `PATCH/DELETE /webhooks/:id`, `POST /webhooks/:id/{test,rotate-secret}`, `GET /webhooks/:id/deliveries`                                                                                                                                                                                                            |

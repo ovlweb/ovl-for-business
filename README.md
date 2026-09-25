@@ -65,8 +65,9 @@ Android, iOS, macOS and Windows.
   client in a separate _Support desk_ section; replies carry a staff badge and the owner's replies a
   special owner badge. The council cannot answer tickets.
 - **Chats** — direct messages, groups (you can only invite people from your contacts), news channels
-  (created only through moderation), the pinned council chat and the moderation team chat. Realtime
-  over WebSocket, unread counters, typing indicators.
+  (created only through moderation, with comments under posts), the pinned council chat and the
+  moderation team chat. Photos and files, @mentions, emoji reactions, read receipts (can be turned
+  off), message search. Realtime over WebSocket, unread counters, typing indicators.
 - **Licenses** — projects, fan-projects, TV / radio channels, verified websites, virtual countries and
   more (virtual only). Approval: **moderation → council vote (quorum) → owner confirmation**, then the
   license is rolled out into the public registry with a registry number.

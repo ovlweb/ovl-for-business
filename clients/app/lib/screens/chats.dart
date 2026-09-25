@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api/models.dart';
 import '../state/query.dart';
@@ -24,6 +25,9 @@ String chatSubtitle(Chat chat) => switch (chat.type) {
   'support' => chat.support == null ? 'Tech support' : 'Tech support · ${chat.support!.requester.displayName}',
   _ => '',
 };
+
+/// Quick reactions offered in a message's actions (any single emoji works with the API).
+const quickReactions = ['👍', '❤️', '😂', '🎉', '😮', '😢', '🙏', '🔥'];
 
 IconData? chatTypeIcon(String type) => switch (type) {
   'channel' => LucideIcons.radio,
@@ -65,8 +69,8 @@ class ChatTile extends StatelessWidget {
         : m.deleted
         ? 'Message deleted'
         : chat.type != 'direct' && m.sender != null && !m.isSystem
-        ? '${m.sender!.displayName.split(' ').first}: ${m.body}'
-        : m.body;
+        ? '${m.sender!.displayName.split(' ').first}: ${m.summary}'
+        : m.summary;
     final icon = chatTypeIcon(chat.type);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
@@ -122,6 +126,13 @@ class ChatTile extends StatelessWidget {
                               style: context.text.bodyMedium?.copyWith(fontSize: 13.5),
                             ),
                           ),
+                          if (chat.unreadMentions > 0)
+                            Container(
+                              margin: const EdgeInsets.only(left: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(color: c.accent2, borderRadius: BorderRadius.circular(99)),
+                              child: Text('@', style: font(body, 11.5, FontWeight.w800, color: c.accentText)),
+                            ),
                           if (chat.unreadCount > 0)
                             AnimatedScale(
                               scale: 1,
@@ -201,6 +212,15 @@ class ChatList extends StatefulWidget {
 
 class _ChatListState extends State<ChatList> {
   final _filter = TextEditingController();
+  Timer? _debounce;
+  String _search = '';
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _filter.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -226,8 +246,17 @@ class _ChatListState extends State<ChatList> {
           padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
           child: TextField(
             controller: _filter,
-            onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(hintText: 'Filter chats', prefixIcon: Icon(LucideIcons.search, size: 17)),
+            onChanged: (v) {
+              setState(() {});
+              _debounce?.cancel();
+              _debounce = Timer(const Duration(milliseconds: 350), () {
+                if (mounted) setState(() => _search = v.trim());
+              });
+            },
+            decoration: const InputDecoration(
+              hintText: 'Search chats and messages',
+              prefixIcon: Icon(LucideIcons.search, size: 17),
+            ),
           ),
         ),
         Expanded(
@@ -247,7 +276,8 @@ class _ChatListState extends State<ChatList> {
               final needle = _filter.text.trim().toLowerCase();
               final chats = s.data!.where((c) => needle.isEmpty || c.title.toLowerCase().contains(needle)).toList()
                 ..sort((a, b) => a.pinned != b.pinned ? (a.pinned ? -1 : 1) : b.activityAt.compareTo(a.activityAt));
-              if (chats.isEmpty) {
+              final searching = _search.length >= 2;
+              if (chats.isEmpty && !searching) {
                 return const EmptyState(
                   icon: LucideIcons.messageCircle,
                   title: 'No chats yet',
@@ -258,21 +288,70 @@ class _ChatListState extends State<ChatList> {
                 onRefresh: () => s.fetch(),
                 child: ListView.builder(
                   padding: const EdgeInsets.only(bottom: 20),
-                  itemCount: chats.length,
-                  itemBuilder: (context, i) => FadeSlideIn(
-                    delay: stagger(i, 25),
-                    child: ChatTile(
-                      chat: chats[i],
-                      selected: chats[i].id == widget.selectedId,
-                      onTap: () => context.go('/chats/${chats[i].id}'),
-                    ),
-                  ),
+                  itemCount: chats.length + (searching ? 1 : 0),
+                  itemBuilder: (context, i) => i == chats.length
+                      ? _MessageResults(key: ValueKey(_search), query: _search)
+                      : FadeSlideIn(
+                          delay: stagger(i, 25),
+                          child: ChatTile(
+                            chat: chats[i],
+                            selected: chats[i].id == widget.selectedId,
+                            onTap: () => context.go('/chats/${chats[i].id}'),
+                          ),
+                        ),
                 ),
               );
             },
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Messages matching the search box, across all your chats.
+class _MessageResults extends StatelessWidget {
+  const _MessageResults({super.key, required this.query});
+
+  final String query;
+
+  @override
+  Widget build(BuildContext context) {
+    final session = context.read<Session>();
+    return FutureBuilder<List<MessageSearchResult>>(
+      future: session.api.searchMessages(query),
+      builder: (context, s) {
+        final results = s.data;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
+              child: Text('MESSAGES', style: font(body, 11.5, FontWeight.w800, color: context.c.text3)),
+            ),
+            if (s.hasError) Padding(padding: const EdgeInsets.all(12), child: ErrorBox(s.error)),
+            if (results == null && !s.hasError)
+              const Padding(padding: EdgeInsets.all(16), child: LinearProgressIndicator()),
+            if (results != null && results.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
+                child: Text('No messages found', style: context.text.bodySmall),
+              ),
+            for (final r in results ?? const <MessageSearchResult>[])
+              ListTile(
+                leading: Avatar(name: r.chatTitle, size: 36),
+                title: Text(r.chatTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text(
+                  '${r.message.sender != null && r.chatType != 'direct' ? '${r.message.sender!.displayName}: ' : ''}${r.message.summary}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: Text(listTime(r.message.createdAt), style: context.text.bodySmall),
+                onTap: () => context.go('/chats/${r.chatId}'),
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -331,6 +410,8 @@ class _ConversationViewState extends State<ConversationView> {
     _sub = _session.events.listen((e) {
       if (e.chatId != widget.chatId) return;
       if ((e.type == 'message.created' || e.type == 'message.updated') && e.message != null) {
+        // Comments under a channel post live in their own sheet.
+        if (e.message!.threadId != null) return;
         setState(() {
           final i = _messages.indexWhere((m) => m.id == e.message!.id);
           if (i >= 0) {
@@ -346,7 +427,7 @@ class _ConversationViewState extends State<ConversationView> {
         setState(() => _typingName = 'Someone');
         _typingClear?.cancel();
         _typingClear = Timer(const Duration(seconds: 4), () => mounted ? setState(() => _typingName = null) : null);
-      } else if (e.type == 'chat.updated') {
+      } else if (e.type == 'chat.updated' || e.type == 'chat.read') {
         _refreshChat();
       } else if (e.type == 'chat.removed') {
         if (mounted) context.go(widget.backTo ?? '/chats');
@@ -444,6 +525,24 @@ class _ConversationViewState extends State<ConversationView> {
     }
   }
 
+  bool get _canReact => _chat?.myRole != null || (_chat?.type == 'support' && _session.me!.can('support.answer'));
+
+  Future<void> _react(Message m, String emoji) async {
+    final mine = m.reactions.any((r) => r.emoji == emoji && r.mine);
+    try {
+      final updated = mine
+          ? await _session.api.unreact(widget.chatId, m.id, emoji)
+          : await _session.api.react(widget.chatId, m.id, emoji);
+      if (!mounted) return;
+      setState(() {
+        final i = _messages.indexWhere((x) => x.id == updated.id);
+        if (i >= 0) _messages[i] = updated;
+      });
+    } catch (e) {
+      if (mounted) toast(context, errorText(e), error: true);
+    }
+  }
+
   Future<void> _actions(Message m, Offset? at) async {
     final me = _session.me!;
     final mine = m.sender?.id == me.id;
@@ -455,18 +554,42 @@ class _ConversationViewState extends State<ConversationView> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (_canReact)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 4,
+                  children: [
+                    for (final emoji in quickReactions)
+                      IconButton(
+                        tooltip: 'React $emoji',
+                        isSelected: m.reactions.any((r) => r.emoji == emoji && r.mine),
+                        onPressed: () => Navigator.pop(sheet, 'react:$emoji'),
+                        icon: Text(emoji, style: const TextStyle(fontSize: 22)),
+                      ),
+                  ],
+                ),
+              ),
+            if (_chat?.type == 'channel' && m.threadId == null)
+              ListTile(
+                leading: const Icon(LucideIcons.messageSquareText, size: 19),
+                title: Text(m.commentCount > 0 ? plural(m.commentCount, 'comment') : 'Comments'),
+                onTap: () => Navigator.pop(sheet, 'comments'),
+              ),
             if (_chat?.canPost ?? false)
               ListTile(
                 leading: const Icon(LucideIcons.reply, size: 19),
                 title: const Text('Reply'),
                 onTap: () => Navigator.pop(sheet, 'reply'),
               ),
-            ListTile(
-              leading: const Icon(LucideIcons.copy, size: 19),
-              title: const Text('Copy text'),
-              onTap: () => Navigator.pop(sheet, 'copy'),
-            ),
-            if (mine)
+            if (m.body.isNotEmpty)
+              ListTile(
+                leading: const Icon(LucideIcons.copy, size: 19),
+                title: const Text('Copy text'),
+                onTap: () => Navigator.pop(sheet, 'copy'),
+              ),
+            if (mine && m.body.isNotEmpty)
               ListTile(
                 leading: const Icon(LucideIcons.pencil, size: 19),
                 title: const Text('Edit'),
@@ -482,8 +605,11 @@ class _ConversationViewState extends State<ConversationView> {
         ),
       ),
     );
-    if (!mounted) return;
+    if (!mounted || choice == null) return;
+    if (choice.startsWith('react:')) return _react(m, choice.substring(6));
     switch (choice) {
+      case 'comments':
+        showComments(context, _chat!, m);
       case 'reply':
         setState(() {
           _replyTo = m;
@@ -624,6 +750,15 @@ class _ConversationViewState extends State<ConversationView> {
                   showAvatar: lastOfGroup,
                   replyTo: m.replyToId == null ? null : byId[m.replyToId],
                   onActions: (at) => _actions(m, at),
+                  onReact: _canReact ? (emoji) => _react(m, emoji) : null,
+                  onComments: chat?.type == 'channel' && (m.commentCount > 0 || chat?.myRole != null)
+                      ? () => showComments(context, chat!, m)
+                      : null,
+                  receipt: chat?.type == 'direct' && m.sender?.id == me.id && chat?.peerReadMessageId != null
+                      ? (chat!.peerReadMessageId! >= m.id ? 'read' : 'sent')
+                      : null,
+                  myId: me.id,
+                  myUsername: me.username,
                   staff: me.isStaff,
                   maxWidth: min(box.maxWidth * 0.78, 560),
                 ),
@@ -732,6 +867,11 @@ class MessageBubble extends StatelessWidget {
     required this.staff,
     this.replyTo,
     this.maxWidth = 520,
+    this.onReact,
+    this.onComments,
+    this.receipt,
+    this.myId,
+    this.myUsername,
   });
 
   final Message message;
@@ -742,6 +882,109 @@ class MessageBubble extends StatelessWidget {
   final void Function(Offset? at) onActions;
   final bool staff;
   final double maxWidth;
+
+  /// Toggle your reaction (null: you cannot react here).
+  final void Function(String emoji)? onReact;
+
+  /// Channel posts: open the comments.
+  final VoidCallback? onComments;
+
+  /// Direct chats: 'sent' or 'read' on your own messages.
+  final String? receipt;
+  final String? myId;
+  final String? myUsername;
+
+  static final _mention = RegExp(r'(@[a-zA-Z][a-zA-Z0-9_]{2,31})\b');
+
+  /// The text with @mentions in bold (your own name highlighted).
+  List<InlineSpan> _spans(BuildContext context, Color textColor) {
+    final c = context.c;
+    final spans = <InlineSpan>[];
+    var at = 0;
+    for (final match in _mention.allMatches(message.body)) {
+      if (match.start > at) spans.add(TextSpan(text: message.body.substring(at, match.start)));
+      final me = match.group(1)!.substring(1).toLowerCase() == myUsername;
+      spans.add(
+        TextSpan(
+          text: match.group(1),
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: mine ? textColor : c.accent,
+            backgroundColor: me && !mine ? c.accentSoft : null,
+            decoration: mine ? TextDecoration.underline : null,
+            decorationColor: textColor,
+          ),
+        ),
+      );
+      at = match.end;
+    }
+    if (at < message.body.length) spans.add(TextSpan(text: message.body.substring(at)));
+    return spans;
+  }
+
+  Widget _files(BuildContext context) {
+    final api = context.read<Session>().api;
+    final c = context.c;
+    final images = message.attachments.where((f) => f.isImage).toList();
+    final others = message.attachments.where((f) => !f.isImage).toList();
+    void open(FileInfo f) => launchUrl(api.fileUrl(f.url), mode: LaunchMode.externalApplication);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final f in images)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: GestureDetector(
+                onTap: () => open(f),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 260, maxWidth: 320),
+                    child: Image.network(
+                      api.fileUrl(f.url).toString(),
+                      fit: BoxFit.cover,
+                      semanticLabel: f.name,
+                      errorBuilder: (_, _, _) => Container(
+                        padding: const EdgeInsets.all(12),
+                        color: c.surface2,
+                        child: Text(f.name, style: context.text.bodySmall),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          for (final f in others)
+            InkWell(
+              onTap: () => open(f),
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 4),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: c.surface2, borderRadius: BorderRadius.circular(10)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(LucideIcons.fileText, size: 18, color: c.text2),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        f.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: c.text),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -819,7 +1062,7 @@ class MessageBubble extends StatelessWidget {
                     style: font(body, 12, FontWeight.w700, color: mine ? Colors.white : c.accent),
                   ),
                   Text(
-                    replyTo!.deleted ? 'Message deleted' : replyTo!.body,
+                    replyTo!.summary,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 12.5, color: textColor.withValues(alpha: 0.8)),
@@ -827,21 +1070,37 @@ class MessageBubble extends StatelessWidget {
                 ],
               ),
             ),
-          Text(
-            m.deleted ? 'Message deleted' : m.body,
-            style: TextStyle(
-              fontSize: 14.5,
-              height: 1.4,
-              color: m.deleted ? c.text3 : textColor,
-              fontStyle: m.deleted ? FontStyle.italic : null,
+          if (!m.deleted && m.attachments.isNotEmpty) _files(context),
+          if (m.deleted)
+            Text(
+              'Message deleted',
+              style: TextStyle(fontSize: 14.5, height: 1.4, color: c.text3, fontStyle: FontStyle.italic),
+            )
+          else if (m.body.isNotEmpty)
+            Text.rich(
+              TextSpan(children: _spans(context, textColor)),
+              style: TextStyle(fontSize: 14.5, height: 1.4, color: textColor),
             ),
-          ),
           const SizedBox(height: 2),
           Align(
             alignment: Alignment.bottomRight,
-            child: Text(
-              '${m.editedAt != null && !m.deleted ? 'edited · ' : ''}${shortTime(m.createdAt)}',
-              style: TextStyle(fontSize: 10.5, color: mine && !m.deleted ? Colors.white70 : c.text3),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '${m.editedAt != null && !m.deleted ? 'edited · ' : ''}${shortTime(m.createdAt)}',
+                  style: TextStyle(fontSize: 10.5, color: mine && !m.deleted ? Colors.white70 : c.text3),
+                ),
+                if (receipt != null) ...[
+                  const SizedBox(width: 4),
+                  Icon(
+                    receipt == 'read' ? LucideIcons.checkCheck : LucideIcons.check,
+                    size: 13,
+                    semanticLabel: receipt == 'read' ? 'Read' : 'Sent',
+                    color: Colors.white70,
+                  ),
+                ],
+              ],
             ),
           ),
         ],
@@ -864,20 +1123,59 @@ class MessageBubble extends StatelessWidget {
             const SizedBox(width: 8),
           ],
           Flexible(
-            child: GestureDetector(
-              onLongPress: m.deleted ? null : () => onActions(null),
-              onSecondaryTapUp: m.deleted ? null : (d) => onActions(d.globalPosition),
-              child: TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0.9, end: 1),
-                duration: const Duration(milliseconds: 260),
-                curve: Curves.easeOutBack,
-                builder: (_, v, child) => Transform.scale(
-                  scale: v,
-                  alignment: mine ? Alignment.bottomRight : Alignment.bottomLeft,
-                  child: child,
+            child: Column(
+              crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                GestureDetector(
+                  onLongPress: m.deleted ? null : () => onActions(null),
+                  onSecondaryTapUp: m.deleted ? null : (d) => onActions(d.globalPosition),
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.9, end: 1),
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.easeOutBack,
+                    builder: (_, v, child) => Transform.scale(
+                      scale: v,
+                      alignment: mine ? Alignment.bottomRight : Alignment.bottomLeft,
+                      child: child,
+                    ),
+                    child: bubble,
+                  ),
                 ),
-                child: bubble,
-              ),
+                if (!m.deleted && m.reactions.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: [
+                        for (final r in m.reactions)
+                          InkWell(
+                            onTap: onReact == null ? null : () => onReact!(r.emoji),
+                            borderRadius: BorderRadius.circular(99),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: r.mine ? c.accentSoft : c.surface,
+                                borderRadius: BorderRadius.circular(99),
+                                border: Border.all(color: r.mine ? c.accent : c.border),
+                              ),
+                              child: Text('${r.emoji} ${r.count}', style: TextStyle(fontSize: 13, color: c.text)),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                if (onComments != null && !m.deleted)
+                  TextButton.icon(
+                    onPressed: onComments,
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                    ),
+                    icon: const Icon(LucideIcons.messageSquareText, size: 15),
+                    label: Text(m.commentCount > 0 ? plural(m.commentCount, 'comment') : 'Comment'),
+                  ),
+              ],
             ),
           ),
         ],
@@ -1075,6 +1373,218 @@ class _Composer extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Comments under channel posts
+// ---------------------------------------------------------------------------
+
+void showComments(BuildContext context, Chat chat, Message post) {
+  showModalBottomSheet<void>(
+    context: context,
+    useRootNavigator: true,
+    isScrollControlled: true,
+    builder: (sheet) => FractionallySizedBox(
+      heightFactor: 0.85,
+      child: _CommentsSheet(chat: chat, post: post),
+    ),
+  );
+}
+
+class _CommentsSheet extends StatefulWidget {
+  const _CommentsSheet({required this.chat, required this.post});
+
+  final Chat chat;
+  final Message post;
+
+  @override
+  State<_CommentsSheet> createState() => _CommentsSheetState();
+}
+
+class _CommentsSheetState extends State<_CommentsSheet> {
+  late final Session _session = context.read<Session>();
+  final _comments = <Message>[]; // newest first
+  final _composer = TextEditingController();
+  StreamSubscription<dynamic>? _sub;
+  Object? _error;
+  bool _loading = true;
+  bool _sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    _sub = _session.events.listen((e) {
+      final m = e.message;
+      if (e.chatId != widget.chat.id || m == null || m.threadId != widget.post.id) return;
+      setState(() {
+        final i = _comments.indexWhere((x) => x.id == m.id);
+        if (i >= 0) {
+          _comments[i] = m;
+        } else {
+          _comments.insert(0, m);
+        }
+      });
+    });
+  }
+
+  Future<void> _load() async {
+    try {
+      final list = await _session.api.comments(widget.chat.id, widget.post.id);
+      if (mounted) {
+        setState(() {
+          _comments
+            ..clear()
+            ..addAll(list);
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e;
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _send() async {
+    final text = _composer.text.trim();
+    if (text.isEmpty || _sending) return;
+    setState(() => _sending = true);
+    try {
+      final sent = await _session.api.comment(widget.chat.id, widget.post.id, text);
+      _composer.clear();
+      if (mounted && !_comments.any((m) => m.id == sent.id)) setState(() => _comments.insert(0, sent));
+    } catch (e) {
+      if (mounted) toast(context, errorText(e), error: true);
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _delete(Message m) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('Delete this comment?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await _session.api.deleteMessage(widget.chat.id, m.id);
+    } catch (e) {
+      if (mounted) toast(context, errorText(e), error: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    _composer.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final me = _session.me!;
+    final chat = widget.chat;
+    final admin = chat.myRole == 'owner' || chat.myRole == 'admin';
+    final canWrite = chat.myRole != null && chat.commentsEnabled;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 16, 8, 8),
+          child: Row(
+            children: [
+              Expanded(child: Text('Comments', style: context.text.titleLarge)),
+              IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(LucideIcons.x)),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: c.surface2, borderRadius: BorderRadius.circular(12)),
+            child: Text(widget.post.summary, maxLines: 4, overflow: TextOverflow.ellipsis),
+          ),
+        ),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _error != null
+              ? Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: ErrorBox(_error, onRetry: _load),
+                )
+              : _comments.isEmpty
+              ? const EmptyState(icon: LucideIcons.messageSquareText, title: 'No comments yet')
+              : ListView.builder(
+                  reverse: true,
+                  padding: const EdgeInsets.all(14),
+                  itemCount: _comments.length,
+                  itemBuilder: (context, i) {
+                    final m = _comments[i];
+                    final mine = m.sender?.id == me.id;
+                    return MessageBubble(
+                      message: m,
+                      mine: mine,
+                      showSender: true,
+                      showAvatar: true,
+                      onActions: (_) => (mine || admin) && !m.deleted ? _delete(m) : null,
+                      staff: me.isStaff,
+                      myId: me.id,
+                      myUsername: me.username,
+                    );
+                  },
+                ),
+        ),
+        if (canWrite)
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _composer,
+                      minLines: 1,
+                      maxLines: 4,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => _send(),
+                      decoration: const InputDecoration(hintText: 'Write a comment…'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    tooltip: 'Send comment',
+                    onPressed: _sending ? null : _send,
+                    icon: const Icon(LucideIcons.send, size: 18),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              chat.myRole == null ? 'Subscribe to the channel to comment.' : 'Comments are turned off here.',
+              style: context.text.bodySmall,
+            ),
+          ),
+      ],
     );
   }
 }

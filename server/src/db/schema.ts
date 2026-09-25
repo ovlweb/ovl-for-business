@@ -1097,6 +1097,8 @@ export const chats = pgTable(
     handle: varchar('handle', { length: 32 }).unique(),
     isPublic: boolean('is_public').notNull().default(false),
     supportStatus: supportStatusEnum('support_status'),
+    /** Channels: subscribers may comment on posts. */
+    commentsEnabled: boolean('comments_enabled').notNull().default(true),
     createdAt: createdAt(),
     lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
   },
@@ -1132,11 +1134,43 @@ export const messages = pgTable(
     body: text('body').notNull(),
     meta: jsonb('meta').$type<Record<string, unknown>>().notNull().default({}),
     replyToId: bigint('reply_to_id', { mode: 'number' }),
+    /** Comments under a channel post point at the post. */
+    threadId: bigint('thread_id', { mode: 'number' }),
+    /** Files (scope "chat") shown with the message. */
+    attachmentIds: uuid('attachment_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
+    /** Chat members mentioned with @username. */
+    mentions: uuid('mentions')
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
     editedAt: timestamp('edited_at', { withTimezone: true }),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
-  (t) => [index('messages_chat_idx').on(t.chatId, t.id)],
+  (t) => [
+    index('messages_chat_idx').on(t.chatId, t.id),
+    index('messages_thread_idx').on(t.threadId, t.id),
+    index('messages_search_idx').using('gin', sql`to_tsvector('simple', ${t.body})`),
+    index('messages_mentions_idx').using('gin', t.mentions),
+  ],
+);
+
+export const messageReactions = pgTable(
+  'message_reactions',
+  {
+    messageId: bigint('message_id', { mode: 'number' })
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    emoji: varchar('emoji', { length: 32 }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.messageId, t.userId, t.emoji] })],
 );
 
 // ---------------------------------------------------------------------------

@@ -378,6 +378,22 @@ class _EmailState extends State<_Email> {
                   if (context.mounted) toast(context, errorText(e), error: true);
                 }),
           ),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            value: me.preferences.readReceipts,
+            title: const Text('Read receipts'),
+            subtitle: const Text(
+              'Show others when you have read their messages. When off, you do not see theirs either.',
+            ),
+            onChanged: (on) => session
+                .updatePreferences({'readReceipts': on})
+                .then((_) {
+                  if (context.mounted) toast(context, on ? 'Read receipts on' : 'Read receipts off');
+                })
+                .catchError((Object e) {
+                  if (context.mounted) toast(context, errorText(e), error: true);
+                }),
+          ),
         ],
       ),
     );

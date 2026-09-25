@@ -439,6 +439,21 @@ class OvlApi {
       _getList('/chats/$chatId/messages', Message.fromJson, {'before': before, 'limit': limit});
   Future<Message> send(String chatId, String body, {int? replyToId}) async =>
       Message.fromJson(await _post('/chats/$chatId/messages', {'body': body, 'replyToId': ?replyToId}) as Json);
+
+  /// Search messages in your chats (every word as a prefix), newest first.
+  Future<List<MessageSearchResult>> searchMessages(String q) =>
+      _getList('/chats/search', MessageSearchResult.fromJson, {'q': q});
+  Future<Message> react(String chatId, int messageId, String emoji) async =>
+      Message.fromJson(await _post('/chats/$chatId/messages/$messageId/reactions', {'emoji': emoji}) as Json);
+  Future<Message> unreact(String chatId, int messageId, String emoji) async => Message.fromJson(
+    await request('DELETE', '/chats/$chatId/messages/$messageId/reactions', query: {'emoji': emoji}) as Json,
+  );
+
+  /// Comments under a channel post, newest first.
+  Future<List<Message>> comments(String chatId, int postId, {int? before}) =>
+      _getList('/chats/$chatId/messages/$postId/comments', Message.fromJson, {'before': before, 'limit': 50});
+  Future<Message> comment(String chatId, int postId, String body) async =>
+      Message.fromJson(await _post('/chats/$chatId/messages/$postId/comments', {'body': body}) as Json);
   Future<Message> editMessage(String chatId, int id, String body) async =>
       Message.fromJson(await _patch('/chats/$chatId/messages/$id', {'body': body}) as Json);
   Future<void> deleteMessage(String chatId, int id) => _delete('/chats/$chatId/messages/$id');

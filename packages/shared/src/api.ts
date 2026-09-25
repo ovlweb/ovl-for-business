@@ -82,6 +82,8 @@ export const preferencesSchema = z.object({
   compactSidebar: z.boolean().optional(),
   /** Email a PDF statement of every balance at the start of each month. */
   statementEmails: z.boolean().optional(),
+  /** Let others see when you read their messages (and see theirs); on unless false. */
+  readReceipts: z.boolean().optional(),
 });
 export type Preferences = z.infer<typeof preferencesSchema>;
 
@@ -1295,6 +1297,24 @@ export const CHAT_TYPES = ['direct', 'group', 'channel', 'support', 'council', '
 export const chatTypeSchema = z.enum(CHAT_TYPES);
 export type ChatType = z.infer<typeof chatTypeSchema>;
 
+/** Quick reactions the clients offer; any single emoji is accepted. */
+export const QUICK_REACTIONS = ['👍', '❤️', '😂', '🎉', '😮', '😢', '🙏', '🔥'] as const;
+/** One emoji (with skin tones, variation selectors and ZWJ sequences, or a flag). */
+export const reactionEmojiSchema = z
+  .string()
+  .max(32)
+  .regex(
+    /^(?:\p{Regional_Indicator}{2}|[\p{Extended_Pictographic}\p{Emoji_Presentation}][\u{FE0F}\u{20E3}\p{Emoji_Modifier}]*(?:\u{200D}[\p{Extended_Pictographic}\p{Emoji_Presentation}][\u{FE0F}\p{Emoji_Modifier}]*)*)$/u,
+    'One emoji',
+  );
+
+export const messageReactionSchema = z.object({
+  emoji: z.string(),
+  count: z.number().int(),
+  mine: z.boolean().describe('You reacted with this emoji'),
+});
+export type MessageReaction = z.infer<typeof messageReactionSchema>;
+
 export const messageSchema = z.object({
   id: z.number().int(),
   chatId: uuid,
@@ -1303,11 +1323,31 @@ export const messageSchema = z.object({
   body: z.string(),
   meta: z.record(z.string(), z.unknown()),
   replyToId: z.number().int().nullable(),
+  /** Set on comments under a channel post: the post's id. */
+  threadId: z.number().int().nullable(),
+  attachments: z.array(fileSchema),
+  /** Ids of the chat members mentioned with @username. */
+  mentions: z.array(uuid),
+  reactions: z.array(messageReactionSchema),
+  /** Comments under a channel post. */
+  commentCount: z.number().int(),
   editedAt: isoDate.nullable(),
   deleted: z.boolean(),
   createdAt: isoDate,
 });
 export type Message = z.infer<typeof messageSchema>;
+
+export const messageSearchResultSchema = z.object({
+  chat: z.object({ id: uuid, type: z.string(), title: z.string() }),
+  message: messageSchema,
+});
+export type MessageSearchResult = z.infer<typeof messageSearchResultSchema>;
+
+export const readReceiptSchema = z.object({
+  user: userSummarySchema,
+  lastReadMessageId: z.number().int(),
+});
+export type ReadReceipt = z.infer<typeof readReceiptSchema>;
 
 export const chatSchema = z.object({
   id: uuid,
@@ -1320,7 +1360,13 @@ export const chatSchema = z.object({
   myRole: z.enum(['owner', 'admin', 'member']).nullable(),
   pinned: z.boolean(),
   unreadCount: z.number().int(),
+  /** Unread messages that mention you. */
+  unreadMentions: z.number().int(),
   lastMessage: messageSchema.nullable(),
+  /** Direct chats: the newest message the other person has read (null when either hides receipts). */
+  peerReadMessageId: z.number().int().nullable(),
+  /** Channels: subscribers may comment on posts. */
+  commentsEnabled: z.boolean(),
   peer: userSummarySchema.nullable().describe('The other participant of a direct chat'),
   support: z
     .object({ status: z.enum(['open', 'closed']), requester: userSummarySchema })
@@ -1337,9 +1383,21 @@ export const chatMemberSchema = z.object({
 });
 export type ChatMember = z.infer<typeof chatMemberSchema>;
 
-export const sendMessageSchema = z.object({
-  body: z.string().trim().min(1).max(4000),
-  replyToId: z.number().int().positive().optional(),
+export const sendMessageSchema = z
+  .object({
+    body: z.string().trim().max(4000).default(''),
+    replyToId: z.number().int().positive().optional(),
+    fileIds: z.array(uuid).max(10).optional().describe('Your uploads (POST /files) to attach'),
+  })
+  .refine((m) => m.body.length > 0 || (m.fileIds?.length ?? 0) > 0, {
+    message: 'Write something or attach a file',
+    path: ['body'],
+  });
+
+export const messageSearchQuery = z.object({
+  q: z.string().trim().min(2).max(100),
+  chatId: uuid.optional().describe('Search one chat only'),
+  limit: z.coerce.number().int().min(1).max(50).default(30),
 });
 
 export const createGroupSchema = z.object({
@@ -1358,6 +1416,7 @@ export const createChannelSchema = z.object({
 export const updateChatSchema = z.object({
   title: z.string().trim().min(1).max(128).optional(),
   description: z.string().trim().max(2000).optional(),
+  commentsEnabled: z.boolean().optional().describe('Channels: let subscribers comment on posts'),
 });
 
 export const messagesQuery = z.object({
@@ -1485,6 +1544,7 @@ export type RealtimeEvent =
   | { type: 'chat.updated'; chatId: string }
   | { type: 'chat.removed'; chatId: string }
   | { type: 'typing'; chatId: string; userId: string }
+  | { type: 'chat.read'; chatId: string; userId: string; messageId: number }
   | { type: 'application.updated'; applicationId: string; status: string; stageIndex: number }
   | { type: 'story.created'; storyId: string }
   | { type: 'wallet.updated'; walletId: string }

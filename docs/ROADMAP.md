@@ -70,9 +70,10 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
 
 ### Messaging
 
-- Attachments (images, documents), message search, mentions, reactions, read receipts.
+- ✅ Attachments (images, documents), message search, mentions, reactions, read receipts (0.2;
+  the apps show attachments, sending files is on the web).
 - OS push notifications (Web Push, FCM, APNs) and a notification center (in-app banners exist).
-- Channel posts with comments.
+- ✅ Channel posts with comments (0.2).
 
 ### Platform
 

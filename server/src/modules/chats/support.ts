@@ -33,7 +33,7 @@ export async function supportRoutes(fastify: FastifyInstance) {
         return { chat: chat!, message };
       });
       await publishMessage(app, chat, message);
-      const [dto] = await chatDtos(app.db, [chat], me.id);
+      const [dto] = await chatDtos(app, [chat], me.id);
       return reply.status(201).send(dto!);
     },
   );
@@ -48,7 +48,7 @@ export async function supportRoutes(fastify: FastifyInstance) {
         .from(chats)
         .where(and(eq(chats.type, 'support'), eq(chats.ownerId, me.id)))
         .orderBy(desc(chats.createdAt));
-      return sortChats(await chatDtos(app.db, rows, me.id));
+      return sortChats(await chatDtos(app, rows, me.id));
     },
   );
 
@@ -71,7 +71,7 @@ export async function supportRoutes(fastify: FastifyInstance) {
         .where(and(eq(chats.type, 'support'), eq(chats.supportStatus, req.query.status)))
         .orderBy(desc(chats.lastMessageAt))
         .limit(200);
-      return chatDtos(app.db, rows, me.id);
+      return chatDtos(app, rows, me.id);
     },
   );
 
@@ -105,7 +105,7 @@ export async function supportRoutes(fastify: FastifyInstance) {
       });
       await publishMessage(app, updated!, message);
       app.hub.sendToUsers(await chatAudience(app, updated!), { type: 'chat.updated', chatId: chat.id });
-      const [dto] = await chatDtos(app.db, [updated!], me.id);
+      const [dto] = await chatDtos(app, [updated!], me.id);
       return dto!;
     },
   );

@@ -381,6 +381,51 @@ test.describe.serial('OVL For Business end to end', () => {
     await expect(bubble(ivan, 'Message deleted')).toBeVisible();
   });
 
+  test('messages: photos, mentions, reactions, read receipts and search', async () => {
+    await openChat(ivan, 'Founders Club');
+    await openChat(maria, 'Founders Club');
+    await maria.getByLabel('Choose files to attach').setInputFiles({
+      name: 'plan.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        'base64',
+      ),
+    });
+    await expect(maria.locator('.composer-files').getByText('plan.png')).toBeVisible();
+    // Typing "@iv" suggests Ivan; picking him completes the name.
+    await maria.getByPlaceholder('Write a message…').fill('Here is the launch plan @iv');
+    await maria.getByRole('option', { name: /Ivan Sokolov/ }).click();
+    await maria.getByPlaceholder('Write a message…').press('End');
+    await maria.keyboard.type('please check');
+    await maria.keyboard.press('Enter');
+
+    const photo = bubble(ivan, 'Here is the launch plan');
+    await expect(photo.getByRole('img', { name: 'plan.png' })).toBeVisible();
+    await expect(photo.locator('.mention.me')).toHaveText('@ivan');
+    // Ivan has the chat open, so Maria sees it was seen.
+    await expect(maria.getByText('Seen by 1')).toBeVisible();
+
+    await photo.locator('.bubble-meta').click();
+    await ivan.getByRole('button', { name: 'React 👍' }).click();
+    const row = maria.locator('.bubble-row', { hasText: 'Here is the launch plan' });
+    await expect(row.getByRole('button', { name: '👍 1' })).toBeVisible();
+
+    await maria.goto('./#/chats');
+    await maria.getByLabel('Search chats and messages').fill('launch pl');
+    await maria.locator('.chat-item', { hasText: 'Here is the launch plan' }).click();
+    await expect(bubble(maria, 'Here is the launch plan')).toBeVisible();
+    await maria.getByLabel('Search chats and messages').fill('');
+
+    // Direct chats show when the other person read a message.
+    await openChat(maria, 'Ivan Sokolov');
+    await send(maria, 'Did you see the plan?');
+    await expect(bubble(maria, 'Did you see the plan?').getByLabel('Sent')).toBeVisible();
+    await openChat(ivan, 'Maria Petrova');
+    await expect(bubble(maria, 'Did you see the plan?').getByLabel('Read')).toBeVisible();
+    await openChat(maria, 'Founders Club');
+  });
+
   test('unread title and background notifications', async () => {
     await ivan.goto('./#/wallet');
     await ivan.evaluate(() => {

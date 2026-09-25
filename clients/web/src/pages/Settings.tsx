@@ -308,6 +308,7 @@ function NotificationsSection() {
         </div>
       )}
       <StatementEmailsRow />
+      <ReadReceiptsRow />
     </div>
   );
 }
@@ -335,6 +336,36 @@ function StatementEmailsRow() {
         onChange={(value) =>
           updatePreferences({ statementEmails: value })
             .then(() => toast.success(value ? 'Monthly statements on' : 'Monthly statements off'))
+            .catch(toast.error)
+        }
+      />
+    </div>
+  );
+}
+
+function ReadReceiptsRow() {
+  const me = useMe();
+  const { updatePreferences } = useAuth();
+  const toast = useToast();
+  const on = me.preferences.readReceipts !== false;
+  return (
+    <div className="setting-row">
+      <span className="kpi-icon">
+        <Icon name="checkCheck" size={17} />
+      </span>
+      <div className="grow">
+        <b>Read receipts</b>
+        <div className="small muted">
+          Show others when you have read their messages in direct chats and groups. When off, you do not see
+          theirs either.
+        </div>
+      </div>
+      <Switch
+        label="Read receipts"
+        checked={on}
+        onChange={(value) =>
+          updatePreferences({ readReceipts: value })
+            .then(() => toast.success(value ? 'Read receipts on' : 'Read receipts off'))
             .catch(toast.error)
         }
       />

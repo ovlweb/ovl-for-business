@@ -44,12 +44,14 @@ import type {
   LoginInput,
   Me,
   Message,
+  MessageSearchResult,
   MyLicence,
   Organization,
   Passkey,
   PaymentApproval,
   MyStockLimits,
   Proposal,
+  ReadReceipt,
   RiskDisclosure,
   Shareholder,
   PayrollInput,
@@ -573,7 +575,7 @@ export class OvlClient {
     createChannel: (input: { title: string; handle: string; description?: string; ownerId?: string }) =>
       this.post<Chat>('/chats/channels', input),
     discoverChannels: (q?: string) => this.get<Chat[]>('/channels', { q }),
-    update: (id: string, input: { title?: string; description?: string }) =>
+    update: (id: string, input: { title?: string; description?: string; commentsEnabled?: boolean }) =>
       this.patch<Chat>(`/chats/${id}`, input),
     pin: (id: string, pinned: boolean) => this.patch<void>(`/chats/${id}/pin`, { pinned }),
     members: (id: string) => this.get<ChatMember[]>(`/chats/${id}/members`),
@@ -582,12 +584,27 @@ export class OvlClient {
     join: (id: string) => this.post<Chat>(`/chats/${id}/join`),
     messages: (id: string, query?: { before?: number; limit?: number }) =>
       this.get<Message[]>(`/chats/${id}/messages`, query),
-    send: (id: string, body: string, replyToId?: number) =>
-      this.post<Message>(`/chats/${id}/messages`, { body, replyToId }),
+    /** Send a message; `fileIds` are your uploads (files.upload) to attach. @username mentions members. */
+    send: (id: string, body: string, replyToId?: number, fileIds?: string[]) =>
+      this.post<Message>(`/chats/${id}/messages`, { body, replyToId, fileIds }),
     edit: (id: string, messageId: number, body: string) =>
       this.patch<Message>(`/chats/${id}/messages/${messageId}`, { body }),
     deleteMessage: (id: string, messageId: number) => this.del(`/chats/${id}/messages/${messageId}`),
     read: (id: string, messageId: number) => this.post<void>(`/chats/${id}/read`, { messageId }),
+    /** How far the other members read (direct chats and groups). */
+    receipts: (id: string) => this.get<ReadReceipt[]>(`/chats/${id}/receipts`),
+    /** Search messages in your chats (every word as a prefix), newest first. */
+    search: (q: string, query?: { chatId?: string; limit?: number }) =>
+      this.get<MessageSearchResult[]>('/chats/search', { q, ...query }),
+    react: (id: string, messageId: number, emoji: string) =>
+      this.post<Message>(`/chats/${id}/messages/${messageId}/reactions`, { emoji }),
+    unreact: (id: string, messageId: number, emoji: string) =>
+      this.del<Message>(`/chats/${id}/messages/${messageId}/reactions${qs({ emoji })}`),
+    /** Comments under a channel post, newest first. */
+    comments: (id: string, postId: number, query?: { before?: number; limit?: number }) =>
+      this.get<Message[]>(`/chats/${id}/messages/${postId}/comments`, query),
+    comment: (id: string, postId: number, body: string, fileIds?: string[]) =>
+      this.post<Message>(`/chats/${id}/messages/${postId}/comments`, { body, fileIds }),
   };
 
   support = {

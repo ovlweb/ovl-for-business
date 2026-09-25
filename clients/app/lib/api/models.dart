@@ -101,6 +101,7 @@ class Preferences {
     this.onboardingCompleted = false,
     this.goals = const [],
     this.statementEmails = false,
+    this.readReceipts = true,
   });
 
   factory Preferences.fromJson(Json? j) => Preferences(
@@ -108,6 +109,7 @@ class Preferences {
     onboardingCompleted: j?['onboardingCompleted'] as bool? ?? false,
     goals: List<String>.from(j?['goals'] as List? ?? const []),
     statementEmails: j?['statementEmails'] as bool? ?? false,
+    readReceipts: j?['readReceipts'] as bool? ?? true,
   );
 
   final String? theme;
@@ -116,6 +118,9 @@ class Preferences {
 
   /// Email a PDF statement of every balance at the start of each month.
   final bool statementEmails;
+
+  /// Share (and see) read receipts in direct chats and groups.
+  final bool readReceipts;
 }
 
 class Me extends UserSummary {
@@ -996,6 +1001,11 @@ class Message {
       body = j['body'] as String,
       meta = (j['meta'] as Json?) ?? {},
       replyToId = j['replyToId'] as int?,
+      threadId = j['threadId'] as int?,
+      attachments = _list(j['attachments'], FileInfo.fromJson),
+      mentions = List<String>.from(j['mentions'] as List? ?? const []),
+      reactions = _list(j['reactions'], Reaction.fromJson),
+      commentCount = j['commentCount'] as int? ?? 0,
       editedAt = _dateOrNull(j['editedAt']),
       deleted = j['deleted'] as bool? ?? false,
       createdAt = _date(j['createdAt']);
@@ -1007,11 +1017,50 @@ class Message {
   final String body;
   final Json meta;
   final int? replyToId;
+
+  /// Comments under a channel post point at the post.
+  final int? threadId;
+  final List<FileInfo> attachments;
+
+  /// Ids of the members mentioned with @username.
+  final List<String> mentions;
+  final List<Reaction> reactions;
+  final int commentCount;
   final DateTime? editedAt;
   final bool deleted;
   final DateTime createdAt;
 
   bool get isSystem => kind == 'system';
+
+  /// The message in one line: its text, or what it carries.
+  String get summary {
+    if (deleted) return 'Message deleted';
+    if (body.isNotEmpty) return body;
+    if (attachments.isEmpty) return '';
+    final images = attachments.where((f) => f.isImage).length;
+    return images == attachments.length ? (images > 1 ? '$images photos' : 'Photo') : 'File';
+  }
+}
+
+class Reaction {
+  Reaction.fromJson(Json j) : emoji = j['emoji'] as String, count = j['count'] as int, mine = j['mine'] as bool;
+
+  final String emoji;
+  final int count;
+  final bool mine;
+}
+
+class MessageSearchResult {
+  MessageSearchResult.fromJson(Json j)
+    : chatId = (j['chat'] as Json)['id'] as String,
+      chatTitle = (j['chat'] as Json)['title'] as String,
+      chatType = (j['chat'] as Json)['type'] as String,
+      message = Message.fromJson(j['message'] as Json);
+
+  final String chatId;
+  final String chatTitle;
+  final String chatType;
+  final Message message;
 }
 
 class SupportInfo {
@@ -1034,6 +1083,9 @@ class Chat {
       myRole = j['myRole'] as String?,
       pinned = j['pinned'] as bool? ?? false,
       unreadCount = j['unreadCount'] as int? ?? 0,
+      unreadMentions = j['unreadMentions'] as int? ?? 0,
+      peerReadMessageId = j['peerReadMessageId'] as int?,
+      commentsEnabled = j['commentsEnabled'] as bool? ?? false,
       lastMessage = j['lastMessage'] == null ? null : Message.fromJson(j['lastMessage'] as Json),
       peer = j['peer'] == null ? null : UserSummary.fromJson(j['peer'] as Json),
       support = j['support'] == null ? null : SupportInfo.fromJson(j['support'] as Json),
@@ -1048,6 +1100,11 @@ class Chat {
   final String? myRole;
   final bool pinned;
   final int unreadCount;
+  final int unreadMentions;
+
+  /// Direct chats: the newest message the other person read (null when receipts are hidden).
+  final int? peerReadMessageId;
+  final bool commentsEnabled;
   final Message? lastMessage;
   final UserSummary? peer;
   final SupportInfo? support;
@@ -1204,11 +1261,13 @@ class RealtimeEvent {
       chatId = j['chatId'] as String?,
       message = j['message'] == null ? null : Message.fromJson(j['message'] as Json),
       userId = j['userId'] as String?,
+      messageId = j['messageId'] as int?,
       status = j['status'] as String?;
 
   final String type;
   final String? chatId;
   final Message? message;
   final String? userId;
+  final int? messageId;
   final String? status;
 }
