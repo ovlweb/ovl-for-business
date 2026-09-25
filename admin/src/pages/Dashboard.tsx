@@ -148,6 +148,55 @@ function AuditRow({ log }: { log: AuditLog }) {
   );
 }
 
+const ago = (iso: string | null) => {
+  if (!iso) return 'never';
+  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  return minutes < 1 ? 'just now' : minutes < 90 ? `${minutes} min ago` : `${Math.round(minutes / 60)} h ago`;
+};
+
+/** How the running platform is doing: instances, connections, queues, jobs and backups. */
+function SystemCard() {
+  const system = useQuery({ queryKey: ['system'], queryFn: api.admin.system, refetchInterval: 30_000 });
+  const s = system.data;
+  const failing = s?.jobs.filter((j) => j.lastError) ?? [];
+  const backupAge = s?.lastBackup ? (Date.now() - new Date(s.lastBackup.at).getTime()) / 3_600_000 : null;
+  return (
+    <div className="card stack" aria-label="System">
+      <h3>System</h3>
+      <ErrorAlert error={system.error} />
+      {s && (
+        <dl className="dl small">
+          <dt>Version</dt>
+          <dd>
+            {s.instance.version} · up {Math.floor(s.instance.uptimeSeconds / 3600)} h
+          </dd>
+          <dt>Instances</dt>
+          <dd>{s.instances}</dd>
+          <dt>Connected now</dt>
+          <dd>{plural(s.onlineUsers, 'person', 'people')}</dd>
+          <dt>Waiting to send</dt>
+          <dd>
+            {plural(s.queues.notifications, 'notification')} ·{' '}
+            {plural(s.queues.webhooks, 'webhook delivery', 'webhook deliveries')}
+          </dd>
+          <dt>Last backup</dt>
+          <dd className={backupAge === null || backupAge > 26 ? 'neg' : undefined}>
+            {s.lastBackup
+              ? `${ago(s.lastBackup.at)} · ${(s.lastBackup.bytes / 1_048_576).toFixed(1)} MB`
+              : 'none recorded — is the backup service running?'}
+          </dd>
+          <dt>Background jobs</dt>
+          <dd className={failing.length ? 'neg' : undefined}>
+            {failing.length
+              ? `${failing.map((j) => j.name).join(', ')} failing: ${failing[0]!.lastError}`
+              : `${s.jobs.length} running fine`}
+          </dd>
+        </dl>
+      )}
+    </div>
+  );
+}
+
 export function DashboardPage() {
   const { me, can } = useAdmin();
   const [series, setSeries] = useState<Series>('messages');
@@ -380,6 +429,7 @@ export function DashboardPage() {
             </div>
           </div>
 
+          {can('audit.view') && <SystemCard />}
           {can('audit.view') && (
             <div className="card stack">
               <div className="spread">

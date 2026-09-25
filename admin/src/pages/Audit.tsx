@@ -1,5 +1,5 @@
-import { ErrorAlert, formatDate, PageHeader, Spinner, useDebounced } from '@ovl/ui';
-import { useQuery } from '@tanstack/react-query';
+import { ErrorAlert, formatDate, PageHeader, saveBlob, Spinner, useDebounced, useToast } from '@ovl/ui';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../api';
 import { Pager } from './common';
@@ -13,12 +13,30 @@ export function AuditPage() {
     queryKey: ['audit', filter, offset],
     queryFn: () => api.admin.auditLogs({ action: filter || undefined, limit, offset }),
   });
+  const toast = useToast();
+  const exportLog = useMutation({
+    mutationFn: async (format: 'csv' | 'ndjson') => {
+      const { blob, filename } = await api.admin.exportAuditLogs({ format, action: filter || undefined });
+      saveBlob(blob, filename ?? `audit-log.${format}`);
+    },
+    onError: toast.error,
+  });
   return (
     <div className="page">
       <PageHeader
         icon="shield"
         title="Audit log"
         subtitle="Every privileged action: role changes, money operations, approvals, registry changes…"
+        actions={
+          <div className="row">
+            <button className="btn" disabled={exportLog.isPending} onClick={() => exportLog.mutate('csv')}>
+              Export CSV
+            </button>
+            <button className="btn" disabled={exportLog.isPending} onClick={() => exportLog.mutate('ndjson')}>
+              Export NDJSON
+            </button>
+          </div>
+        }
       />
       <div className="filters">
         <input

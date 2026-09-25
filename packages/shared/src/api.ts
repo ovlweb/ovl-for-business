@@ -1517,6 +1517,39 @@ export const auditLogSchema = z.object({
 });
 export type AuditLog = z.infer<typeof auditLogSchema>;
 
+export const auditExportQuery = z.object({
+  format: z.enum(['csv', 'ndjson']).default('csv'),
+  action: z.string().trim().max(64).optional().describe('Actions starting with this, e.g. "cash."'),
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+});
+
+export const systemStatusSchema = z.object({
+  instance: z.object({ id: z.string(), uptimeSeconds: z.number().int(), version: z.string() }),
+  /** Instances with people connected in the last 90 seconds (this one included). */
+  instances: z.number().int(),
+  onlineUsers: z.number().int(),
+  queues: z.object({
+    notifications: z.number().int().describe('Written, not sent out yet'),
+    webhooks: z.number().int().describe('Deliveries waiting for an attempt'),
+  }),
+  jobs: z.array(
+    z.object({
+      name: z.string(),
+      everySeconds: z.number().int(),
+      runs: z.number().int(),
+      failures: z.number().int(),
+      lastRunAt: isoDate.nullable(),
+      lastError: z.string().nullable(),
+    }),
+  ),
+  lastBackup: z
+    .object({ at: isoDate, file: z.string(), bytes: z.number().int() })
+    .nullable()
+    .describe('Written by the backup service after each successful dump'),
+});
+export type SystemStatus = z.infer<typeof systemStatusSchema>;
+
 export const adminStatsSchema = z.object({
   users: z.record(z.string(), z.number()),
   organizations: z.number(),

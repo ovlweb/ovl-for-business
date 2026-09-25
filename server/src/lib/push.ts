@@ -44,6 +44,8 @@ export class PushService {
   private fcmToken: { token: string; expires: number } | null = null;
   private apnsToken: { token: string; issued: number } | null = null;
   private readonly pending = new Set<Promise<unknown>>();
+  /** Pushes sent since start, by "kind outcome" (for the metrics). */
+  readonly sent = new Map<string, number>();
   private readonly fcmAccount: ServiceAccount | null;
 
   constructor(private readonly app: FastifyInstance) {
@@ -138,6 +140,8 @@ export class PushService {
       this.app.log.warn({ err: e, kind: sub.kind }, 'push failed');
       outcome = 'failed';
     }
+    const stat = `${sub.kind} ${outcome}`;
+    this.sent.set(stat, (this.sent.get(stat) ?? 0) + 1);
     if (outcome === 'gone') {
       await this.app.db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, sub.id));
     } else if (outcome === 'ok') {

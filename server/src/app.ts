@@ -40,8 +40,10 @@ import { invoiceScheduleRoutes } from './modules/invoice-schedules';
 import { payrollRoutes } from './modules/payroll';
 import { webhookRoutes } from './modules/webhooks';
 import { notificationRoutes } from './modules/notifications';
+import { operationsRoutes } from './modules/operations';
 import { deliverNotifications, hasQueuedNotifications } from './lib/notify';
 import { PushService } from './lib/push';
+import { registerObservability, traceIdFor } from './plugins/observability';
 import {
   loadVirtualCurrencies,
   refreshVirtualCurrencies,
@@ -104,6 +106,9 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
           },
     // Only trust X-Forwarded-* when running behind the reverse proxy.
     trustProxy: config.TRUST_PROXY ?? true,
+    // Request ids are W3C trace ids (from an incoming traceparent, or new), logged as traceId.
+    genReqId: (req) => traceIdFor(req),
+    requestIdLogLabel: 'traceId',
     bodyLimit: 1024 * 1024,
   }).withTypeProvider<ZodTypeProvider>();
 
@@ -123,6 +128,7 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
   app.decorate('storage', createStorage(config));
   app.decorate('scheduler', new Scheduler(app.log));
   app.decorate('push', new PushService(app));
+  await registerObservability(app);
 
   if (config.SCHEDULER_ENABLED) app.addHook('onReady', async () => app.scheduler.start());
   // Virtual-country currencies live in the database; every instance keeps its table fresh.
@@ -270,6 +276,7 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
       await api.register(apiKeyRoutes);
       await api.register(webhookRoutes);
       await api.register(notificationRoutes);
+      await api.register(operationsRoutes);
       await api.register(adminRoutes);
       await api.register(realtimeRoutes);
     },

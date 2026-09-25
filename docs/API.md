@@ -191,6 +191,18 @@ direct and group messages unless the `pushChats` preference is off:
 `POST /me/push-subscriptions/test` sends a test to all of them. Devices the push service reports as
 gone are forgotten, as are ones that fail 10 times in a row.
 
+## Operations
+
+- `GET /metrics` (outside `/api/v1`): Prometheus text format; `Authorization: Bearer $METRICS_TOKEN`
+  when a token is configured, otherwise private networks only.
+- `GET /admin/system` (`audit.view`): this instance (id, version, uptime), the number of instances,
+  people connected, waiting notifications and webhook deliveries, background jobs and the last
+  backup.
+- `GET /admin/audit-logs/export?format=csv|ndjson&action=&from=&to=` (`audit.view`): the audit log,
+  oldest first, streamed. CSV cells that a spreadsheet would run as formulas are prefixed with `'`.
+- Every response carries `traceparent` (the request's trace id, continued from an incoming
+  `traceparent`) and `Server-Timing: app;dur=<ms>`.
+
 ## Realtime events
 
 Connect to `wss://…/api/v1/realtime?token=<accessToken>`. The server sends JSON events:

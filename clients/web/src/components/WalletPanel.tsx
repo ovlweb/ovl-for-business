@@ -11,6 +11,7 @@ import {
   Modal,
   Money,
   plural,
+  saveBlob,
   Segmented,
   StatusBadge,
   ShareBar,
@@ -274,18 +275,6 @@ function periodRange(period: Period, now = new Date()): { from?: string; to?: st
   }
 }
 
-/** Save a file the SDK fetched (object URL + a temporary link). */
-function saveFile(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 function ExportModal({ wallet, onClose }: { wallet: Wallet; onClose: () => void }) {
   const toast = useToast();
   const [period, setPeriod] = useState<Period>('month');
@@ -296,7 +285,7 @@ function ExportModal({ wallet, onClose }: { wallet: Wallet; onClose: () => void 
         ? api.wallets.statementPdf(wallet.id, periodRange(period))
         : api.wallets.statementCsv(wallet.id, periodRange(period)),
     onSuccess: ({ blob, filename }) => {
-      saveFile(blob, filename ?? `ovl-statement-${wallet.currency.toLowerCase()}.${format}`);
+      saveBlob(blob, filename ?? `ovl-statement-${wallet.currency.toLowerCase()}.${format}`);
       toast.success('Statement downloaded');
       onClose();
     },
@@ -349,7 +338,7 @@ export function MonthlyStatements({ wallet }: { wallet: Wallet }) {
   });
   const download = useMutation({
     mutationFn: (m: { from: string; to: string }) => api.wallets.statementPdf(wallet.id, m),
-    onSuccess: ({ blob, filename }) => saveFile(blob, filename ?? 'ovl-statement.pdf'),
+    onSuccess: ({ blob, filename }) => saveBlob(blob, filename ?? 'ovl-statement.pdf'),
     onError: (e) => toast.error(e),
   });
   if (!months.data?.length) return null;

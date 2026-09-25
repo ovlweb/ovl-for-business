@@ -82,5 +82,6 @@ Grouped by the value they add for businesses. Order within a group is a suggesti
 - ✅ Horizontal scaling of realtime (Postgres `LISTEN/NOTIFY` behind `RealtimeHub`, shared
   presence) and shared rate-limit storage (0.2).
 - Localisation (English, Russian, …).
-- Observability: metrics, tracing, structured audit export; automated backups.
+- ✅ Observability: Prometheus metrics, W3C trace context in logs, structured audit export
+  (CSV / NDJSON); automated backups with retention and a restore script (0.2).
 - Governance settings: majority vs. quorum voting, council terms, published transparency reports.

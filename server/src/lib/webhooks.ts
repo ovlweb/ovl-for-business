@@ -59,6 +59,14 @@ for (const [net, prefix] of [
 ] as const)
   privateNetworks.addSubnet(net, prefix, 'ipv6');
 
+/** Loopback, private and link-local addresses (IPv4, IPv6 and IPv4-mapped IPv6). */
+export function isPrivateAddress(address: string): boolean {
+  const mapped = address.startsWith('::ffff:') ? address.slice(7) : address;
+  const family = isIP(mapped);
+  if (!family) return false;
+  return privateNetworks.check(mapped, family === 6 ? 'ipv6' : 'ipv4');
+}
+
 /** Refuse to call into the server's own network (SSRF), unless the configuration allows it. */
 export async function assertPublicUrl(url: string, allowPrivate: boolean) {
   const { hostname, protocol } = new URL(url);

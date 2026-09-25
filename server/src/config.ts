@@ -120,6 +120,9 @@ const envSchema = z.object({
   APNS_TEAM_ID: z.string().optional(),
   APNS_TOPIC: z.string().optional(),
   APNS_HOST: z.url().default('https://api.push.apple.com'),
+  /** GET /metrics (Prometheus) needs this bearer token; without one it answers private networks only. */
+  METRICS_TOKEN: z.preprocess((v) => (v === '' ? undefined : v), z.string().min(16).optional()),
+
   /** Notifications older than this many days are removed. */
   NOTIFICATION_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
 

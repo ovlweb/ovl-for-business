@@ -180,6 +180,7 @@ Server environment variables (see `server/src/config.ts`):
 | `SCHEDULER_ENABLED`                                                    | `true`                       | Background jobs such as recurring invoices; every instance may run them, they share the work                                                |
 | `REALTIME_BROKER`                                                      | `postgres`                   | How instances share realtime events and presence (`postgres` LISTEN/NOTIFY, or `memory` for one instance)                                   |
 | `RATE_LIMIT_STORE`                                                     | `memory`                     | `postgres` to share rate-limit counters between instances                                                                                   |
+| `METRICS_TOKEN`                                                        | —                            | Bearer token for `GET /metrics`; without one, only private networks can read it                                                             |
 | `LICENSE_TERM_MONTHS`                                                  | `12`                         | Licences and virtual countries run this long before they need a renewal (`0`: no expiry)                                                    |
 | `WEBHOOK_ALLOW_PRIVATE_NETWORKS`                                       | `false` in production        | Let webhooks call private and loopback addresses (on by default outside production)                                                         |
 | `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` / `OIDC_LABEL` | —                            | Single sign-on for the admin panel (redirect URI: `PUBLIC_ADMIN_URL/`)                                                                      |
@@ -197,6 +198,36 @@ Server environment variables (see `server/src/config.ts`):
 | `PUBLIC_RATE_LIMIT` / `API_KEY_RATE_LIMIT`                             | `60` / `600`                 | Requests per minute on the public API                                                                                                       |
 
 With `NODE_ENV=development` the two-step and identity rules default to off so the demo data works on a laptop; production turns them on unless you set them.
+
+## Operations
+
+**Monitoring.** `GET /metrics` serves Prometheus metrics: requests and latency per route,
+realtime connections, notification and webhook queues, push outcomes, background job runs and
+failures, memory and event-loop use. Set `METRICS_TOKEN` and scrape with
+`Authorization: Bearer <token>`, or leave it unset to allow private networks only. Request ids are
+W3C trace ids: send a `traceparent` header (your proxy or client can) and every log line of that
+request carries it as `traceId`; responses return a `traceparent` and `Server-Timing`. The admin
+dashboard shows instances, connections, queues, jobs and the last backup.
+
+**Audit export.** Admin panel → Audit log → Export CSV / NDJSON, or
+`GET /api/v1/admin/audit-logs/export?format=ndjson&from=…&to=…&action=…` for archives and SIEM tools
+(exports are audited too).
+
+**Backups.** The `backup` service in `docker-compose.yml` dumps the database (`pg_dump`, custom
+format) and the uploaded files every `BACKUP_INTERVAL_HOURS` (24) into the `backups` volume and keeps
+`BACKUP_KEEP_DAYS` (14) days. Copy that volume somewhere else, too. To restore, stop the API and run:
+
+```sh
+docker compose stop api
+docker compose run --rm --entrypoint sh backup /deploy/restore.sh \
+  /backups/ovl-20260925-030000.dump /backups/ovl-files-20260925-030000.tar.gz
+docker compose start api
+```
+
+(with S3 storage, back the bucket up with your provider's tools instead of the files tarball.)
+
+**Several instances.** Run as many API instances as you like on one database; see
+[ARCHITECTURE.md](docs/ARCHITECTURE.md#running-several-instances).
 
 ## Documentation
 

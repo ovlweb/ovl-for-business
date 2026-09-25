@@ -592,3 +592,15 @@ export function useDebounced<T>(value: T, delay = 300): T {
   }, [value, delay]);
   return debounced;
 }
+
+/** Save a file fetched by the SDK (an object URL and a temporary link). */
+export function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

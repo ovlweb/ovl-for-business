@@ -81,6 +81,7 @@ import type {
   StockListingDetail,
   StockLimits,
   StockOrder,
+  SystemStatus,
   StockTrade,
   Story,
   TransferInput,
@@ -716,6 +717,11 @@ export class OvlClient {
     }) => this.put<StockLimits>('/admin/stock/limits', input),
     auditLogs: (query?: { action?: string; limit?: number; offset?: number }) =>
       this.get<Page<AuditLog>>('/admin/audit-logs', query),
+    /** The audit log as a CSV or NDJSON file (oldest first). */
+    exportAuditLogs: (query: { format: 'csv' | 'ndjson'; action?: string; from?: string; to?: string }) =>
+      this.download('/admin/audit-logs/export', query),
+    /** Instances, connections, queues, background jobs and the last backup. */
+    system: () => this.get<SystemStatus>('/admin/system'),
     apiKeys: (query?: { limit?: number; offset?: number }) =>
       this.get<Page<ApiKey>>('/admin/api-keys', query),
     revokeApiKey: (id: string) => this.del(`/admin/api-keys/${id}`),
